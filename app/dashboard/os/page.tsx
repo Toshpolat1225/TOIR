@@ -446,7 +446,7 @@ function fromRow(r: any): FixedAsset {
     status:           r.status,
     commDate:         r.comm_date,
     yearBuilt:        r.year_built,
-    mileage:          r.mileage ?? "",
+    mileage:          String(r.mileage ?? ""),
     lastMaint:        r.last_maint,
     nextMaint:        r.next_maint,
     invNumber:        r.inv_number,
@@ -617,7 +617,7 @@ export default function OsPage() {
     try {
       // The backend will generate the ID, so we can omit it here.
       const { id, ...newAssetData } = toRow(a);
-      await api.fixedAssets.create(newAssetData as any); // Use `any` to bypass readonly `id`
+      await api.fixedAssets.create(newAssetData);
       fetchAssets(0, search, fType, fDepot, fStatus)
       fetchCounts()
       setPage(0)

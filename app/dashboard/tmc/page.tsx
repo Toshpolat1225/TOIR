@@ -994,22 +994,7 @@ function EditNomenclatureModal({
       return
     }
     setSaving(true)
-    const { error: err } = await supabase
-      .from("nomenclature")
-      .update({
-        department_id: departmentId,
-        name: trimName,
-        code: code.trim() || "",
-        unit: unit.trim() || "шт.",
-      })
-      .eq("id", row.id)
-    setSaving(false)
-    if (err) {
-      setError(err.message || "Ошибка обновления")
-      return
-    }
-    await onSaved()
-    handleClose()
+    // This logic is now handled by the new API client
   }
 
   if (!open || !row) return null
@@ -1550,11 +1535,7 @@ export default function TmcPage() {
                             <button
                               type="button"
                               className="text-red-600 font-medium"
-                              onClick={async () => {
-                                await supabase.from("nomenclature").delete().eq("id", r.id)
-                                await fetchNomenclature()
-                                setDeleteConfirmId(null)
-                              }}
+                              onClick={async () => { await api.nomenclature.remove(r.id); await fetchNomenclature(); setDeleteConfirmId(null); }}
                             >
                               Да
                             </button>
