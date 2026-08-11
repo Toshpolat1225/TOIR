@@ -307,6 +307,56 @@ const fixedAssets = {
   },
 };
 
+// --- TMC Documents Module ---
+
+type TmcItem = {
+  no: number;
+  name: string;
+  invNo: string;
+  unit: string;
+  qty: number;
+  price: number;
+  note: string;
+};
+
+type TmcDocument = {
+  id: string;
+  doc_no: string;
+  doc_date: string;
+  work_order_id: string | null;
+  department_id: string | null;
+  status: "draft" | "issued" | "closed";
+  items: TmcItem[] | null;
+  // Joined fields from backend, matching the `TmcDoc` type in the component
+  loco?: string;
+  work_type?: string;
+  depot?: string;
+  warehouse?: string;
+  issued_by?: string;
+  accepted_by?: string;
+  chief?: string;
+};
+
+type TmcDocumentListParams = ListParams & {
+  status?: "draft" | "issued" | "closed";
+  department_id?: string;
+};
+
+const tmcDocuments = {
+  async list(params: TmcDocumentListParams): Promise<Paginated<TmcDocument>> {
+    return request<Paginated<TmcDocument>>({ method: "GET", path: "/tmc-documents", params });
+  },
+  async create(data: Partial<TmcDocument>): Promise<TmcDocument> {
+    return request<TmcDocument>({ method: "POST", path: "/tmc-documents", body: data });
+  },
+  async update(id: string, data: Partial<TmcDocument>): Promise<TmcDocument> {
+    return request<TmcDocument>({ method: "PATCH", path: `/tmc-documents/${id}`, body: data });
+  },
+  async remove(id: string): Promise<void> {
+    await request<null>({ method: "DELETE", path: `/tmc-documents/${id}` });
+  },
+};
+
 // --- Main API Export ---
 
 export const api = {
@@ -315,5 +365,6 @@ export const api = {
   departments,
   nomenclature,
   fixedAssets,
+  tmcDocuments,
   // Other resources like departments, workOrders, etc. will be added here
 };

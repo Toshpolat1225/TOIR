@@ -36,9 +36,6 @@ type TmcDoc = {
   workType: string
   depot: string
   warehouse: string
-  issuedBy: string
-  acceptedBy: string
-  chief: string
   issuedBy?: string
   acceptedBy?: string
   chief?: string
@@ -494,15 +491,6 @@ export default function TmcPage() {
 
   const fetchDocs = useCallback(async () => {
     setLoading(true)
-    // This part is NOT MIGRATED in this phase, so we keep using Supabase for tmc_documents
-    const { data, error } = await supabase
-      .from("tmc_documents")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(200)
-    if (!error && data) {
-      setDocs(data.map(fromRow))
-    } else {
     try {
       const response = await api.tmcDocuments.list({ limit: 200, sort_by: "created_at", sort_order: "desc" });
       setDocs(response.items.map(fromRow));
@@ -512,7 +500,6 @@ export default function TmcPage() {
     } finally {
       setLoading(false)
     }
-    setLoading(false)
   }, [])
 
   const fetchNomenclature = useCallback(async () => {
