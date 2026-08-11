@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { supabase } from "@/lib/supabase"
+import { api } from "@/lib/api"
 
 export type SectionData = {
   id: string
@@ -15,18 +15,17 @@ export function useSections() {
 
   const refresh = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from("sections")
-      .select("id, name")
-      .order("name", { ascending: true })
-    if (!error && data) {
-      setSections(data.map((r: { name: string }) => r.name))
-      setSectionsData(data as SectionData[])
-    } else {
+    try {
+      const response = await api.sections.list({ limit: 1000, sort_by: "name", sort_order: "asc" });
+      setSections(response.items.map((r) => r.name));
+      setSectionsData(response.items);
+    } catch (error) {
+      console.error("Failed to fetch sections:", error);
       setSections([])
       setSectionsData([])
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [])
 
   useEffect(() => { refresh() }, [refresh])

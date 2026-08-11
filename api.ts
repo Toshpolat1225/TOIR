@@ -173,11 +173,146 @@ const sections = {
   },
 };
 
+// --- Departments Module ---
+
+type Department = {
+  id: string;
+  name: string;
+  color: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const departments = {
+  async list(params: ListParams = { limit: 100, offset: 0 }): Promise<Paginated<Department>> {
+    return request<Paginated<Department>>({
+      method: "GET",
+      path: "/departments",
+      params,
+    });
+  },
+
+  async create(data: { name: string; color?: string }): Promise<Department> {
+    return request<Department>({
+      method: "POST",
+      path: "/departments",
+      body: data,
+    });
+  },
+
+  async update(id: string, data: { name?: string; color?: string }): Promise<Department> {
+    return request<Department>({
+      method: "PATCH",
+      path: `/departments/${id}`,
+      body: data,
+    });
+  },
+
+  async remove(id: string): Promise<void> {
+    await request<null>({
+      method: "DELETE",
+      path: `/departments/${id}`,
+    });
+  },
+};
+
+// --- Nomenclature Module ---
+
+type Nomenclature = {
+  id: string;
+  name: string;
+  code: string | null;
+  unit: string;
+  department_id: string;
+  department_name?: string; // Joined in backend
+};
+
+type NomenclatureListParams = ListParams & {
+  name?: string;
+  department_id?: string;
+};
+
+const nomenclature = {
+  async list(params: NomenclatureListParams = { limit: 100, offset: 0 }): Promise<Paginated<Nomenclature>> {
+    return request<Paginated<Nomenclature>>({
+      method: "GET",
+      path: "/nomenclature",
+      params,
+    });
+  },
+
+  async create(data: { name: string; code?: string; unit?: string; department_id: string }): Promise<Nomenclature> {
+    return request<Nomenclature>({
+      method: "POST",
+      path: "/nomenclature",
+      body: data,
+    });
+  },
+
+  async update(id: string, data: Partial<{ name: string; code: string; unit: string; department_id: string }>): Promise<Nomenclature> {
+    return request<Nomenclature>({
+      method: "PATCH",
+      path: `/nomenclature/${id}`,
+      body: data,
+    });
+  },
+
+  async remove(id: string): Promise<void> {
+    await request<null>({
+      method: "DELETE",
+      path: `/nomenclature/${id}`,
+    });
+  },
+};
+
+// --- Fixed Assets Module ---
+
+type FixedAsset = {
+  id: string;
+  name: string;
+  asset_type: string | null;
+  depot: string | null;
+  status?: string; // Not in schema.sql but used in UI
+  comm_date?: string; // Not in schema.sql but used in UI
+  year_built?: string; // Not in schema.sql but used in UI
+  mileage: number | null;
+  last_maint_date: string | null;
+  inv_number?: string; // Not in schema.sql but used in UI
+  initial_cost?: string; // Not in schema.sql but used in UI
+  owner?: string; // Not in schema.sql but used in UI
+  wialon_last_sync: string | null;
+  wialon_online: boolean | null;
+};
+
+type FixedAssetListParams = ListParams & {
+  name?: string;
+  asset_type?: string;
+  depot?: string;
+  status?: string;
+};
+
+const fixedAssets = {
+  async list(params: FixedAssetListParams): Promise<Paginated<FixedAsset>> {
+    return request<Paginated<FixedAsset>>({ method: "GET", path: "/fixed-assets", params });
+  },
+  async create(data: Partial<FixedAsset>): Promise<FixedAsset> {
+    return request<FixedAsset>({ method: "POST", path: "/fixed-assets", body: data });
+  },
+  async update(id: string, data: Partial<FixedAsset>): Promise<FixedAsset> {
+    return request<FixedAsset>({ method: "PATCH", path: `/fixed-assets/${id}`, body: data });
+  },
+  async remove(id: string): Promise<void> {
+    await request<null>({ method: "DELETE", path: `/fixed-assets/${id}` });
+  },
+};
 
 // --- Main API Export ---
 
 export const api = {
   auth,
   sections,
+  departments,
+  nomenclature,
+  fixedAssets,
   // Other resources like departments, workOrders, etc. will be added here
 };

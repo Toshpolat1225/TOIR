@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { supabase } from "@/lib/supabase"
+import { api } from "@/lib/api"
 import { useSections } from "@/lib/use-sections"
 import {
   Train, Container, Plus, Search, X, Save, ChevronDown,
@@ -493,71 +493,58 @@ export default function OsPage() {
   const [allDepots, setAllDepots] = useState<string[]>([])
   
   // Ref для фильтров в real-time подписке (чтобы не пересоздавать канал)
-  const filtersRef = useRef({ page: 0, search: "", fType: "" as AssetType | "", fDepot: "", fStatus: "" as AssetStatus | "" })
+  const filtersRef = useRef({ page: 0, search: "", fType: "" as AssetType | "", fDepot: "", fStatus: "" as AssetStatus | "" });
 
   // Загружаем счётчики и список депо один раз (оптимизированные запросы)
   const fetchCounts = useCallback(async () => {
-    // Параллельные запросы для подсчёта
-    const [
-      { count: totalCount },
-      { count: locoCount },
-      { count: wagonCount },
-      { count: operCount },
-      { count: maintCount },
-      { count: repairCount },
-      { count: retiredCount },
-      { data: depotsData }
-    ] = await Promise.all([
-      supabase.from("fixed_assets").select("*", { count: "exact", head: true }),
-      supabase.from("fixed_assets").select("*", { count: "exact", head: true }).eq("asset_type", "locomotive"),
-      supabase.from("fixed_assets").select("*", { count: "exact", head: true }).eq("asset_type", "wagon"),
-      supabase.from("fixed_assets").select("*", { count: "exact", head: true }).eq("status", "operational"),
-      supabase.from("fixed_assets").select("*", { count: "exact", head: true }).eq("status", "maintenance"),
-      supabase.from("fixed_assets").select("*", { count: "exact", head: true }).eq("status", "repair"),
-      supabase.from("fixed_assets").select("*", { count: "exact", head: true }).eq("status", "out_of_service"),
-      supabase.from("fixed_assets").select("depot").not("depot", "is", null).not("depot", "eq", "").limit(1000)
-    ])
+    // This function is now simplified. Counts are derived from the full dataset fetched once.
+    // A more scalable approach would be a dedicated `/fixed-assets/stats` endpoint.
+    try {
+      const { items, total } = await api.fixedAssets.list({ limit: 10000 }); // Fetch all for stats
+      const locoCount = items.filter(a => a.asset_type === 'locomotive').length;
+      const wagonCount = items.filter(a => a.asset_type === 'wagon').length;
+      const operCount = items.filter(a => a.status === 'operational').length;
+      const maintCount = items.filter(a => a.status === 'maintenance').length;
+      const repairCount = items.filter(a => a.status === 'repair').length;
+      const retiredCount = items.filter(a => a.status === 'out_of_service').length;
 
-    setCounts({
-      total: totalCount ?? 0,
-      loco: locoCount ?? 0,
-      wagon: wagonCount ?? 0,
-      operational: operCount ?? 0,
-      repair: (maintCount ?? 0) + (repairCount ?? 0),
-      retired: retiredCount ?? 0
-    })
+      setCounts({
+        total: total,
+        loco: locoCount,
+        wagon: wagonCount,
+        operational: operCount,
+        repair: maintCount + repairCount,
+        retired: retiredCount,
+      });
 
-    // Уникальные депо
-    if (depotsData) {
-      const deps = [...new Set(depotsData.map((r: { depot: string }) => r.depot))].filter(Boolean).sort()
-      setAllDepots(deps as string[])
+      const deps = [...new Set(items.map(a => a.depot).filter(Boolean) as string[])].sort();
+      setAllDepots(deps);
+    } catch (error) {
+      console.error("Failed to fetch asset counts:", error);
     }
   }, [])
 
   const fetchAssets = useCallback(async (pg: number, q: string, ft: string, fd: string, fs: string) => {
     setLoading(true)
     try {
-      let query = supabase
-        .from("fixed_assets")
-        .select("*", { count: "exact" })
-        .order("created_at", { ascending: false })
-        .range(pg * PAGE_SIZE, pg * PAGE_SIZE + PAGE_SIZE - 1)
+      const params: any = {
+        limit: PAGE_SIZE,
+        offset: pg * PAGE_SIZE,
+        sort_by: 'created_at',
+        sort_order: 'desc',
+      };
+      if (q) params.name = q; // Backend should handle ilike search on multiple fields
+      if (ft) params.asset_type = ft;
+      if (fd) params.depot = fd;
+      if (fs) params.status = fs;
 
-      if (ft) query = query.eq("asset_type", ft)
-      if (fd) query = query.eq("depot", fd)
-      if (fs) query = query.eq("status", fs)
-      if (q)  query = query.or(
-        `name.ilike.%${q}%,series.ilike.%${q}%,inv_number.ilike.%${q}%,id.ilike.%${q}%,depot.ilike.%${q}%,owner.ilike.%${q}%`
-      )
+      const response = await api.fixedAssets.list(params);
+      
+      // The backend returns snake_case, but the frontend component expects camelCase.
+      // The `fromRow` function handles this conversion.
+      setAssets(response.items.map(fromRow));
+      setTotal(response.total);
 
-      const { data, count, error } = await query
-      if (!error && data) {
-        setAssets(data.map(fromRow))
-        setTotal(count ?? 0)
-      } else {
-        setAssets([])
-        setTotal(0)
-      }
     } catch (e) {
       console.error("Ошибка загрузки ОС:", e)
       setAssets([])
@@ -565,7 +552,7 @@ export default function OsPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, []);
 
   useEffect(() => { fetchCounts() }, [fetchCounts])
 
@@ -575,6 +562,7 @@ export default function OsPage() {
   }, [page, search, fType, fDepot, fStatus])
 
   // Real-time подписка на изменения в fixed_assets (используем ref для фильтров)
+  // THIS IS INTENTIONALLY LEFT UNCHANGED to keep realtime functionality during transition.
   useEffect(() => {
     const channel = supabase
       .channel("os_sync")
@@ -602,28 +590,32 @@ export default function OsPage() {
   const filtered      = assets  // фильтрация на сервере
 
   const handleSave = async (updated: FixedAsset) => {
-    const { error } = await supabase.from("fixed_assets").upsert(toRow(updated))
-    if (!error) {
-      fetchAssets(page, search, fType, fDepot, fStatus)
-      fetchCounts()
-    }
-    setSelected(null)
-  }
-
-  const handleDelete = async (a: FixedAsset) => {
-    const { error } = await supabase.from("fixed_assets").delete().eq("id", a.id)
-    if (!error) {
+    try {
+      await api.fixedAssets.update(updated.id, toRow(updated));
       fetchAssets(page, search, fType, fDepot, fStatus)
       fetchCounts()
       setSelected(null)
-    } else {
-      alert("Не удалось удалить: " + (error.message || "ошибка БД"))
+    } catch (error) {
+      alert("Не удалось сохранить: " + (error instanceof Error ? error.message : "ошибка API"));
+    }
+  }
+
+  const handleDelete = async (a: FixedAsset) => {
+    try {
+      await api.fixedAssets.remove(a.id);
+      fetchAssets(page, search, fType, fDepot, fStatus)
+      fetchCounts()
+      setSelected(null)
+    } catch (error) {
+      alert("Не удалось удалить: " + (error instanceof Error ? error.message : "ошибка API"));
     }
   }
 
   const handleAdd = async (a: FixedAsset) => {
-    const { error } = await supabase.from("fixed_assets").insert(toRow(a))
-    if (!error) {
+    try {
+      // The backend will generate the ID, so we can omit it here.
+      const { id, ...newAssetData } = toRow(a);
+      await api.fixedAssets.create(newAssetData);
       fetchAssets(0, search, fType, fDepot, fStatus)
       fetchCounts()
       setPage(0)
