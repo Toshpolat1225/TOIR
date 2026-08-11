@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback } from "react"
 import { Building2, Plus, Trash2, ArrowLeft } from "lucide-react"
 import Link from "next/link"
-import { supabase } from "@/lib/supabase"
+import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 
-type SectionRow = { id: string; name: string; created_at: string }
+type SectionRow = { id: string; name: string }
 
 export default function SectionsPage() {
   const [list, setList] = useState<SectionRow[]>([])
@@ -17,13 +17,16 @@ export default function SectionsPage() {
 
   const fetchSections = useCallback(async () => {
     setLoading(true)
-    const { data, error: e } = await supabase
-      .from("sections")
-      .select("id,name,created_at")
-      .order("name", { ascending: true })
-    if (!e && data) setList(data as SectionRow[])
-    else setList([])
-    setLoading(false)
+    try {
+      const response = await api.sections.list({ limit: 1000, sort_by: "name", sort_order: "asc" })
+      setList(response.items)
+    } catch (err) {
+      console.error("Failed to fetch sections:", err)
+      setError(err instanceof Error ? err.message : "Failed to load data")
+      setList([])
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { fetchSections() }, [fetchSections])
@@ -36,22 +39,25 @@ export default function SectionsPage() {
     }
     setAdding(true)
     setError("")
-    const { error: e } = await supabase.from("sections").insert({ name })
-    if (e) {
-      if (e.code === "23505") setError("Участок с таким названием уже есть")
-      else setError(e.message)
+    try {
+      await api.sections.create({ name })
+      setNewName("")
+      await fetchSections()
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "An unknown error occurred"
+      if (errorMessage.includes("already exists")) {
+        setError("Участок с таким названием уже есть")
+      } else {
+        setError(errorMessage)
+      }
+    } finally {
       setAdding(false)
-      return
     }
-    setNewName("")
-    fetchSections()
-    setAdding(false)
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm("Удалить этот участок? Пользователи и наряды с этим участком останутся, но выбор участка будет недоступен для новых записей.")) return
-    const { error: e } = await supabase.from("sections").delete().eq("id", id)
-    if (!e) fetchSections()
+    await api.sections.remove(id).then(fetchSections).catch(err => setError(err.message))
   }
 
   return (
