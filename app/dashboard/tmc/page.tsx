@@ -39,6 +39,9 @@ type TmcDoc = {
   issuedBy: string
   acceptedBy: string
   chief: string
+  issuedBy?: string
+  acceptedBy?: string
+  chief?: string
   status: "draft" | "issued" | "closed"
   items: TmcItem[]
 }
@@ -500,7 +503,14 @@ export default function TmcPage() {
     if (!error && data) {
       setDocs(data.map(fromRow))
     } else {
+    try {
+      const response = await api.tmcDocuments.list({ limit: 200, sort_by: "created_at", sort_order: "desc" });
+      setDocs(response.items.map(fromRow));
+    } catch (error) {
+      console.error("Failed to fetch TMC documents:", error);
       setDocs([])
+    } finally {
+      setLoading(false)
     }
     setLoading(false)
   }, [])
