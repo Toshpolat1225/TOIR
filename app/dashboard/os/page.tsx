@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import { supabase } from "@/lib/supabase" // Kept ONLY for realtime subscription during transition
 import { api } from "@/lib/api"
 import { useSections } from "@/lib/use-sections"
 import {
@@ -493,14 +494,14 @@ export default function OsPage() {
   const [allDepots, setAllDepots] = useState<string[]>([])
   
   // Ref для фильтров в real-time подписке (чтобы не пересоздавать канал)
-  const filtersRef = useRef({ page: 0, search: "", fType: "" as AssetType | "", fDepot: "", fStatus: "" as AssetStatus | "" });
+  const filtersRef = useRef({ page: 0, search: "", fType: "" as AssetType | "", fDepot: "", fStatus: "" as AssetStatus | "" })
 
   // Загружаем счётчики и список депо один раз (оптимизированные запросы)
   const fetchCounts = useCallback(async () => {
     // This function is now simplified. Counts are derived from the full dataset fetched once.
     // A more scalable approach would be a dedicated `/fixed-assets/stats` endpoint.
     try {
-      const { items, total } = await api.fixedAssets.list({ limit: 10000 }); // Fetch all for stats
+      const { items, total } = await api.fixedAssets.list({ limit: 10000, offset: 0 }) // Fetch all for stats
       const locoCount = items.filter(a => a.asset_type === 'locomotive').length;
       const wagonCount = items.filter(a => a.asset_type === 'wagon').length;
       const operCount = items.filter(a => a.status === 'operational').length;
@@ -516,7 +517,7 @@ export default function OsPage() {
         repair: maintCount + repairCount,
         retired: retiredCount,
       });
-
+      
       const deps = [...new Set(items.map(a => a.depot).filter(Boolean) as string[])].sort();
       setAllDepots(deps);
     } catch (error) {
@@ -527,22 +528,22 @@ export default function OsPage() {
   const fetchAssets = useCallback(async (pg: number, q: string, ft: string, fd: string, fs: string) => {
     setLoading(true)
     try {
-      const params: any = {
+      const params: Parameters<typeof api.fixedAssets.list>[0] = {
         limit: PAGE_SIZE,
         offset: pg * PAGE_SIZE,
         sort_by: 'created_at',
         sort_order: 'desc',
       };
       if (q) params.name = q; // Backend should handle ilike search on multiple fields
-      if (ft) params.asset_type = ft;
+      if (ft) params.asset_type = ft as AssetType;
       if (fd) params.depot = fd;
-      if (fs) params.status = fs;
+      if (fs) params.status = fs as AssetStatus;
 
       const response = await api.fixedAssets.list(params);
       
       // The backend returns snake_case, but the frontend component expects camelCase.
       // The `fromRow` function handles this conversion.
-      setAssets(response.items.map(fromRow));
+      setAssets(response.items.map(fromRow))
       setTotal(response.total);
 
     } catch (e) {
@@ -552,7 +553,7 @@ export default function OsPage() {
     } finally {
       setLoading(false)
     }
-  }, []);
+  }, [])
 
   useEffect(() => { fetchCounts() }, [fetchCounts])
 
@@ -562,6 +563,7 @@ export default function OsPage() {
   }, [page, search, fType, fDepot, fStatus])
 
   // Real-time подписка на изменения в fixed_assets (используем ref для фильтров)
+  // Supabase is used here ONLY for the realtime subscription trigger. The data fetch is done via the new API.
   // THIS IS INTENTIONALLY LEFT UNCHANGED to keep realtime functionality during transition.
   useEffect(() => {
     const channel = supabase
@@ -615,7 +617,7 @@ export default function OsPage() {
     try {
       // The backend will generate the ID, so we can omit it here.
       const { id, ...newAssetData } = toRow(a);
-      await api.fixedAssets.create(newAssetData);
+      await api.fixedAssets.create(newAssetData as any); // Use `any` to bypass readonly `id`
       fetchAssets(0, search, fType, fDepot, fStatus)
       fetchCounts()
       setPage(0)

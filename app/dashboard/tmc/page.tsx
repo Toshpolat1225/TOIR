@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
+import { supabase } from "@/lib/supabase" // Kept ONLY for realtime subscription during transition
 import { api } from "@/lib/api"
 import { useSectionView } from "@/lib/section-view-context"
 import { Package, Plus, Printer, Eye, CheckCircle, Clock, FileText, List, Search, X, Save, Pencil, Trash2 } from "lucide-react"
@@ -490,7 +491,7 @@ export default function TmcPage() {
 
   const fetchDocs = useCallback(async () => {
     setLoading(true)
-    // This part is not migrated yet, so we keep using Supabase for tmc_documents
+    // This part is NOT MIGRATED in this phase, so we keep using Supabase for tmc_documents
     const { data, error } = await supabase
       .from("tmc_documents")
       .select("*")
@@ -507,7 +508,7 @@ export default function TmcPage() {
   const fetchNomenclature = useCallback(async () => {
     setNomenclatureLoading(true)
     try {
-      const params: any = { limit: 1000, sort_by: 'name', sort_order: 'asc' };
+      const params: Parameters<typeof api.nomenclature.list>[0] = { limit: 1000, sort_by: 'name', sort_order: 'asc' };
       if (filterDepartmentId) {
         params.department_id = filterDepartmentId;
       } else if (effectiveSection) {
@@ -559,6 +560,7 @@ export default function TmcPage() {
   useEffect(() => { fetchDepartments() }, [fetchDepartments])
 
   // Real-time подписки для синхронизации справочников
+  // Supabase is used here ONLY for the realtime subscription trigger. The data fetch is done via the new API.
   // This part is intentionally left using Supabase for now.
   useEffect(() => {
     const channel = supabase

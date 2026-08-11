@@ -270,16 +270,17 @@ const nomenclature = {
 type FixedAsset = {
   id: string;
   name: string;
-  asset_type: string | null;
+  asset_type: "locomotive" | "wagon" | "diesel" | null;
   depot: string | null;
-  status?: string; // Not in schema.sql but used in UI
-  comm_date?: string; // Not in schema.sql but used in UI
-  year_built?: string; // Not in schema.sql but used in UI
+  status?: "operational" | "maintenance" | "repair" | "out_of_service";
+  series: string | null;
+  comm_date: string | null;
+  year_built: string | null;
   mileage: number | null;
   last_maint_date: string | null;
-  inv_number?: string; // Not in schema.sql but used in UI
-  initial_cost?: string; // Not in schema.sql but used in UI
-  owner?: string; // Not in schema.sql but used in UI
+  inv_number: string | null;
+  initial_cost: string | null;
+  owner: string | null;
   wialon_last_sync: string | null;
   wialon_online: boolean | null;
 };
@@ -288,7 +289,7 @@ type FixedAssetListParams = ListParams & {
   name?: string;
   asset_type?: string;
   depot?: string;
-  status?: string;
+  status?: "operational" | "maintenance" | "repair" | "out_of_service";
 };
 
 const fixedAssets = {
