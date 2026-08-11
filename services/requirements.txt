@@ -1,0 +1,19 @@
+# ML Engine Dependencies
+# Install: pip install -r services/requirements.txt
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Machine Learning
+scikit-learn>=1.3.0
+
+# Supabase client
+supabase>=2.0.0
+
+# Web server (for webhook endpoint)
+flask>=3.0.0
+gunicorn>=21.0.0
+
+# Utilities
+python-dotenv>=1.0.0
