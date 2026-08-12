@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { supabase } from "@/lib/supabase"
+import { api } from "@/lib/api"
 import { useSections } from "@/lib/use-sections"
 import {
   Calendar, Wrench, CheckCircle, Clock, AlertTriangle,
@@ -1102,10 +1102,8 @@ export default function MaintenancePage() {
       const m = ((totalMonth % 12) + 12) % 12 + 1
       const queryMonth = `${y}-${String(m).padStart(2, "0")}`
 
-      const res = await fetch(`/api/maintenance-schedule?month=${queryMonth}`)
-      if (!res.ok) throw new Error(await res.text())
-      const { schedule: data } = await res.json()
-      setSchedule(Array.isArray(data) ? data : [])
+      const response = await api.maintenanceSchedule.get({ month: queryMonth });
+      setSchedule(response.schedule || []);
       setInitialLoadDone(true)
     } catch (e) {
       console.error("Ошибка загрузки ТО и ремонтов:", e)
@@ -1116,17 +1114,6 @@ export default function MaintenancePage() {
   }, [monthOffset])
 
   useEffect(() => { fetchSchedule(monthOffset) }, [fetchSchedule, monthOffset])
-
-  useEffect(() => {
-    const channel = supabase
-      .channel("maintenance_sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, () => fetchSchedule())
-      .on("postgres_changes", { event: "*", schema: "public", table: "maintenance_plan" }, () => fetchSchedule())
-      .on("postgres_changes", { event: "*", schema: "public", table: "fixed_assets" }, () => fetchSchedule())
-      .on("postgres_changes", { event: "*", schema: "public", table: "maintenance_intervals" }, () => fetchSchedule())
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [fetchSchedule])
 
   // Диапазон: текущий месяц
   const now         = new Date()
