@@ -1690,6 +1690,11 @@ function toRow(o: WorkOrder) {
   }
 }
 
+function fromTmcDocRow(r: any): TmcDoc {
+  // This is a placeholder. The actual implementation will depend on the tmc_documents table structure.
+  return r as TmcDoc;
+}
+
 // Конвертация строки БД → WorkOrder
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function fromRow(r: any): WorkOrder {
