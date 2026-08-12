@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { supabase } from "@/lib/supabase" // Kept ONLY for realtime subscription during transition
 import { api } from "@/lib/api"
 import { useSections } from "@/lib/use-sections"
 import {
@@ -562,21 +561,6 @@ export default function OsPage() {
     filtersRef.current = { page, search, fType, fDepot, fStatus }
   }, [page, search, fType, fDepot, fStatus])
 
-  // Real-time подписка на изменения в fixed_assets (используем ref для фильтров)
-  // Supabase is used here ONLY for the realtime subscription trigger. The data fetch is done via the new API.
-  // THIS IS INTENTIONALLY LEFT UNCHANGED to keep realtime functionality during transition.
-  useEffect(() => {
-    const channel = supabase
-      .channel("os_sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "fixed_assets" }, () => {
-        const f = filtersRef.current
-        fetchAssets(f.page, f.search, f.fType, f.fDepot, f.fStatus)
-        fetchCounts()
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [fetchAssets, fetchCounts])
-
   // Сброс страницы при смене фильтров
   useEffect(() => {
     setPage(0)
@@ -584,7 +568,7 @@ export default function OsPage() {
 
   useEffect(() => {
     fetchAssets(page, search, fType, fDepot, fStatus)
-  }, [fetchAssets, page, search, fType, fDepot, fStatus])
+  }, [fetchAssets, page, search, fType, fDepot, fStatus]);
 
   const totalPages    = Math.ceil(total / PAGE_SIZE)
   const activeFilters = [fType, fDepot, fStatus].filter(Boolean).length

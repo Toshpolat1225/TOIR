@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { supabase } from "@/lib/supabase" // Kept ONLY for realtime subscription during transition
 import { api } from "@/lib/api"
 import { useSectionView } from "@/lib/section-view-context"
 import { Package, Plus, Printer, Eye, CheckCircle, Clock, FileText, List, Search, X, Save, Pencil, Trash2 } from "lucide-react"
@@ -555,29 +554,6 @@ export default function TmcPage() {
   useEffect(() => { fetchNomenclature() }, [fetchNomenclature])
   useEffect(() => { fetchSections() }, [fetchSections])
   useEffect(() => { fetchDepartments() }, [fetchDepartments])
-
-  // Real-time подписки для синхронизации справочников
-  // Supabase is used here ONLY for the realtime subscription trigger. The data fetch is done via the new API.
-  // This part is intentionally left using Supabase for now.
-  useEffect(() => {
-    const channel = supabase
-      .channel("tmc_sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "nomenclature" }, () => {
-        fetchNomenclature()
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "departments" }, () => {
-        fetchDepartments()
-        fetchNomenclature()
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "sections" }, () => {
-        fetchSections()
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "tmc_documents" }, () => {
-        fetchDocs()
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [fetchNomenclature, fetchDepartments, fetchSections, fetchDocs])
 
   const filteredNomenclature = useMemo(() => {
     if (!nomenclatureSearch.trim()) return nomenclature
