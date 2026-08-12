@@ -60,31 +60,6 @@ class WorkOrderService:
         return Paginated(items=work_orders, total=total, limit=limit, offset=offset)
 
     async def create_work_order(self, wo_in: WorkOrderCreate) -> WorkOrderRead:
-        # Validate that the fixed asset exists
-        if wo_in.fixed_asset_id:
-            asset = await self.asset_repo.get_by_id(wo_in.fixed_asset_id)
-            if not asset:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Fixed asset with id {wo_in.fixed_asset_id} not found",
-                )
-        if wo_in.section_id:
-            section = await self.section_repo.get_by_id(wo_in.section_id)
-            if not section:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Section not found")
-        if wo_in.department_id:
-            department = await self.department_repo.get_by_id(wo_in.department_id)
-            if not department:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department not found")
-        if wo_in.employee_id:
-            employee = await self.employee_repo.get_by_id(wo_in.employee_id)
-            if not employee:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
-        if wo_in.work_type_id:
-            work_type = await self.work_type_repo.get_by_id(wo_in.work_type_id)
-            if not work_type:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Work type not found")
-
         return await self.repo.create(wo_in)
 
     async def get_work_order_by_id(self, wo_id: str) -> WorkOrderRead:
