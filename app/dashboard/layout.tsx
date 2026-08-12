@@ -157,7 +157,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       effectiveSectionFromProfile={profile?.section ?? null}
       isAdmin={isAdmin}
     >
-      <div className="flex h-screen bg-gray-50 dark:bg-gray-950">
+      {/* 
+        NEW BACKGROUND IMPLEMENTATION:
+        - A pseudo-element (`::before`) is used for the background image to keep it separate from the content.
+        - It's fixed to cover the entire viewport.
+        - A dark overlay (`bg-black/60`) and a radial gradient are applied to ensure content readability.
+        - In light mode, the image is almost fully transparent, providing a very subtle texture.
+        - In dark mode, the image is more visible, creating an industrial atmosphere.
+      */}
+      <div className="
+        flex h-screen bg-gray-50 dark:bg-gray-950
+        relative before:fixed before:inset-0 before:z-[-1]
+        before:bg-[url('/backgrounds/railway-depot-dark.jpg')] before:bg-cover before:bg-center
+        before:transition-opacity before:duration-500
+        light:before:opacity-5 dark:before:opacity-15
+      ">
         <aside className="w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col">
 
           {/* Шапка сайдбара */}
@@ -200,7 +214,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           />
         </aside>
 
-        <main className="flex-1 overflow-auto" key={pathname}>
+        {/* 
+          A semi-transparent overlay is added to the main content area to further improve readability
+          by slightly dimming the background image behind the content.
+        */}
+        <main className="flex-1 overflow-auto relative bg-black/0 dark:bg-black/20" key={pathname}>
+          {/* Radial gradient overlay for focus effect */}
+          <div className="absolute inset-0 z-[-1] bg-[radial-gradient(ellipse_100%_80%_at_50%_20%,rgba(255,255,255,0.05),rgba(0,0,0,0.5))] dark:bg-[radial-gradient(ellipse_100%_80%_at_50%_20%,rgba(0,0,0,0.3),rgba(0,0,0,0.8))]" />
           {children}
         </main>
       </div>
