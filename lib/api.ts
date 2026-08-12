@@ -400,6 +400,17 @@ const workOrders = {
   },
 };
 
+// --- Maintenance Schedule Module ---
+
+type ScheduleItem = { id: string; unit: string; type: string; startDate: string; durationH: number; depot: string; tech: string; status: string; note?: string; mileage?: number; remainingKm?: number; nextThreshold?: number; };
+type MaintenanceScheduleResponse = { schedule: ScheduleItem[]; };
+
+const maintenanceSchedule = {
+  async get(params: { month?: string }): Promise<MaintenanceScheduleResponse> {
+    return request<MaintenanceScheduleResponse>({ method: "GET", path: "/maintenance-schedule", params });
+  },
+};
+
 // --- Nomenclature Norms Module ---
 type NomenclatureNorm = {
   id: string;
@@ -489,6 +500,22 @@ const tmcDocuments = {
   },
 };
 
+// --- Dashboard Module ---
+type DashboardSummary = {
+  kpi: any;
+  fleetStatus: any[];
+  seriesStats: any[];
+  workOrdersTrend: any[];
+  availability: any[];
+  repairKindStats: any[];
+  upcomingOrders: any[];
+  recentWorkOrders: any[];
+};
+const dashboard = {
+  async getSummary(params: { section?: string }): Promise<DashboardSummary> {
+    return request<DashboardSummary>({ method: "GET", path: "/dashboard/summary", params });
+  },
+};
 
 // Re-exporting directory APIs for clarity, though they already exist
 const employees = {
@@ -535,6 +562,90 @@ async function fetchAllPaginated<T>(
 
 // --- Main API Export ---
 
+type WorkOrder = {
+  id?: string;
+  type: string;
+  repairKind: string;
+  priority: string;
+  status: string;
+  tech: string;
+  created: string;
+  closed: string;
+  section: string;
+  equipment: string;
+  note?: string;
+  repairItems?: any[];
+  dateStart?: string;
+  dateEnd?: string;
+  depot?: string;
+  chief?: string;
+};
+
+
+
+// type WorkOrderListParams = ListParams & {
+//   status?: string;
+//   section_id?: string;
+//   department_id?: string;
+//   fixed_asset_id?: string;
+//   date_from?: string;
+//   date_to?: string;
+//   q?: string;
+// };
+
+
+
+// const workOrders = {
+//   async list(params: WorkOrderListParams): Promise<Paginated<WorkOrder>> {
+//     return request<Paginated<WorkOrder>>({
+//       method: "GET",
+//       path: "/work-orders",
+//       params,
+//     });
+//   },
+
+//   async create(data: Partial<WorkOrder>): Promise<WorkOrder> {
+//     return request<WorkOrder>({
+//       method: "POST",
+//       path: "/work-orders",
+//       body: data,
+//     });
+//   },
+
+//   async update(
+//     id: string,
+//     data: Partial<WorkOrder>
+//   ): Promise<WorkOrder> {
+//     return request<WorkOrder>({
+//       method: "PATCH",
+//       path: `/work-orders/${id}`,
+//       body: data,
+//     });
+//   },
+// };
+
+// const employees = {
+//   async list(params: ListParams): Promise<Paginated<any>> {
+//     return request<Paginated<any>>({
+//       method: "GET",
+//       path: "/employees",
+//       params,
+//     });
+//   },
+// };
+
+// const workTypes = {
+//   async list(params: ListParams): Promise<Paginated<any>> {
+//     return request<Paginated<any>>({
+//       method: "GET",
+//       path: "/work-types",
+//       params,
+//     });
+//   },
+// };
+
+// --- Main API Export ---
+
 export const api = {
   auth,
   sections,
@@ -546,85 +657,8 @@ export const api = {
   nomenclatureNorms,
   workTypeTemplates,
   maintenanceSchedule,
+  dashboard,
   employees,
   workTypes,
   fetchAllPaginated,
-  // Other resources like departments, workOrders, etc. will be added here
-};
-  type: string;
-  repairKind: string;
-  priority: string;
-  status: string;
-  tech: string;
-  created: string;
-  closed: string;
-  section: string;
-  equipment: string;
-  note?: string;
-  repairItems?: any[]; // Keep as any for now to match existing complex type
-  dateStart?: string;
-  dateEnd?: string;
-  depot?: string;
-  chief?: string;
-};
-
-type WorkOrderListParams = ListParams & {
-  status?: string;
-  section_id?: string;
-  department_id?: string;
-  fixed_asset_id?: string;
-  date_from?: string;
-  date_to?: string;
-  q?: string;
-};
-
-const workOrders = {
-  async list(params: WorkOrderListParams): Promise<Paginated<WorkOrder>> {
-    return request<Paginated<WorkOrder>>({
-      method: "GET",
-      path: "/work-orders",
-      params,
-    });
-  },
-  async create(data: Partial<WorkOrder>): Promise<WorkOrder> {
-    return request<WorkOrder>({
-      method: "POST",
-      path: "/work-orders",
-      body: data,
-    });
-  },
-  async update(id: string, data: Partial<WorkOrder>): Promise<WorkOrder> {
-    return request<WorkOrder>({
-      method: "PATCH",
-      path: `/work-orders/${id}`,
-      body: data,
-    });
-  },
-};
-
-// Re-exporting directory APIs for clarity, though they already exist
-const employees = {
-  async list(params: ListParams): Promise<Paginated<any>> {
-    return request<Paginated<any>>({ method: "GET", path: "/employees", params });
-  },
-};
-
-const workTypes = {
-  async list(params: ListParams): Promise<Paginated<any>> {
-    return request<Paginated<any>>({ method: "GET", path: "/work-types", params });
-  },
-};
-
-// --- Main API Export ---
-
-export const api = {
-  auth,
-  sections,
-  departments,
-  nomenclature,
-  fixedAssets,
-  workOrders,
-  employees,
-  workTypes,
-  // Other resources like departments, workOrders, etc. will be added here
 };

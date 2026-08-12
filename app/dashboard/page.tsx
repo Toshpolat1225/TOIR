@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useMemo, useCallback } from "react"
-import { supabase } from "@/lib/supabase"
+import { useRealtime } from "@/lib/use-realtime"
+import { api } from "@/lib/api"
 import { useSectionView } from "@/lib/section-view-context"
 import {
   Train, Wrench, AlertTriangle, CheckCircle,
@@ -69,56 +70,34 @@ const prioLabel: Record<string,string> = {
 ════════════════════════════════════════ */
 export default function DashboardPage() {
   const { effectiveSection } = useSectionView()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [assets,  setAssets]  = useState<any[]>([])
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [orders,  setOrders]  = useState<any[]>([])
+  const [summary, setSummary] = useState<any>(null) // Will hold data from the new endpoint
   const [loading, setLoading] = useState(true)
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [maintenanceIntervals, setMaintenanceIntervals] = useState<any[]>([])
 
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [{ data: a }, { data: o }, { data: mi }] = await Promise.all([
-        supabase.from("fixed_assets").select("asset_type,status,series,depot,mileage,name").limit(2000),
-        supabase.from("work_orders")
-          .select("id,unit,description,repair_kind,status,tech,section,priority,date_start,created_at,created")
-          .order("created_at", { ascending: false })
-          .limit(400),
-        supabase.from("maintenance_intervals")
-          .select("*")
-          .eq("is_active", true)
-          .order("interval_km", { ascending: true }),
-      ])
-      setAssets(a ?? [])
-      setOrders(o ?? [])
-      setMaintenanceIntervals(mi ?? [])
+      // A single call to the new dashboard summary endpoint
+      const summaryData = await api.dashboard.getSummary({ section: effectiveSection || undefined });
+      setSummary(summaryData);
     } catch (e) {
       console.error("Ошибка загрузки дашборда:", e)
+      setSummary(null);
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [effectiveSection])
 
   useEffect(() => {
     loadData()
   }, [loadData])
 
-  // Обновление данных при изменениях в БД (real-time)
-  useEffect(() => {
-    const channel = supabase
-      .channel("dashboard_sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "fixed_assets" }, () => {
-        loadData()
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, () => {
-        loadData()
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [loadData])
+  // Using the existing WebSocket infrastructure for real-time updates
+  useRealtime(useCallback((event) => {
+    if (event.resource === 'work_orders' || event.resource === 'fixed_assets') {
+      console.log(`Dashboard received update for ${event.resource}, refetching summary...`);
+      loadData();
+    }
+  }, [loadData]));
 
   /* Фильтрация по участку: для мастера и при выборе участка админом */
   const filteredOrders = useMemo(() => {
@@ -342,8 +321,8 @@ export default function DashboardPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {[
-              { label:"Тяговые агрегаты", value: locoCount,  total: totalAssets, color:"bg-blue-500",   icon: Train,      iconCls:"text-blue-500" },
-              { label:"Вагоны-самосвалы", value: wagonCount, total: totalAssets, color:"bg-violet-500", icon: Container,  iconCls:"text-violet-500" },
+              { label:"Тяговые агрегаты", value: summary.kpi[0]?.subValue || 0,  total: summary.kpi[0]?.value || 0, color:"bg-blue-500",   icon: Train,      iconCls:"text-blue-500" },
+              { label:"Вагоны-самосвалы", value: summary.kpi[0]?.subValue2 || 0, total: summary.kpi[0]?.value || 0, color:"bg-violet-500", icon: Container,  iconCls:"text-violet-500" },
             ].map(item => (
               <div key={item.label} className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
@@ -359,7 +338,7 @@ export default function DashboardPage() {
                       style={{ width: item.total ? `${Math.round(item.value / item.total * 100)}%` : "0%" }}/>
                   </div>
                   <p className="text-[10px] text-gray-400 mt-1">
-                    {item.total ? Math.round(item.value / item.total * 100) : 0}% от общего парка ({totalAssets} ед.)
+                    {item.total ? Math.round(item.value / item.total * 100) : 0}% от общего парка ({summary.kpi[0]?.value || 0} ед.)
                   </p>
                 </div>
               </div>
@@ -429,7 +408,7 @@ export default function DashboardPage() {
                 ))}
                 <div className="pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
                   <span className="text-xs text-gray-400">Итого</span>
-                  <span className="text-xs font-bold text-gray-900 dark:text-white">{totalAssets}</span>
+                  <span className="text-xs font-bold text-gray-900 dark:text-white">{summary.kpi[0]?.value || 0}</span>
                 </div>
               </div>
             </div>
@@ -454,7 +433,7 @@ export default function DashboardPage() {
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-amber-400"/><span className="text-gray-500">В работе</span></span>
             </div>
           </div>
-          {filteredOrders.length === 0 ? (
+          {workOrdersTrend.length === 0 ? (
             <div className="flex items-center justify-center h-40 text-gray-400 text-xs">Нет данных</div>
           ) : (
             <ResponsiveContainer width="100%" height={180}>
@@ -486,7 +465,7 @@ export default function DashboardPage() {
               <p className="text-xs text-gray-400">Открыто / закрыто / в работе</p>
             </div>
           </div>
-          {filteredOrders.length === 0 ? (
+          {workOrdersTrend.length === 0 ? (
             <div className="flex items-center justify-center h-40 text-gray-400 text-xs">Нет данных</div>
           ) : (
             <ResponsiveContainer width="100%" height={180}>
@@ -526,11 +505,11 @@ export default function DashboardPage() {
               </div>
             </div>
             <div className="text-right">
-              <p className="text-xl font-bold text-gray-900 dark:text-white">{availPct}%</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white">{summary.kpi[1]?.pct || 0}%</p>
               <p className="text-[10px] text-gray-400">от {totalAssets} ед.</p>
             </div>
           </div>
-          {totalAssets === 0 ? (
+          {summary.kpi[0]?.value === 0 ? (
             <div className="flex items-center justify-center h-40 text-gray-400 text-xs">Нет данных</div>
           ) : (
             <ResponsiveContainer width="100%" height={180}>
@@ -640,7 +619,7 @@ export default function DashboardPage() {
             <div>
               <p className="text-sm font-semibold text-gray-900 dark:text-white">Последние наряды</p>
               <p className="text-xs text-gray-400">
-                {completedOrders} выполнено · {openOrders} открыто
+                {summary.kpi[3]?.subValue || 0} выполнено · {summary.kpi[3]?.value || 0} открыто
               </p>
             </div>
           </div>
