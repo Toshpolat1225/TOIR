@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, createContext, useContext, useCallback, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
-import { api } from "@/lib/api"
+import { api, fetchAllPaginated, type WorkOrderCreatePayload, type WorkOrderRead, type WorkOrderUpdatePayload } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import {
   ClipboardList, Plus, Search, CheckCircle, Clock, Wrench,
@@ -308,7 +308,7 @@ type WorkOrder = {
   id:string; unitType:UnitType; unit:string; desc:string; type:string; repairKind:string
   priority:string; status:string; tech:string; created:string; closed:string
   section:string; equipment:string
-  // расширенные поля (опционально, для Supabase и формы)
+  // расширенные поля формы
   note?:string; repairItems?:RepairItem[]; dateStart?:string; dateEnd?:string
   depot?:string; chief?:string
 }
@@ -502,81 +502,7 @@ function TmcModal({ repairKind, rows, onSave, onClose, zClass = "z-[60]", depart
   const newId = () => { const id = nextId; setNextId(n => n + 1); return id }
 
   // Загрузка нормативов по участку мастера
-  useEffect(() => {
-    async function loadNorms() {
-      if (!departmentId) return
-      
-      const { data } = await supabase
-        .from("nomenclature_norms")
-        .select(`
-          id, nomenclature_id, department_id, work_type, 
-          standard_quantity, avg_price,
-          nomenclature:nomenclature_id (id, name, code, unit)
-        `)
-        .eq("department_id", departmentId)
-      
-      if (data) {
-        setNorms(data as NomenclatureNorm[])
-        
-        // Фильтруем справочник ТМЦ по нормативам участка
-        const filtered = (data as NomenclatureNorm[])
-          .filter(n => n.nomenclature)
-          .map(n => ({
-            name: n.nomenclature!.name,
-            invNo: n.nomenclature!.code,
-            unit: n.nomenclature!.unit,
-            category: "Нормативы участка",
-            standardQty: n.standard_quantity,
-            avgPrice: n.avg_price,
-            nomenclatureId: n.nomenclature_id,
-          }))
-        setFilteredNomenclature(filtered as CatalogItem[])
-      }
-    }
-    loadNorms()
-  }, [departmentId])
-
   // Автозаполнение шаблона при выборе ТО-2 или ПТОЛ ТО-2
-  useEffect(() => {
-    async function loadTemplate() {
-      if (!workType || !departmentId) return
-      
-      // Проверяем, нужно ли загружать шаблон (ТО-2, ПТОЛ ТО-2)
-      const isTO2 = workType.includes("ТО-2") || workType.includes("ПТОЛ")
-      if (!isTO2 || localRows.length > 0) return
-      
-      const { data } = await supabase
-        .from("work_type_templates")
-        .select(`
-          id, work_type, default_quantity, sort_order,
-          nomenclature:nomenclature_id (id, name, code, unit)
-        `)
-        .eq("work_type", workType)
-        .eq("department_id", departmentId)
-        .order("sort_order")
-      
-      if (data && data.length > 0) {
-        const templateRows: TmcRow[] = data
-          .filter((t: { nomenclature?: { id: string; name: string; code: string; unit: string } }) => t.nomenclature)
-          .map((t: { nomenclature?: { id: string; name: string; code: string; unit: string }; default_quantity: number }, i: number) => ({
-            id: i + 1,
-            name: t.nomenclature!.name,
-            invNo: t.nomenclature!.code,
-            unit: t.nomenclature!.unit,
-            qty: String(t.default_quantity),
-            note: "Из шаблона " + workType,
-            nomenclatureId: t.nomenclature!.id,
-          }))
-        
-        if (templateRows.length > 0) {
-          setLocalRows(templateRows)
-          setNextId(templateRows.length + 1)
-        }
-      }
-    }
-    loadTemplate()
-  }, [workType, departmentId, localRows.length])
-
   // Валидация количества и расчёт стоимости
   const validateAndCalculate = useCallback((row: TmcRow): TmcRow => {
     const qty = parseFloat(row.qty) || 0
@@ -1665,54 +1591,54 @@ function genOrderId(): string {
   return `НЗ-${y}${mo}${d}-${h}${mi}${s}`
 }
 
-// Конвертация WorkOrder → строка БД
-function toRow(o: WorkOrder) {
+function toCreatePayload(o: WorkOrder, sectionId: string | undefined, fixedAssetId: string | undefined): WorkOrderCreatePayload {
   return {
-    id:           o.id,
-    unit_type:    o.unitType,
-    unit:         o.unit,
-    depot:        o.depot ?? o.section,
-    section:      o.section,
-    equipment:    o.equipment,
-    work_type:    o.type,           // WorkOrder.type → work_type
-    repair_kind:  o.repairKind,
-    status:       o.status,
-    priority:     o.priority,
-    tech:         o.tech,
-    chief:        o.chief ?? "",
-    description:  o.desc,
-    note:         o.note ?? "",
-    created:      o.created,
-    closed:       o.closed,
-    repair_items: o.repairItems ?? [],
-    date_start:   o.dateStart ?? "",
-    date_end:     o.dateEnd ?? "",
+    id: o.id,
+    fixed_asset_id: fixedAssetId ?? null,
+    section_id: sectionId ?? null,
+    status: o.status as WorkOrderCreatePayload["status"],
+    priority: o.priority as WorkOrderCreatePayload["priority"],
+    repair_kind: o.repairKind || null,
+    description: o.desc || null,
+    date_start: o.dateStart || null,
+    date_end: o.dateEnd || null,
   }
 }
 
-// Конвертация строки БД → WorkOrder
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function fromRow(r: any): WorkOrder {
+function toUpdatePayload(o: WorkOrder): WorkOrderUpdatePayload {
+  return {
+    status: o.status as WorkOrderUpdatePayload["status"],
+    priority: o.priority as WorkOrderUpdatePayload["priority"],
+    repair_kind: o.repairKind || null,
+    description: o.desc || null,
+    date_start: o.dateStart || null,
+    date_end: o.dateEnd || null,
+  }
+}
+
+// Конвертация ответа FastAPI → модель UI
+function fromRow(r: WorkOrderRead): WorkOrder {
+  const asset = r.fixed_asset
   return {
     id:          r.id,
-    unitType:    r.unit_type,
-    unit:        r.unit,
-    depot:       r.depot,
-    section:     r.section,
-    equipment:   r.equipment,
-    type:        r.work_type,       // work_type → WorkOrder.type
-    repairKind:  r.repair_kind,
-    status:      r.status,
-    priority:    r.priority,
-    tech:        r.tech,
-    chief:       r.chief,
-    desc:        r.description,
-    note:        r.note,
-    created:     r.created,
-    closed:      r.closed,
-    repairItems: r.repair_items ?? [],
-    dateStart:   r.date_start,
-    dateEnd:     r.date_end,
+    unitType:    asset?.asset_type ?? "locomotive",
+    unit:        asset?.name ?? "—",
+    depot:       asset?.depot ?? r.section?.name ?? "—",
+    section:     r.section?.name ?? "—",
+    equipment:   asset?.series ?? asset?.name ?? "—",
+    type:        r.repair_kind ?? "",
+    repairKind:  r.repair_kind ?? "",
+    status:      r.status ?? "pending",
+    priority:    r.priority ?? "normal",
+    tech:        "—",
+    chief:       "",
+    desc:        r.description ?? "",
+    note:        "",
+    created:     r.created_at,
+    closed:      r.status === "completed" ? r.updated_at : "—",
+    repairItems: [],
+    dateStart:   r.date_start ?? undefined,
+    dateEnd:     r.date_end ?? undefined,
   }
 }
 
@@ -1743,41 +1669,27 @@ function WorkOrdersPage() {
   // Справочник участков (перемещён выше для использования в realtime подписке)
   const { sections: sectionsFromDb, refresh: refreshSections, getSectionId } = useSections()
 
-  // Fetch all data from FastAPI backend
+  // The UI filters client-side, so load every page using the backend's normal page size.
   const fetchData = useCallback(async () => {
     setLoading(true)
     setApiError(null)
     try {
-      const woParams: any = {
-        limit: 1000, // Fetch a large number as client-side pagination is not implemented
-        offset: 0,
-        sort_by: "created_at",
-        sort_order: "desc",
-        q: search || undefined,
-        section_id: fSection || undefined,
-        // TODO: Add other filters like fEquip, fUnitType if backend supports them
-      };
-
-      if (tabStatus !== "open") {
-        woParams.status = tabStatus;
-      }
-
       const [
-        woResponse,
-        employeesResponse,
-        assetsResponse,
-        workTypesResponse,
+        workOrderRows,
+        employeeRows,
+        assetRows,
+        workTypeRows,
       ] = await Promise.all([
-        api.workOrders.list(woParams),
-        api.employees.list({ limit: 1000 }),
-        api.fixedAssets.list({ limit: 1000 }),
-        api.workTypes.list({ limit: 1000 }),
+        fetchAllPaginated(api.workOrders.list, { sort_by: "created_at", sort_order: "desc" }),
+        fetchAllPaginated(api.employees.list, {}),
+        fetchAllPaginated(api.fixedAssets.list, {}),
+        fetchAllPaginated(api.workTypes.list, {}),
       ]);
 
-      setOrders(woResponse.items.map(fromRow));
-      setEmployees(employeesResponse.items as EmployeeOption[]);
-      setFixedAssets(assetsResponse.items as FixedAsset[]);
-      setWorkTypesDb(workTypesResponse.items as WorkTypeFromDb[]);
+      setOrders(workOrderRows.map(fromRow));
+      setEmployees(employeeRows as EmployeeOption[]);
+      setFixedAssets(assetRows as FixedAsset[]);
+      setWorkTypesDb(workTypeRows as WorkTypeFromDb[]);
 
     } catch (err) {
       const message = err instanceof Error ? err.message : "An unknown error occurred";
@@ -1786,7 +1698,7 @@ function WorkOrdersPage() {
     } finally {
       setLoading(false)
     }
-  }, [search, fSection, tabStatus])
+  }, [])
 
   useEffect(() => { 
     fetchData()
@@ -1842,8 +1754,8 @@ function WorkOrdersPage() {
 
   const handleUpdateOrder = async (updated: WorkOrder) => {
     try {
-      await api.workOrders.update(updated.id, toRow(updated));
-      setOrders(prev => prev.map(o => o.id === updated.id ? updated : o))
+      const saved = await api.workOrders.update(updated.id, toUpdatePayload(updated))
+      setOrders(prev => prev.map(order => order.id === saved.id ? fromRow(saved) : order))
     } catch (err) {
       setApiError(`Failed to update work order: ${err instanceof Error ? err.message : "API Error"}`);
     }
@@ -1851,8 +1763,10 @@ function WorkOrdersPage() {
 
   const handleAddOrder = async (wo: WorkOrder) => {
     try {
-      const newWorkOrder = await api.workOrders.create(toRow(wo));
-      setOrders(prev => [wo, ...prev])
+      const sectionId = getSectionId(wo.section)
+      const fixedAssetId = fixedAssets.find(asset => asset.name === wo.unit)?.id
+      const saved = await api.workOrders.create(toCreatePayload(wo, sectionId, fixedAssetId))
+      setOrders(prev => [fromRow(saved), ...prev])
     } catch (err) {
       setApiError(`Failed to create work order: ${err instanceof Error ? err.message : "API Error"}`);
     }
@@ -1894,7 +1808,7 @@ function WorkOrdersPage() {
             defaultSection={formDefSection}
             sections={sections}
             employees={employees}
-            onRefreshData={() => { fetchEmployees(); refreshSections(); fetchWorkTypes(); fetchFixedAssets(); }}
+            onRefreshData={fetchData}
             workTypesDb={workTypesDb}
             tmcTemplatesDb={tmcTemplatesDb}
             fixedAssets={fixedAssets}
