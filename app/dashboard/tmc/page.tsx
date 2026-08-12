@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
+import { useRealtime } from "@/lib/use-realtime"
 import { useSectionView } from "@/lib/section-view-context"
 import { Package, Plus, Printer, Eye, CheckCircle, Clock, FileText, List, Search, X, Save, Pencil, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -1181,68 +1182,39 @@ export default function TmcPage() {
 
   const fetchDocs = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from("tmc_documents")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(200)
-    if (!error && data) {
-      setDocs(data.map(fromRow))
-    } else {
+    try {
+      const response = await api.tmcDocuments.list({ limit: 200, sort_by: "created_at", sort_order: "desc" });
+      setDocs(response.items.map(fromRow));
+    } catch (error) {
+      console.error("Failed to fetch TMC documents:", error);
       setDocs([])
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [])
 
   const fetchNomenclature = useCallback(async () => {
     setNomenclatureLoading(true)
     
     try {
-      // ОПТИМИЗАЦИЯ: Загружаем departments заранее параллельно
-      // Это избегает N+1 и sequential await
-      const [deptRes, sectionDeptRes] = await Promise.all([
-        supabase.from("departments").select("id, name").order("name", { ascending: true }),
-        effectiveSection && !filterDepartmentId
-          ? supabase.from("departments").select("id").eq("name", effectiveSection).single()
-          : Promise.resolve({ data: null })
-      ])
-      
-      const allDepts = (deptRes.data ?? []) as { id: string; name: string }[]
-      const deptMap = new Map(allDepts.map(d => [d.id, d.name]))
-      
-      // Строим запрос номенклатуры
-      let q = supabase
-        .from("nomenclature")
-        .select("id, name, code, unit, department_id")
-        .order("name", { ascending: true })
-        .limit(1000)
-      
+      const params: Parameters<typeof api.nomenclature.list>[0] = { limit: 1000, sort_by: 'name', sort_order: 'asc' };
       if (filterDepartmentId) {
-        q = q.eq("department_id", filterDepartmentId)
-      } else if (sectionDeptRes.data?.id) {
-        q = q.eq("department_id", sectionDeptRes.data.id)
+        params.department_id = filterDepartmentId;
+      } else if (effectiveSection) {
+        // Find department ID for the effective section name
+        const allDepts = (await api.departments.list({ limit: 1000 })).items;
+        const sectionDept = allDepts.find(d => d.name === effectiveSection);
+        if (sectionDept) {
+          params.department_id = sectionDept.id;
+        }
       }
-      
-      const { data: nomData, error: nomErr } = await q
-      
-      if (nomErr) {
-        console.warn("Nomenclature fetch error:", nomErr)
-        setNomenclature([])
-        return
-      }
-      
-      const rows = (nomData ?? []) as { id: string; name: string; code: string; unit: string; department_id: string }[]
-      
-      setNomenclature(
-        rows.map((r) => ({
-          id: r.id,
-          name: r.name,
-          code: r.code ?? "",
-          unit: r.unit ?? "шт.",
-          department_id: r.department_id,
-          department_name: deptMap.get(r.department_id) ?? "—",
-        }))
-      )
+
+      const response = await api.nomenclature.list(params);
+      setNomenclature(response.items.map(item => ({
+        ...item,
+        department_name: item.department_name || '—'
+      })));
+
     } catch (error) {
       console.error("Failed to fetch nomenclature:", error)
       setNomenclature([])
@@ -1252,15 +1224,23 @@ export default function TmcPage() {
   }, [effectiveSection, filterDepartmentId])
 
   const fetchDepartments = useCallback(async () => {
-    const { data, error } = await supabase.from("departments").select("id, name").order("name", { ascending: true })
-    if (!error && data) setDepartments(data as { id: string; name: string }[])
-    else setDepartments([])
+    try {
+      const response = await api.departments.list({ limit: 1000, sort_by: 'name' });
+      setDepartments(response.items);
+    } catch (error) {
+      console.error("Failed to fetch departments:", error);
+      setDepartments([]);
+    }
   }, [])
 
   const fetchSections = useCallback(async () => {
-    const { data, error } = await supabase.from("sections").select("id, name").order("name", { ascending: true })
-    if (!error && data) setSections(data as { id: string; name: string }[])
-    else setSections([])
+    try {
+      const response = await api.sections.list({ limit: 1000, sort_by: 'name' });
+      setSections(response.items);
+    } catch (error) {
+      console.error("Failed to fetch sections:", error);
+      setSections([]);
+    }
   }, [])
 
   useEffect(() => { fetchDocs() }, [fetchDocs])
@@ -1268,26 +1248,19 @@ export default function TmcPage() {
   useEffect(() => { fetchSections() }, [fetchSections])
   useEffect(() => { fetchDepartments() }, [fetchDepartments])
 
-  // Real-time подписки для синхронизации справочников
-  useEffect(() => {
-    const channel = supabase
-      .channel("tmc_sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "nomenclature" }, () => {
-        fetchNomenclature()
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "departments" }, () => {
-        fetchDepartments()
-        fetchNomenclature()
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "sections" }, () => {
-        fetchSections()
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "tmc_documents" }, () => {
-        fetchDocs()
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [fetchNomenclature, fetchDepartments, fetchSections, fetchDocs])
+  // Re-integrated WebSocket-based real-time updates
+  useRealtime(useCallback((event) => {
+    console.log("Realtime event received on TMC page:", event);
+    if (event.resource === "tmc_documents") {
+      fetchDocs();
+    } else if (event.resource === "nomenclature") {
+      fetchNomenclature();
+    } else if (event.resource === "departments") {
+      fetchDepartments();
+    } else if (event.resource === "sections") {
+      fetchSections();
+    }
+  }, [fetchDocs, fetchNomenclature, fetchDepartments, fetchSections]));
 
   const filteredNomenclature = useMemo(() => {
     if (!nomenclatureSearch.trim()) return nomenclature

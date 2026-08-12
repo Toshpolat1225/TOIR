@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import { useRealtime } from "@/lib/use-realtime"
 import { api } from "@/lib/api" // Keep this import
 import { useSections } from "@/lib/use-sections"
 import {
@@ -560,6 +561,15 @@ export default function OsPage() {
   useEffect(() => {
     filtersRef.current = { page, search, fType, fDepot, fStatus }
   }, [page, search, fType, fDepot, fStatus])
+
+  // New WebSocket-based real-time updates
+  useRealtime(useCallback((event) => {
+    if (event.resource === "fixed_assets") {
+      console.log("Realtime [OS]: fixed_assets updated, refetching...");
+      fetchAssets(filtersRef.current.page, filtersRef.current.search, filtersRef.current.fType, filtersRef.current.fDepot, filtersRef.current.fStatus);
+      fetchCounts();
+    }
+  }, [fetchAssets, fetchCounts]));
 
   // Сброс страницы при смене фильтров
   useEffect(() => {

@@ -1,22 +1,24 @@
-# TOIR Backend (FastAPI)
+# TOIR — Система технического обслуживания и ремонтов
 
-This directory contains the Python FastAPI backend for the TOIR application.
+Этот репозиторий содержит полный стек приложения TOIR, включая:
+- **Frontend**: Next.js / React
+- **Backend**: Python / FastAPI
+- **Database**: PostgreSQL
 
-## Local Development Setup
+## Запуск в режиме разработки (рекомендуемый способ)
 
-### 1. Create a Virtual Environment
+Для запуска проекта используется Docker Compose, который поднимает все необходимые сервисы.
 
-It's highly recommended to use a virtual environment to manage project dependencies.
+### Требования
+- Docker
+- Docker Compose
+
+### 1. Конфигурация окружения
+
+Создайте файл `.env` в корневой директории проекта, скопировав `.env.example`:
 
 ```bash
-python -m venv venv
-```
-
-Activate the virtual environment:
-
-**Windows:**
-```bash
-.\venv\Scripts\activate
+cp .env.example .env
 ```
 
 **macOS/Linux:**
