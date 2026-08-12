@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, createContext, useContext, useCallback, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
+import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import {
   ClipboardList, Plus, Search, CheckCircle, Clock, Wrench,
@@ -1690,11 +1690,6 @@ function toRow(o: WorkOrder) {
   }
 }
 
-function fromTmcDocRow(r: any): TmcDoc {
-  // This is a placeholder. The actual implementation will depend on the tmc_documents table structure.
-  return r as TmcDoc;
-}
-
 // Конвертация строки БД → WorkOrder
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function fromRow(r: any): WorkOrder {
@@ -1733,6 +1728,7 @@ function WorkOrdersPage() {
   const [workTypesDb,    setWorkTypesDb]    = useState<WorkTypeFromDb[]>([])
   const [tmcTemplatesDb, setTmcTemplatesDb] = useState<Record<string, TmcTemplate[]>>({})
   const [fixedAssets,    setFixedAssets]    = useState<FixedAsset[]>([])
+  const [apiError,       setApiError]       = useState<string | null>(null)
   const [loading,        setLoading]        = useState(true)
   const [showForm,       setShowForm]        = useState(false)
   const [formDefUnit,    setFormDefUnit]     = useState("")
@@ -1747,108 +1743,54 @@ function WorkOrdersPage() {
   // Справочник участков (перемещён выше для использования в realtime подписке)
   const { sections: sectionsFromDb, refresh: refreshSections, getSectionId } = useSections()
 
-  // Загрузка работников из справочника
-  const fetchEmployees = useCallback(async () => {
-    const { data } = await supabase
-      .from("employees")
-      .select("id, tab_number, full_name, section_id")
-      .order("full_name")
-    setEmployees((data as EmployeeOption[]) ?? [])
-  }, [])
-
-  // Загрузка основных средств (все записи из справочника ОС)
-  const fetchFixedAssets = useCallback(async () => {
-    const { data } = await supabase
-      .from("fixed_assets")
-      .select("id, name, series, inv_number, asset_type, initial_cost")
-      .order("name")
-      .limit(1000)
-    setFixedAssets((data as FixedAsset[]) ?? [])
-  }, [])
-
-  // Загрузка видов работ из справочника
-  const fetchWorkTypes = useCallback(async () => {
-    const { data: wtData } = await supabase
-      .from("work_types")
-      .select("id, code, name, unit_type")
-      .order("sort_order")
-      .order("code")
-    
-    const types = (wtData as WorkTypeFromDb[]) ?? []
-    setWorkTypesDb(types)
-
-    // Загрузка шаблонов ТМЦ для каждого вида работ
-    if (types.length > 0) {
-      const ids = types.map(t => t.id)
-      const { data: tmcData } = await supabase
-        .from("work_type_tmc")
-        .select("work_type_id, name, inv_no, unit, qty, note")
-        .in("work_type_id", ids)
-        .order("sort_order")
-
-      const templates: Record<string, TmcTemplate[]> = {}
-      for (const t of tmcData ?? []) {
-        const wt = types.find(w => w.id === t.work_type_id)
-        if (wt) {
-          if (!templates[wt.code]) templates[wt.code] = []
-          templates[wt.code].push({
-            name: t.name,
-            invNo: t.inv_no,
-            unit: t.unit,
-            qty: String(t.qty),
-            note: t.note,
-          })
-        }
-      }
-      setTmcTemplatesDb(templates)
-    }
-  }, [])
-
-  // Загрузка нарядов из Supabase (лимит 500 — для списка и фильтров)
-  const fetchOrders = useCallback(async () => {
+  // Fetch all data from FastAPI backend
+  const fetchData = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from("work_orders")
-      .select("id,unit_type,unit,depot,section,equipment,work_type,repair_kind,status,priority,tech,chief,description,note,created,closed,repair_items,date_start,date_end,created_at")
-      .order("created_at", { ascending: false })
-      .limit(500)
-    if (!error && data) {
-      setOrders(data.map(fromRow))
-    } else {
+    setApiError(null)
+    try {
+      const woParams: any = {
+        limit: 1000, // Fetch a large number as client-side pagination is not implemented
+        offset: 0,
+        sort_by: "created_at",
+        sort_order: "desc",
+        q: search || undefined,
+        section_id: fSection || undefined,
+        // TODO: Add other filters like fEquip, fUnitType if backend supports them
+      };
+
+      if (tabStatus !== "open") {
+        woParams.status = tabStatus;
+      }
+
+      const [
+        woResponse,
+        employeesResponse,
+        assetsResponse,
+        workTypesResponse,
+      ] = await Promise.all([
+        api.workOrders.list(woParams),
+        api.employees.list({ limit: 1000 }),
+        api.fixedAssets.list({ limit: 1000 }),
+        api.workTypes.list({ limit: 1000 }),
+      ]);
+
+      setOrders(woResponse.items.map(fromRow));
+      setEmployees(employeesResponse.items as EmployeeOption[]);
+      setFixedAssets(assetsResponse.items as FixedAsset[]);
+      setWorkTypesDb(workTypesResponse.items as WorkTypeFromDb[]);
+
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "An unknown error occurred";
+      setApiError(`Failed to load data: ${message}`);
       setOrders([])
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
-  }, [])
+  }, [search, fSection, tabStatus])
 
   useEffect(() => { 
-    fetchOrders()
-    fetchEmployees()
-    fetchWorkTypes()
-    fetchFixedAssets()
-  }, [fetchOrders, fetchEmployees, fetchWorkTypes, fetchFixedAssets])
-
-  // Real-time подписки для синхронизации всех справочников
-  useEffect(() => {
-    const channel = supabase
-      .channel("work_orders_sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "fixed_assets" }, () => {
-        fetchFixedAssets()
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "employees" }, () => {
-        fetchEmployees()
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "work_types" }, () => {
-        fetchWorkTypes()
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "sections" }, () => {
-        refreshSections()
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, () => {
-        fetchOrders()
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [fetchFixedAssets, fetchEmployees, fetchWorkTypes, refreshSections, fetchOrders])
+    fetchData()
+  }, [fetchData])
 
   // Обработка URL-параметров из Ганта (create=1&unit=X&section=Y)
   useEffect(() => {
@@ -1899,20 +1841,20 @@ function WorkOrdersPage() {
   })
 
   const handleUpdateOrder = async (updated: WorkOrder) => {
-    const { error } = await supabase
-      .from("work_orders")
-      .upsert(toRow(updated))
-    if (!error) {
+    try {
+      await api.workOrders.update(updated.id, toRow(updated));
       setOrders(prev => prev.map(o => o.id === updated.id ? updated : o))
+    } catch (err) {
+      setApiError(`Failed to update work order: ${err instanceof Error ? err.message : "API Error"}`);
     }
   }
 
   const handleAddOrder = async (wo: WorkOrder) => {
-    const { error } = await supabase
-      .from("work_orders")
-      .insert(toRow(wo))
-    if (!error) {
+    try {
+      const newWorkOrder = await api.workOrders.create(toRow(wo));
       setOrders(prev => [wo, ...prev])
+    } catch (err) {
+      setApiError(`Failed to create work order: ${err instanceof Error ? err.message : "API Error"}`);
     }
   }
 
@@ -1932,6 +1874,15 @@ function WorkOrdersPage() {
     </div>
   )
 
+  if (apiError) return (
+    <div className="flex flex-col items-center justify-center h-96 text-red-500 text-sm gap-3 p-8">
+      <AlertTriangle className="w-10 h-10" />
+      <p className="font-semibold">Ошибка загрузки данных</p>
+      <p className="text-xs text-center max-w-md">{apiError}</p>
+      <Button onClick={() => fetchData()} className="mt-4">Попробовать снова</Button>
+    </div>
+  )
+
   return (
     <RoleCtx.Provider value={{ role: "operator", mySection: "" }}>
       <div className="p-8 space-y-6">
@@ -1941,7 +1892,7 @@ function WorkOrdersPage() {
             onSave={handleAddOrder}
             defaultUnit={formDefUnit}
             defaultSection={formDefSection}
-            sections={sectionsFromDb}
+            sections={sections}
             employees={employees}
             onRefreshData={() => { fetchEmployees(); refreshSections(); fetchWorkTypes(); fetchFixedAssets(); }}
             workTypesDb={workTypesDb}

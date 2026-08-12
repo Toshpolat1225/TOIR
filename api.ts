@@ -307,53 +307,74 @@ const fixedAssets = {
   },
 };
 
-// --- TMC Documents Module ---
+// --- Work Orders Module ---
 
-type TmcItem = {
-  no: number;
-  name: string;
-  invNo: string;
-  unit: string;
-  qty: number;
-  price: number;
-  note: string;
-};
-
-type TmcDocument = {
+type WorkOrder = {
   id: string;
-  doc_no: string;
-  doc_date: string;
-  work_order_id: string | null;
-  department_id: string | null;
-  status: "draft" | "issued" | "closed";
-  items: TmcItem[] | null;
-  // Joined fields from backend, matching the `TmcDoc` type in the component
-  loco?: string;
-  work_type?: string;
+  unitType: "locomotive" | "wagon" | "diesel";
+  unit: string;
+  desc: string;
+  type: string;
+  repairKind: string;
+  priority: string;
+  status: string;
+  tech: string;
+  created: string;
+  closed: string;
+  section: string;
+  equipment: string;
+  note?: string;
+  repairItems?: any[]; // Keep as any for now to match existing complex type
+  dateStart?: string;
+  dateEnd?: string;
   depot?: string;
-  warehouse?: string;
-  issued_by?: string;
-  accepted_by?: string;
   chief?: string;
 };
 
-type TmcDocumentListParams = ListParams & {
-  status?: "draft" | "issued" | "closed";
+type WorkOrderListParams = ListParams & {
+  status?: string;
+  section_id?: string;
   department_id?: string;
+  fixed_asset_id?: string;
+  date_from?: string;
+  date_to?: string;
+  q?: string;
 };
 
-const tmcDocuments = {
-  async list(params: TmcDocumentListParams): Promise<Paginated<TmcDocument>> {
-    return request<Paginated<TmcDocument>>({ method: "GET", path: "/tmc-documents", params });
+const workOrders = {
+  async list(params: WorkOrderListParams): Promise<Paginated<WorkOrder>> {
+    return request<Paginated<WorkOrder>>({
+      method: "GET",
+      path: "/work-orders",
+      params,
+    });
   },
-  async create(data: Partial<TmcDocument>): Promise<TmcDocument> {
-    return request<TmcDocument>({ method: "POST", path: "/tmc-documents", body: data });
+  async create(data: Partial<WorkOrder>): Promise<WorkOrder> {
+    return request<WorkOrder>({
+      method: "POST",
+      path: "/work-orders",
+      body: data,
+    });
   },
-  async update(id: string, data: Partial<TmcDocument>): Promise<TmcDocument> {
-    return request<TmcDocument>({ method: "PATCH", path: `/tmc-documents/${id}`, body: data });
+  async update(id: string, data: Partial<WorkOrder>): Promise<WorkOrder> {
+    return request<WorkOrder>({
+      method: "PATCH",
+      path: `/work-orders/${id}`,
+      body: data,
+    });
   },
-  async remove(id: string): Promise<void> {
-    await request<null>({ method: "DELETE", path: `/tmc-documents/${id}` });
+};
+
+// Re-exporting directory APIs for clarity, though they already exist
+const employees = {
+  async list(params: ListParams): Promise<Paginated<any>> {
+    return request<Paginated<any>>({ method: "GET", path: "/employees", params });
+  },
+};
+
+const workTypes = {
+  async list(params: ListParams): Promise<Paginated<any>> {
+    return request<Paginated<any>>({ method: "GET", path: "/work-types", params });
   },
 };
 
@@ -365,6 +386,8 @@ export const api = {
   departments,
   nomenclature,
   fixedAssets,
-  tmcDocuments,
+  workOrders,
+  employees,
+  workTypes,
   // Other resources like departments, workOrders, etc. will be added here
 };
