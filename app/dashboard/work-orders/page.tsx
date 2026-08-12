@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, createContext, useContext, useCallback, Suspense } from "react"
+import { useRealtime } from "@/lib/use-realtime"
 import { useSearchParams, useRouter } from "next/navigation"
 import { api } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
@@ -506,20 +507,13 @@ function TmcModal({ repairKind, rows, onSave, onClose, zClass = "z-[60]", depart
     async function loadNorms() {
       if (!departmentId) return
       
-      const { data } = await supabase
-        .from("nomenclature_norms")
-        .select(`
-          id, nomenclature_id, department_id, work_type, 
-          standard_quantity, avg_price,
-          nomenclature:nomenclature_id (id, name, code, unit)
-        `)
-        .eq("department_id", departmentId)
-      
-      if (data) {
-        setNorms(data as NomenclatureNorm[])
+      try {
+        const response = await api.nomenclatureNorms.list({ department_id: departmentId });
+        const normsData = response.items as NomenclatureNorm[];
+        setNorms(normsData);
         
         // Фильтруем справочник ТМЦ по нормативам участка
-        const filtered = (data as NomenclatureNorm[])
+        const filtered = normsData
           .filter(n => n.nomenclature)
           .map(n => ({
             name: n.nomenclature!.name,
@@ -530,7 +524,9 @@ function TmcModal({ repairKind, rows, onSave, onClose, zClass = "z-[60]", depart
             avgPrice: n.avg_price,
             nomenclatureId: n.nomenclature_id,
           }))
-        setFilteredNomenclature(filtered as CatalogItem[])
+        setFilteredNomenclature(filtered as unknown as CatalogItem[]);
+      } catch (error) {
+        console.error("Failed to load nomenclature norms:", error);
       }
     }
     loadNorms()
@@ -545,20 +541,14 @@ function TmcModal({ repairKind, rows, onSave, onClose, zClass = "z-[60]", depart
       const isTO2 = workType.includes("ТО-2") || workType.includes("ПТОЛ")
       if (!isTO2 || localRows.length > 0) return
       
-      const { data } = await supabase
-        .from("work_type_templates")
-        .select(`
-          id, work_type, default_quantity, sort_order,
-          nomenclature:nomenclature_id (id, name, code, unit)
-        `)
-        .eq("work_type", workType)
-        .eq("department_id", departmentId)
-        .order("sort_order")
-      
-      if (data && data.length > 0) {
-        const templateRows: TmcRow[] = data
-          .filter((t: { nomenclature?: { id: string; name: string; code: string; unit: string } }) => t.nomenclature)
-          .map((t: { nomenclature?: { id: string; name: string; code: string; unit: string }; default_quantity: number }, i: number) => ({
+      try {
+        const response = await api.workTypeTemplates.list({ work_type: workType, department_id: departmentId });
+        const templatesData = response.items;
+
+        if (templatesData && templatesData.length > 0) {
+          const templateRows: TmcRow[] = templatesData
+          .filter(t => t.nomenclature)
+          .map((t, i) => ({
             id: i + 1,
             name: t.nomenclature!.name,
             invNo: t.nomenclature!.code,
@@ -572,6 +562,8 @@ function TmcModal({ repairKind, rows, onSave, onClose, zClass = "z-[60]", depart
           setLocalRows(templateRows)
           setNextId(templateRows.length + 1)
         }
+      } catch (error) {
+        console.error("Failed to load work type templates:", error);
       }
     }
     loadTemplate()
@@ -1790,6 +1782,14 @@ function WorkOrdersPage() {
   useEffect(() => { 
     fetchData()
   }, [fetchData])
+
+  // Re-integrated WebSocket-based real-time updates
+  useRealtime(useCallback((event) => {
+    if (event.resource === "work_orders") {
+      console.log("Realtime [WorkOrders]: work_orders updated, refetching...");
+      fetchData();
+    }
+  }, [fetchData]));
 
   // Обработка URL-параметров из Ганта (create=1&unit=X&section=Y)
   useEffect(() => {

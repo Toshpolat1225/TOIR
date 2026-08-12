@@ -368,6 +368,45 @@ const workOrders = {
   },
 };
 
+// --- Nomenclature Norms Module ---
+type NomenclatureNorm = {
+  id: string;
+  nomenclature_id: string;
+  department_id: string;
+  work_type: string;
+  standard_quantity: number;
+  avg_price: number;
+  nomenclature?: {
+    id: string;
+    name: string;
+    code: string;
+    unit: string;
+  };
+};
+const nomenclatureNorms = {
+  async list(params: { department_id: string }): Promise<Paginated<NomenclatureNorm>> {
+    return request<Paginated<NomenclatureNorm>>({ method: "GET", path: "/nomenclature-norms", params });
+  },
+};
+
+// --- Work Type Templates Module ---
+type WorkTypeTemplate = {
+  id: string;
+  work_type: string;
+  default_quantity: number;
+  nomenclature?: {
+    id: string;
+    name: string;
+    code: string;
+    unit: string;
+  };
+};
+const workTypeTemplates = {
+  async list(params: { work_type: string; department_id: string }): Promise<Paginated<WorkTypeTemplate>> {
+    return request<Paginated<WorkTypeTemplate>>({ method: "GET", path: "/work-type-templates", params });
+  },
+};
+
 // --- TMC Documents Module ---
 
 type TmcItem = {
@@ -472,6 +511,8 @@ export const api = {
   fixedAssets,
   workOrders,
   tmcDocuments,
+  nomenclatureNorms,
+  workTypeTemplates,
   maintenanceSchedule,
   employees,
   workTypes,

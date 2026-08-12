@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { api } from "@/lib/api"
 import { useSectionView } from "@/lib/section-view-context"
 import { Package, Plus, Printer, Eye, CheckCircle, Clock, FileText, List, Search, X, Save, Pencil, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
