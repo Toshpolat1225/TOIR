@@ -7,6 +7,8 @@ from ..repositories.work_order import WorkOrderRepository
 from ..repositories.fixed_asset import FixedAssetRepository
 from ..repositories.section import SectionRepository
 from ..repositories.department import DepartmentRepository
+from ..repositories.employee import EmployeeRepository
+from ..repositories.work_type import WorkTypeRepository
 from ..schemas.work_order import WorkOrderRead, WorkOrderCreate, WorkOrderUpdate
 from ..schemas.pagination import Paginated
 from ..database import get_db
@@ -18,6 +20,8 @@ class WorkOrderService:
         self.asset_repo = FixedAssetRepository(db)
         self.section_repo = SectionRepository(db)
         self.department_repo = DepartmentRepository(db)
+        self.employee_repo = EmployeeRepository(db)
+        self.work_type_repo = WorkTypeRepository(db)
 
     async def get_all_work_orders(
         self,
@@ -72,6 +76,14 @@ class WorkOrderService:
             department = await self.department_repo.get_by_id(wo_in.department_id)
             if not department:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department not found")
+        if wo_in.employee_id:
+            employee = await self.employee_repo.get_by_id(wo_in.employee_id)
+            if not employee:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+        if wo_in.work_type_id:
+            work_type = await self.work_type_repo.get_by_id(wo_in.work_type_id)
+            if not work_type:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Work type not found")
 
         return await self.repo.create(wo_in)
 
