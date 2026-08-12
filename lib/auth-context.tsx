@@ -1,8 +1,7 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react"
-import { User } from "@supabase/supabase-js"
-import { supabase } from "./supabase"
+import { api, CurrentUser } from "./api"
 
 export type UserRole = "admin" | "operator" | "master"
 
@@ -15,10 +14,10 @@ export type Profile = {
 }
 
 type AuthContextType = {
-  user: User | null
-  profile: Profile | null
+  user: CurrentUser | null
+  profile: CurrentUser | null // Merging profile into user for simplicity
   loading: boolean
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>
+  signIn: (email: string, password: string) => Promise<{ error: string | null; user: CurrentUser | null }>
   signOut: () => Promise<void>
 }
 
@@ -26,104 +25,56 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
   loading: true,
-  signIn: async () => ({ error: null }),
+  signIn: async () => ({ error: null, user: null }),
   signOut: async () => {},
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user,    setUser]    = useState<User | null>(null)
-  const [profile, setProfile] = useState<Profile | null>(null)
+  const [user,    setUser]    = useState<CurrentUser | null>(null)
   const [loading, setLoading] = useState(true)
 
-  async function loadProfile(uid: string) {
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", uid)
-      .single()
-    setProfile((data as Profile) ?? null)
-  }
-
   useEffect(() => {
-    let cancelled = false
-    const timeoutId = setTimeout(() => {
-      if (cancelled) return
-      setLoading((prev) => {
-        if (prev) return false
-        return prev
-      })
-    }, 5000)
-
-    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
-      if (cancelled) return
-      if (error) {
-        console.warn("Session error:", error.message)
-        await supabase.auth.signOut()
-        setUser(null)
-        setProfile(null)
-        setLoading(false)
-        return
-      }
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        await loadProfile(session.user.id)
-      }
-      setLoading(false)
-    }).catch(async (err) => {
-      if (cancelled) return
-      console.warn("Auth error:", err)
-      setUser(null)
-      setProfile(null)
-      setLoading(false)
-    })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        // Обработка ошибки токена
-        if (event === "TOKEN_REFRESHED" && !session) {
-          console.warn("Token refresh failed, signing out")
-          await supabase.auth.signOut()
-          setUser(null)
-          setProfile(null)
-          setLoading(false)
-          return
+    const restoreSession = async () => {
+      try {
+        // Attempt to get a new access token using the refresh token cookie
+        const { user: refreshedUser } = await api.auth.refresh();
+        if (refreshedUser) {
+          setUser(refreshedUser);
         }
-        
-        if (event === "SIGNED_OUT") {
-          setUser(null)
-          setProfile(null)
-          setLoading(false)
-          return
-        }
-
-        setUser(session?.user ?? null)
-        if (session?.user) {
-          await loadProfile(session.user.id)
-        } else {
-          setProfile(null)
-        }
-        setLoading(false)
+      } catch (error) {
+        // If refresh fails, it's okay, the user is not logged in.
+        console.log("No active session to restore.");
+        setUser(null);
+      } finally {
+        setLoading(false);
       }
-    )
+    };
 
-    return () => {
-      cancelled = true
-      clearTimeout(timeoutId)
-      subscription.unsubscribe()
-    }
+    restoreSession();
   }, [])
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    return { error: error?.message ?? null }
+    try {
+      const { user: loggedInUser } = await api.auth.login({ email, password });
+      setUser(loggedInUser);
+      return { error: null, user: loggedInUser };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Login failed", user: null };
+    }
   }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    try {
+      await api.auth.logout();
+    } catch (error) {
+      console.error("Logout failed, clearing client-side state anyway.", error);
+    } finally {
+      setUser(null);
+    }
   }
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, profile: user, loading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   )

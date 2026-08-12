@@ -12,6 +12,10 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 const TOKEN_KEY = "toir_access_token";
 
+// In-memory token storage
+let inMemoryAccessToken: string | null = null;
+let isRefreshing = false;
+
 type ApiRequestOptions = {
   method: "GET" | "POST" | "PATCH" | "DELETE";
   path: string;
@@ -37,12 +41,12 @@ async function request<T>(options: ApiRequestOptions): Promise<T> {
   };
 
   if (!isPublic) {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) {
-      // In a real app, you might want to redirect to login or refresh the token
-      throw new Error("No authentication token found.");
+    if (!inMemoryAccessToken) {
+      // If no token, try to refresh it. This handles the initial load case.
+      await api.auth.refresh();
     }
-    headers["Authorization"] = `Bearer ${token}`;
+    if (!inMemoryAccessToken) throw new Error("No authentication token found.");
+    headers["Authorization"] = `Bearer ${inMemoryAccessToken}`;
   }
 
   try {
@@ -54,6 +58,20 @@ async function request<T>(options: ApiRequestOptions): Promise<T> {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+      
+      // If 401 Unauthorized, try to refresh the token and retry the request once.
+      if (response.status === 401 && !options.path.includes("/auth/")) {
+        try {
+          await api.auth.refresh();
+          // Retry the original request with the new token
+          headers["Authorization"] = `Bearer ${inMemoryAccessToken}`;
+          const retryResponse = await fetch(url.toString(), { method, headers, body: body ? JSON.stringify(body) : undefined });
+          if (!retryResponse.ok) throw new Error(errorData.detail || `HTTP error! status: ${retryResponse.status}`);
+          return retryResponse.status === 204 ? (null as T) : await retryResponse.json();
+        } catch (refreshError) {
+          throw refreshError; // If refresh fails, propagate the error
+        }
+      }
       throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
     }
 
@@ -74,11 +92,10 @@ async function request<T>(options: ApiRequestOptions): Promise<T> {
 
 type LoginRequest = { email: string; password: string };
 type TokenResponse = {
-  access_token: string;
-  token_type: string;
+  access_token: string; // The only thing the client needs from login
   user: CurrentUser;
 };
-type CurrentUser = {
+export type CurrentUser = {
   id: string;
   email: string;
   full_name: string | null;
@@ -95,13 +112,17 @@ const auth = {
       isPublic: true,
     });
     if (response.access_token) {
-      localStorage.setItem(TOKEN_KEY, response.access_token);
+      inMemoryAccessToken = response.access_token;
     }
     return response;
   },
 
-  logout(): void {
-    localStorage.removeItem(TOKEN_KEY);
+  async logout(): Promise<void> {
+    inMemoryAccessToken = null;
+    await request<null>({
+      method: "POST",
+      path: "/auth/logout",
+    });
   },
 
   async me(): Promise<CurrentUser> {
@@ -111,8 +132,19 @@ const auth = {
     });
   },
 
-  getToken(): string | null {
-    return localStorage.getItem(TOKEN_KEY);
+  async refresh(): Promise<TokenResponse> {
+    if (isRefreshing) return Promise.reject("Token refresh already in progress.");
+    isRefreshing = true;
+    try {
+      const response = await request<TokenResponse>({
+        method: "POST",
+        path: "/auth/refresh",
+      });
+      inMemoryAccessToken = response.access_token;
+      return response;
+    } finally {
+      isRefreshing = false;
+    }
   },
 };
 

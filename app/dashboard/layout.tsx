@@ -128,7 +128,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { user, profile, loading, signOut } = useAuth()
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/auth/login")
+    if (!loading && !user) router.replace("/login")
   }, [loading, user, router])
 
   if (loading || !user) {
@@ -149,7 +149,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleSignOut = async () => {
     await signOut()
-    router.replace("/auth/login")
+    router.replace("/login")
   }
 
   return (
