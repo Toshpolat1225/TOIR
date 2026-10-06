@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Eye, EyeOff, AlertCircle } from "lucide-react"
+import { Eye, EyeOff, AlertCircle, Wrench } from "@/components/ui/icons"
 import { useAuth } from "@/lib/auth-context"
+import { ThemeSwitcher } from "@/components/theme-switcher"
 
 export default function LoginPage() {
   const router       = useRouter()
@@ -25,7 +26,7 @@ export default function LoginPage() {
     setError("")
     const { error } = await signIn(email, password)
     if (error) {
-      setError("Неверный email или пароль")
+      setError(error)
       setBusy(false)
     } else {
       router.push("/dashboard")
@@ -33,86 +34,86 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center p-4 overflow-hidden">
-
-      {/* ── Фоновая картинка ── */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src="/bg-railway.png"
-        alt=""
-        className="absolute inset-0 w-full h-full object-cover object-center"
-      />
-
-      {/* Затемняющий overlay для читаемости формы */}
-      <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/40 to-black/65 pointer-events-none" />
-      {/* Дополнительный blur-размытый слой по краям */}
-      <div className="absolute inset-0 bg-gradient-to-r from-black/30 via-transparent to-black/30 pointer-events-none" />
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-100 p-4 dark:bg-gray-950">
+      <div className="absolute right-4 top-4 z-10 sm:right-6 sm:top-6">
+        <ThemeSwitcher />
+      </div>
+      <div aria-hidden="true" className="pointer-events-none absolute -right-40 -top-40 h-[32rem] w-[32rem] rounded-full bg-blue-200/50 blur-3xl dark:bg-blue-950/40" />
+      <div aria-hidden="true" className="pointer-events-none absolute -bottom-48 -left-40 h-[32rem] w-[32rem] rounded-full bg-slate-300/70 blur-3xl dark:bg-slate-900/70" />
 
       <div className="relative w-full max-w-md">
-
-        {/* Заголовок */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-black text-white tracking-widest drop-shadow-lg">STTB</h1>
-          <p className="text-slate-300 text-sm mt-2">Система управления техническим обслуживанием</p>
+        <div className="mb-7 flex items-center justify-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-700 text-white shadow-sm">
+            <Wrench className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold tracking-wide text-slate-950 dark:text-white">STTB</h1>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-gray-400">Система технического обслуживания</p>
+          </div>
         </div>
 
-        {/* Карточка */}
-        <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 shadow-2xl">
-          <h2 className="text-lg font-semibold text-white mb-6">Вход в систему</h2>
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-900/5 sm:p-8 dark:border-gray-800 dark:bg-gray-900 dark:shadow-black/20">
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold tracking-tight text-slate-950 dark:text-white">Вход в систему</h2>
+            <p className="mt-1.5 text-sm text-slate-500 dark:text-gray-400">Введите данные учетной записи, чтобы продолжить.</p>
+          </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Email</label>
+              <label htmlFor="login-email" className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-gray-300">Email</label>
               <input
+                id="login-email"
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 placeholder="user@company.uz"
                 required
                 autoComplete="email"
-                className="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-600"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Пароль</label>
+              <label htmlFor="login-password" className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-gray-300">Пароль</label>
               <div className="relative">
                 <input
+                  id="login-password"
                   type={showPwd ? "text" : "password"}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder="Введите пароль"
                   required
                   autoComplete="current-password"
-                  className="w-full px-4 py-2.5 pr-11 rounded-xl bg-white/10 border border-white/20 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 pr-11 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-600"
                 />
                 <button
                   type="button"
+                  aria-label={showPwd ? "Скрыть пароль" : "Показать пароль"}
+                  aria-pressed={showPwd}
                   onClick={() => setShowPwd(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
-                  tabIndex={-1}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
                 >
-                  {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
             {error && (
-              <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2.5">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                {error}
+              <div role="alert" className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{error}</span>
               </div>
             )}
 
             <button
               type="submit"
               disabled={busy}
-              className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold rounded-xl transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-800 focus-visible:outline-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {busy ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                   Вход...
                 </>
               ) : "Войти"}
@@ -120,8 +121,8 @@ export default function LoginPage() {
           </form>
         </div>
 
-        <p className="text-center text-slate-500 text-xs mt-5">
-          Обратитесь к администратору системы для получения доступа
+        <p className="mt-5 text-center text-xs text-slate-500 dark:text-gray-400">
+          Обратитесь к администратору системы для получения доступа.
         </p>
       </div>
     </div>

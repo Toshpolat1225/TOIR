@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase"
 import {
   Wrench, Plus, Pencil, Trash2, Save, X, AlertTriangle,
   CheckCircle, Settings, Info, RefreshCw
-} from "lucide-react"
+} from "@/components/ui/icons"
 
 type MaintenanceInterval = {
   id: string

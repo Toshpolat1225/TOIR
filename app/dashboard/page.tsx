@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo, useCallback } from "react"
+import Link from "next/link"
 import { useRealtime } from "@/lib/use-realtime"
 import { api } from "@/lib/api"
 import { useSectionView } from "@/lib/section-view-context"
@@ -8,11 +9,18 @@ import {
   Train, Wrench, AlertTriangle, CheckCircle,
   TrendingUp, ArrowUpRight, BarChart3,
   Activity, Target, CalendarDays, ClipboardList, Container, RefreshCw,
-} from "lucide-react"
+} from "@/components/ui/icons"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area, LineChart, Line,
 } from "recharts"
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel"
 
 /* ─── Вспомогательные ─── */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -65,12 +73,23 @@ const prioLabel: Record<string,string> = {
   critical:"Критичный", high:"Высокий", normal:"Обычный", low:"Низкий"
 }
 
+const EMPTY_SUMMARY = {
+  kpi: [],
+  fleetStatus: [],
+  seriesStats: [],
+  workOrdersTrend: [],
+  availability: [],
+  repairKindStats: [],
+  upcomingOrders: [],
+  recentWorkOrders: [],
+}
+
 /* ════════════════════════════════════════
    СТРАНИЦА
 ════════════════════════════════════════ */
 export default function DashboardPage() {
   const { effectiveSection } = useSectionView()
-  const [summary, setSummary] = useState<any>(null) // Will hold data from the new endpoint
+  const [summary, setSummary] = useState<any>(EMPTY_SUMMARY)
   const [loading, setLoading] = useState(true)
 
   const loadData = useCallback(async () => {
@@ -81,7 +100,7 @@ export default function DashboardPage() {
       setSummary(summaryData);
     } catch (e) {
       console.error("Ошибка загрузки дашборда:", e)
-      setSummary(null);
+      setSummary(EMPTY_SUMMARY)
     } finally {
       setLoading(false)
     }
@@ -98,6 +117,9 @@ export default function DashboardPage() {
       loadData();
     }
   }, [loadData]));
+
+  const orders = summary.orders ?? []
+  const assets = summary.assets ?? []
 
   /* Фильтрация по участку: для мастера и при выборе участка админом */
   const filteredOrders = useMemo(() => {
@@ -253,7 +275,7 @@ export default function DashboardPage() {
   )
 
   return (
-    <div className="p-6 space-y-6 bg-gray-50 dark:bg-gray-950 min-h-full">
+    <div className="mx-auto min-h-full max-w-[1680px] space-y-6 bg-gray-50 p-5 sm:p-7 xl:p-9 dark:bg-gray-950">
 
       {/* Шапка */}
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -289,6 +311,84 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      <Carousel opts={{ loop: true }} className="overflow-hidden rounded-2xl">
+        <CarouselContent className="ml-0">
+          <CarouselItem className="basis-full pl-0">
+            <section className="relative isolate flex min-h-52 flex-col justify-between overflow-hidden rounded-2xl bg-slate-950 p-6 text-white sm:min-h-56 sm:p-8">
+              <div aria-hidden="true" className="absolute -right-8 -top-24 -z-10 h-80 w-80 rounded-full border-[42px] border-blue-400/10" />
+              <div aria-hidden="true" className="absolute bottom-[-8rem] right-24 -z-10 h-64 w-64 rounded-full bg-blue-600/20 blur-3xl" />
+              <div className="max-w-2xl">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-300">Fleet overview</p>
+                <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">Технический парк под контролем</h2>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">
+                  Текущая готовность и состав основных средств{effectiveSection ? ` · ${effectiveSection}` : ""}.
+                </p>
+              </div>
+              <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
+                <div className="flex items-end gap-6">
+                  <div><p className="text-3xl font-semibold tabular-nums">{totalAssets}</p><p className="mt-1 text-xs text-slate-400">единиц в парке</p></div>
+                  <div className="h-10 border-l border-white/15" />
+                  <div><p className="text-3xl font-semibold tabular-nums">{availPct}%</p><p className="mt-1 text-xs text-slate-400">готовность парка</p></div>
+                </div>
+                <Link href="/dashboard/os" className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-blue-50">
+                  Реестр основных средств <ArrowUpRight className="h-4 w-4" />
+                </Link>
+              </div>
+            </section>
+          </CarouselItem>
+          <CarouselItem className="basis-full pl-0">
+            <section className="relative isolate flex min-h-52 flex-col justify-between overflow-hidden rounded-2xl bg-[#182235] p-6 text-white sm:min-h-56 sm:p-8">
+              <div aria-hidden="true" className="absolute -right-10 -top-28 -z-10 h-80 w-80 rounded-full border-[42px] border-amber-300/10" />
+              <div aria-hidden="true" className="absolute bottom-[-8rem] right-24 -z-10 h-64 w-64 rounded-full bg-amber-500/15 blur-3xl" />
+              <div className="max-w-2xl">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-300">Maintenance focus</p>
+                <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">Работы, требующие внимания</h2>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">Открытые задания и техника, находящаяся на обслуживании.</p>
+              </div>
+              <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
+                <div className="flex items-end gap-6">
+                  <div><p className="text-3xl font-semibold tabular-nums">{openOrders}</p><p className="mt-1 text-xs text-slate-400">открытых нарядов</p></div>
+                  <div className="h-10 border-l border-white/15" />
+                  <div><p className="text-3xl font-semibold tabular-nums">{onMaint + onRepair}</p><p className="mt-1 text-xs text-slate-400">единиц в ремонте и ТО</p></div>
+                </div>
+                <Link href="/dashboard/work-orders" className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-amber-50">
+                  Открыть наряд-заказы <ArrowUpRight className="h-4 w-4" />
+                </Link>
+              </div>
+            </section>
+          </CarouselItem>
+          <CarouselItem className="basis-full pl-0">
+            <section className="relative isolate flex min-h-52 flex-col justify-between overflow-hidden rounded-2xl bg-[#172b28] p-6 text-white sm:min-h-56 sm:p-8">
+              <div aria-hidden="true" className="absolute -right-10 -top-28 -z-10 h-80 w-80 rounded-full border-[42px] border-emerald-300/10" />
+              <div aria-hidden="true" className="absolute bottom-[-8rem] right-24 -z-10 h-64 w-64 rounded-full bg-emerald-500/15 blur-3xl" />
+              <div className="max-w-2xl">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-300">Operations analytics</p>
+                <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">Ход выполнения работ</h2>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">Фактические показатели нарядов помогают следить за производственной нагрузкой.</p>
+              </div>
+              <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
+                <div className="flex items-end gap-6">
+                  <div><p className="text-3xl font-semibold tabular-nums">{completedOrders}</p><p className="mt-1 text-xs text-slate-400">выполнено</p></div>
+                  <div className="h-10 border-l border-white/15" />
+                  <div><p className="text-3xl font-semibold tabular-nums">{inProgressOrders}</p><p className="mt-1 text-xs text-slate-400">в работе</p></div>
+                </div>
+                <Link href="/dashboard/analytics" className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-emerald-50">
+                  Перейти к аналитике <ArrowUpRight className="h-4 w-4" />
+                </Link>
+              </div>
+            </section>
+          </CarouselItem>
+        </CarouselContent>
+        <CarouselPrevious
+          aria-label="Previous dashboard highlight"
+          className="left-auto right-14 top-5 h-9 w-9 translate-y-0 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+        />
+        <CarouselNext
+          aria-label="Next dashboard highlight"
+          className="right-4 top-5 h-9 w-9 translate-y-0 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+        />
+      </Carousel>
 
       {/* KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

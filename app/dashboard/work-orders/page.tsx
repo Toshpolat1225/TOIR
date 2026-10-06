@@ -4,12 +4,13 @@ import { useState, useRef, useEffect, createContext, useContext, useCallback, Su
 import { useRealtime } from "@/lib/use-realtime"
 import { useSearchParams, useRouter } from "next/navigation"
 import { api } from "@/lib/api"
+import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/lib/auth-context"
 import {
   ClipboardList, Plus, Search, CheckCircle, Clock, Wrench,
   AlertTriangle, X, Trash2, PackagePlus, ChevronDown,
-  Save, ChevronUp, Package, Info, BookOpen, Filter, SlidersHorizontal, Lock
-} from "lucide-react"
+  Save, ChevronUp, Package, Info, BookOpen, Filter, SlidersHorizontal, Lock, RefreshCw
+} from "@/components/ui/icons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useSections } from "@/lib/use-sections"
@@ -561,6 +562,7 @@ function TmcModal({ repairKind, rows, onSave, onClose, zClass = "z-[60]", depart
         if (templateRows.length > 0) {
           setLocalRows(templateRows)
           setNextId(templateRows.length + 1)
+        }
         }
       } catch (error) {
         console.error("Failed to load work type templates:", error);
@@ -1327,9 +1329,7 @@ function CreateWorkOrderModal({ onClose, onSave, defaultUnit="", defaultSection=
                   onClick={onRefreshData}
                   className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1"
                 >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
+                  <RefreshCw className="h-3 w-3" />
                   Обновить справочники
                 </button>
               )}
@@ -1658,7 +1658,7 @@ function genOrderId(): string {
 }
 
 // Конвертация WorkOrder → строка БД
-function toRow(o: WorkOrder): Omit<WorkOrderListItem, "id" | "created_at" | "updated_at"> {
+function toRow(o: WorkOrder) {
   return {
     unit_type:    o.unitType,
     unit:         o.unit,
@@ -1666,9 +1666,9 @@ function toRow(o: WorkOrder): Omit<WorkOrderListItem, "id" | "created_at" | "upd
     section:      o.section,
     equipment:    o.equipment,
     work_type:    o.type,           // WorkOrder.type → work_type
-    repair_kind:  o.repairKind || null,
+    repair_kind:  o.repairKind || "",
     status:       o.status,
-    priority:     o.priority as WorkOrderPriority,
+    priority:     o.priority,
     tech:         o.tech,
     chief:        o.chief ?? "",
     description:  o.desc,
@@ -1676,8 +1676,8 @@ function toRow(o: WorkOrder): Omit<WorkOrderListItem, "id" | "created_at" | "upd
     created:      o.created,
     closed:       o.closed,
     repair_items: o.repairItems ?? [],
-    date_start:   o.dateStart || null,
-    date_end:     o.dateEnd || null,
+    date_start:   o.dateStart || undefined,
+    date_end:     o.dateEnd || undefined,
   }
 }
 
@@ -1734,44 +1734,46 @@ function WorkOrdersPage() {
   // Справочник участков (перемещён выше для использования в realtime подписке)
   const { sections: sectionsFromDb, refresh: refreshSections, getSectionId } = useSections()
 
-  // Fetch all data from FastAPI backend
+  // Load operational data from the same Supabase database used by the frontend.
   const fetchData = useCallback(async () => {
     setLoading(true)
     setApiError(null)
     try {
-      const woParams: any = {
-        limit: 1000, // Fetch a large number as client-side pagination is not implemented
-        offset: 0,
-        sort_by: "created_at",
-        sort_order: "desc",
-        q: search || undefined,
-        section_id: fSection || undefined,
-        // TODO: Add other filters like fEquip, fUnitType if backend supports them
-      };
+      let ordersQuery = supabase
+        .from("work_orders")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(1000)
+      if (fSection) ordersQuery = ordersQuery.eq("section", fSection)
+      if (tabStatus !== "open") ordersQuery = ordersQuery.eq("status", tabStatus)
 
-      if (tabStatus !== "open") {
-        woParams.status = tabStatus;
+      const [ordersResult, assetsResult, employeesResult, workTypesResult] = await Promise.all([
+        ordersQuery,
+        supabase.from("fixed_assets").select("*").order("name").limit(1000),
+        supabase.from("employees").select("id, tab_number, full_name, section_id").order("full_name").limit(1000),
+        supabase.from("work_types").select("id, code, name, unit_type").order("sort_order").limit(1000),
+      ])
+
+      if (ordersResult.error) throw new Error(`work_orders: ${ordersResult.error.message}`)
+      if (assetsResult.error) throw new Error(`fixed_assets: ${assetsResult.error.message}`)
+
+      setOrders((ordersResult.data ?? []).map(fromRow))
+      setFixedAssets((assetsResult.data ?? []) as FixedAsset[])
+      if (employeesResult.error) {
+        console.error("Failed to load optional employees:", employeesResult.error.message)
+        setEmployees([])
+      } else {
+        setEmployees((employeesResult.data ?? []) as EmployeeOption[])
+      }
+      if (workTypesResult.error) {
+        console.error("Failed to load optional work types:", workTypesResult.error.message)
+        setWorkTypesDb([])
+      } else {
+        setWorkTypesDb((workTypesResult.data ?? []) as WorkTypeFromDb[])
       }
 
-      const [
-        woResponse,
-        employeesResponse,
-        assetsResponse,
-        workTypesResponse,
-      ] = await Promise.all([
-        api.workOrders.list(woParams),
-        api.employees.list({ limit: 1000 }),
-        api.fixedAssets.list({ limit: 1000 }),
-        api.workTypes.list({ limit: 1000 }),
-      ]);
-
-      setOrders(woResponse.items.map(fromRow));
-      setEmployees(employeesResponse.items as EmployeeOption[]);
-      setFixedAssets(assetsResponse.items as FixedAsset[]);
-      setWorkTypesDb(workTypesResponse.items as WorkTypeFromDb[]);
-
     } catch (err) {
-      const message = err instanceof Error ? err.message : "An unknown error occurred";
+      const message = err instanceof Error ? err.message : String(err);
       setApiError(`Failed to load data: ${message}`);
       setOrders([])
     } finally {
@@ -1841,8 +1843,14 @@ function WorkOrdersPage() {
 
   const handleUpdateOrder = async (updated: WorkOrder) => {
     try {
-      const payload = toRow(updated);
-      await api.workOrders.update(updated.id, payload);
+      const { data, error } = await supabase
+        .from("work_orders")
+        .update(toRow(updated))
+        .eq("id", updated.id)
+        .select("id")
+        .maybeSingle()
+      if (error) throw new Error(error.message)
+      if (!data) throw new Error("Work order was not found.")
       fetchData(); // Refetch to ensure consistency
     } catch (err) {
       setApiError(`Failed to update work order: ${err instanceof Error ? err.message : "API Error"}`);
@@ -1851,8 +1859,10 @@ function WorkOrdersPage() {
 
   const handleAddOrder = async (wo: WorkOrder) => {
     try {
-      const payload = toRow(wo);
-      await api.workOrders.create({ ...payload, id: wo.id });
+      const { error } = await supabase
+        .from("work_orders")
+        .insert({ id: wo.id, ...toRow(wo) })
+      if (error) throw new Error(error.message)
       fetchData(); // Refetch to get the new order from the server
     } catch (err) {
       setApiError(`Failed to create work order: ${err instanceof Error ? err.message : "API Error"}`);

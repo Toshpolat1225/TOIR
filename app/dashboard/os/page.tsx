@@ -8,7 +8,7 @@ import {
   Train, Container, Plus, Search, X, Save, ChevronDown,
   CheckCircle, Wrench, AlertTriangle, XCircle,
   CalendarDays, SlidersHorizontal, Pencil, Building2, Hash, Radio, Trash2
-} from "lucide-react"
+} from "@/components/ui/icons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
@@ -467,7 +467,7 @@ function toRow(a: FixedAsset) {
     status:       a.status,
     comm_date:    a.commDate,
     year_built:   a.yearBuilt,
-    mileage:      a.mileage,
+    mileage:      Number(a.mileage) || 0,
     last_maint:   a.lastMaint,
     next_maint:   a.nextMaint,
     inv_number:   a.invNumber,
@@ -615,8 +615,10 @@ export default function OsPage() {
       fetchAssets(0, search, fType, fDepot, fStatus)
       fetchCounts()
       setPage(0)
+      setShowAdd(false)
+    } catch (error) {
+      alert("Не удалось добавить: " + (error instanceof Error ? error.message : "ошибка API"))
     }
-    setShowAdd(false)
   }
 
   const selCls = "appearance-none border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 pr-8 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"

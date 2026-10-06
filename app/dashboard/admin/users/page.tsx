@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Users, Plus, X, Save, Pencil, ShieldCheck, Shield, HardHat, Trash2, Eye, EyeOff } from "lucide-react"
+import { Users, Plus, X, Save, Pencil, ShieldCheck, Shield, HardHat, Trash2, Eye, EyeOff } from "@/components/ui/icons"
 import { supabase } from "@/lib/supabase"
 import { useAuth, type Profile, type UserRole } from "@/lib/auth-context"
 import { useSections } from "@/lib/use-sections"

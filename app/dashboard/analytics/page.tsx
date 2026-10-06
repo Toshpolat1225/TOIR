@@ -13,7 +13,7 @@ import {
   ChevronDown, BarChart3, PieChartIcon, LineChartIcon,
   Brain, Shield, Bell, Cpu, Zap, HeartPulse, CheckCircle, XCircle,
   Loader2
-} from "lucide-react"
+} from "@/components/ui/icons"
 import { Button } from "@/components/ui/button"
 
 // Скелетон для карточек
@@ -442,10 +442,10 @@ export default function AnalyticsDashboard() {
 
   // Показываем layout сразу, данные загружаются прогрессивно
   return (
-    <div className="p-8 space-y-6 bg-gray-50 dark:bg-gray-950 min-h-screen">
+    <div className="mx-auto min-h-screen max-w-[1680px] space-y-6 bg-gray-50 p-5 sm:p-7 xl:p-9 dark:bg-gray-950">
       {/* Заголовок - показывается СРАЗУ */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             Экономическая эффективность
           </h1>
@@ -453,7 +453,7 @@ export default function AnalyticsDashboard() {
             Аналитика расхода ТМЦ и эффективности участков
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
           <select 
             value={selectedPeriod}
             onChange={e => setSelectedPeriod(e.target.value as "month" | "quarter" | "year")}

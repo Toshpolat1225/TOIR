@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react"
-import { api, CurrentUser } from "./api"
+import { supabase } from "./supabase"
 
 export type UserRole = "admin" | "operator" | "master"
 
@@ -12,6 +12,8 @@ export type Profile = {
   role: UserRole
   section: string
 }
+
+type CurrentUser = Profile
 
 type AuthContextType = {
   user: CurrentUser | null
@@ -34,42 +36,99 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let mounted = true
+    const loadUser = async (userId: string) => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, role, section")
+        .eq("id", userId)
+        .maybeSingle()
+
+      if (error) throw error
+      if (!data) throw new Error("User profile was not found.")
+      return data as Profile
+    }
+
     const restoreSession = async () => {
       try {
-        // Attempt to get a new access token using the refresh token cookie
-        const { user: refreshedUser } = await api.auth.refresh();
-        if (refreshedUser) {
-          setUser(refreshedUser);
+        const { data, error } = await supabase.auth.getSession()
+        if (error) throw error
+
+        if (data.session) {
+          const currentUser = await loadUser(data.session.user.id)
+          if (mounted) setUser(currentUser)
         }
       } catch (error) {
-        // If refresh fails, it's okay, the user is not logged in.
-        console.log("No active session to restore.");
-        setUser(null);
+        console.error("Failed to restore Supabase session.", error)
+        if (mounted) setUser(null)
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false)
       }
-    };
+    }
 
-    restoreSession();
+    void restoreSession()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        if (mounted) {
+          setUser(null)
+          setLoading(false)
+        }
+        return
+      }
+
+      setTimeout(() => {
+        void loadUser(session.user.id)
+          .then(currentUser => {
+            if (mounted) setUser(currentUser)
+          })
+          .catch(error => {
+            console.error("Failed to load Supabase user profile.", error)
+            if (mounted) setUser(null)
+          })
+          .finally(() => {
+            if (mounted) setLoading(false)
+          })
+      }, 0)
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { user: loggedInUser } = await api.auth.login({ email, password });
-      setUser(loggedInUser);
-      return { error: null, user: loggedInUser };
+      const response = await fetch("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.detail || "Login failed")
+
+      const { error } = await supabase.auth.setSession({
+        access_token: result.access_token,
+        refresh_token: result.refresh_token,
+      })
+      if (error) throw error
+
+      const loggedInUser = result.user as CurrentUser
+      setUser(loggedInUser)
+      return { error: null, user: loggedInUser }
     } catch (error) {
-      return { error: error instanceof Error ? error.message : "Login failed", user: null };
+      return { error: error instanceof Error ? error.message : "Login failed", user: null }
     }
   }
 
   const signOut = async () => {
     try {
-      await api.auth.logout();
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
     } catch (error) {
-      console.error("Logout failed, clearing client-side state anyway.", error);
+      console.error("Supabase sign-out failed.", error)
     } finally {
-      setUser(null);
+      setUser(null)
     }
   }
 

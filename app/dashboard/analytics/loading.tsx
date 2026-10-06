@@ -1,4 +1,4 @@
-import { Loader2, BarChart3, Brain, Bell } from "lucide-react"
+import { Loader2, BarChart3, Brain, Bell } from "@/components/ui/icons"
 
 export default function AnalyticsLoading() {
   return (

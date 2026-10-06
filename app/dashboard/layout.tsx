@@ -4,13 +4,15 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import {
-  Wrench, ClipboardList, LayoutDashboard,
+  Wrench, ClipboardList, LayoutDashboard, PanelLeftIcon,
   ChevronRight, Package, Landmark, LogOut, Users, FileText, ChevronDown, FolderOpen,
-  BarChart3, } from "lucide-react"
+  BarChart3,
+} from "@/components/ui/icons"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 import { SectionViewProvider, useSectionView } from "@/lib/section-view-context"
 import { useSections } from "@/lib/use-sections"
+import { ThemeSwitcher } from "@/components/theme-switcher"
 
 const ALL_NAV = [
   { href: "/dashboard",             label: "Дашборд",        icon: LayoutDashboard, roles: ["admin","operator"],         exact: true },
@@ -126,9 +128,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname()
   const router   = useRouter()
   const { user, profile, loading, signOut } = useAuth()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login")
+    if (!loading && !user) router.replace("/auth/login")
   }, [loading, user, router])
 
   if (loading || !user) {
@@ -146,10 +149,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const navItems = ALL_NAV.filter(n => n.roles.includes(role))
   const badge    = ROLE_BADGE[role]
   const isAdmin  = role === "admin"
+  const currentPage = navItems.find((item) =>
+    item.exact ? pathname === item.href : pathname.startsWith(item.href)
+  )
 
   const handleSignOut = async () => {
     await signOut()
-    router.replace("/login")
+    router.replace("/auth/login")
   }
 
   return (
@@ -157,72 +163,64 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       effectiveSectionFromProfile={profile?.section ?? null}
       isAdmin={isAdmin}
     >
-      {/* 
-        NEW BACKGROUND IMPLEMENTATION:
-        - A pseudo-element (`::before`) is used for the background image to keep it separate from the content.
-        - It's fixed to cover the entire viewport.
-        - A dark overlay (`bg-black/60`) and a radial gradient are applied to ensure content readability.
-        - In light mode, the image is almost fully transparent, providing a very subtle texture.
-        - In dark mode, the image is more visible, creating an industrial atmosphere.
-      */}
-      <div className="
-        flex h-screen bg-gray-50 dark:bg-gray-950
-        relative before:fixed before:inset-0 before:z-[-1]
-        before:bg-[url('/backgrounds/railway-depot-dark.jpg')] before:bg-cover before:bg-center
-        before:transition-opacity before:duration-500
-        light:before:opacity-5 dark:before:opacity-15
-      ">
-        <aside className="w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col">
-
-          {/* Шапка сайдбара */}
-          <div className="h-16 flex items-center px-5 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
-            <div>
-              <p className="text-sm font-bold text-gray-900 dark:text-white leading-none tracking-widest">STTB</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Система обслуживания</p>
+      <div className="min-h-screen bg-slate-50 dark:bg-gray-950">
+        {mobileNavOpen && (
+          <button type="button" aria-label="Закрыть навигацию" className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-[2px] md:hidden" onClick={() => setMobileNavOpen(false)} />
+        )}
+        <aside className={cn(
+          "fixed inset-y-0 left-0 z-50 flex w-[272px] flex-col border-r border-slate-200 bg-white transition-transform duration-200 dark:border-gray-800 dark:bg-gray-900 md:translate-x-0 md:shadow-none",
+          mobileNavOpen ? "translate-x-0 shadow-xl" : "-translate-x-full"
+        )}>
+          <div className="flex h-16 shrink-0 items-center gap-3 border-b border-slate-200 px-5 dark:border-gray-800">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-700 text-white"><Wrench className="h-4 w-4" /></div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold leading-tight tracking-wide text-slate-900 dark:text-white">STTB</p>
+              <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-gray-400">Техническое обслуживание</p>
             </div>
+            <button type="button" aria-label="Закрыть навигацию" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 md:hidden dark:text-gray-400 dark:hover:bg-gray-800" onClick={() => setMobileNavOpen(false)}>
+              <ChevronRight className="h-4 w-4 rotate-180" />
+            </button>
           </div>
-
-          {/* Навигация */}
-          <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+          <div className="px-5 pb-2 pt-6 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 dark:text-gray-500">РАБОЧЕЕ ПРОСТРАНСТВО</div>
+          <nav aria-label="Основная навигация" className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
             {navItems.map((item) => {
               const active = item.exact ? pathname === item.href : pathname.startsWith(item.href)
               return (
-                <Link
-                  key={item.href}
-                  href={item.href}
+                <Link key={item.href} href={item.href} onClick={() => setMobileNavOpen(false)} aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                    active
-                      ? "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-400"
-                      : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white"
-                  )}
-                >
-                  <item.icon className="w-4 h-4 flex-shrink-0" />
-                  <span className="flex-1">{item.label}</span>
-                  {active && <ChevronRight className="w-3.5 h-3.5" />}
+                    "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                    active ? "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+                  )}>
+                  <item.icon className={cn("h-4 w-4 shrink-0", active ? "text-blue-700 dark:text-blue-300" : "text-slate-400 group-hover:text-slate-600 dark:text-gray-500")} />
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {active && <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />}
                 </Link>
               )
             })}
           </nav>
-
-          <UserBlockWithSection
-            profile={profile}
-            user={user}
-            role={role}
-            badge={badge}
-            onSignOut={handleSignOut}
-          />
+          <UserBlockWithSection profile={profile} user={user} role={role} badge={badge} onSignOut={handleSignOut} />
         </aside>
-
-        {/* 
-          A semi-transparent overlay is added to the main content area to further improve readability
-          by slightly dimming the background image behind the content.
-        */}
-        <main className="flex-1 overflow-auto relative bg-black/0 dark:bg-black/20" key={pathname}>
-          {/* Radial gradient overlay for focus effect */}
-          <div className="absolute inset-0 z-[-1] bg-[radial-gradient(ellipse_100%_80%_at_50%_20%,rgba(255,255,255,0.05),rgba(0,0,0,0.5))] dark:bg-[radial-gradient(ellipse_100%_80%_at_50%_20%,rgba(0,0,0,0.3),rgba(0,0,0,0.8))]" />
-          {children}
-        </main>
+        <div className="min-h-screen md:ml-[272px]">
+          <header className="navbar navbar-expand-lg sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur md:px-8 dark:border-gray-800 dark:bg-gray-900/95">
+            <div className="flex min-w-0 items-center gap-3">
+              <button type="button" aria-label="Открыть навигацию" aria-expanded={mobileNavOpen} className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 md:hidden dark:text-gray-300 dark:hover:bg-gray-800" onClick={() => setMobileNavOpen(true)}>
+                <PanelLeftIcon className="h-5 w-5" />
+              </button>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">{currentPage?.label ?? "Рабочее пространство"}</p>
+                <p className="hidden text-xs text-slate-500 sm:block dark:text-gray-400">Система управления техническим обслуживанием</p>
+              </div>
+            </div>
+            <div className="ml-3 flex shrink-0 items-center gap-3">
+              <ThemeSwitcher />
+              <span className={cn("hidden rounded-full px-2.5 py-1 text-xs font-medium sm:inline-flex", badge.cls)}>{badge.label}</span>
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700 dark:bg-gray-800 dark:text-gray-200">
+                {(profile?.full_name || user.email || "U").slice(0, 1).toUpperCase()}
+              </div>
+            </div>
+          </header>
+          <main className="min-w-0" key={pathname}>{children}</main>
+        </div>
       </div>
     </SectionViewProvider>
   )

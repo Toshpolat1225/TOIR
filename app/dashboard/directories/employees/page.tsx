@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Users, Plus, X, Save, Pencil, Trash2, Search, ArrowLeft, MapPin, Briefcase, Hash } from "lucide-react"
+import { Users, Plus, X, Save, Pencil, Trash2, Search, ArrowLeft, MapPin, Briefcase, Hash } from "@/components/ui/icons"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"

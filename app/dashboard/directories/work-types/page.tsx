@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import {
   Wrench, Plus, X, Save, Pencil, Trash2, ArrowLeft, Package,
   ChevronDown, ChevronRight, ListTodo, Search
-} from "lucide-react"
+} from "@/components/ui/icons"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"

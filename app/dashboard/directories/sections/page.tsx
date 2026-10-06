@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Building2, Plus, Trash2, ArrowLeft } from "lucide-react"
+import { Building2, Plus, Trash2, ArrowLeft } from "@/components/ui/icons"
 import Link from "next/link"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"

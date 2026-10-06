@@ -1,4 +1,4 @@
-import { Loader2, Train, Container } from "lucide-react"
+import { Loader2, Train, Container } from "@/components/ui/icons"
 
 export default function FixedAssetsLoading() {
   return (

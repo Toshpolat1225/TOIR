@@ -8,7 +8,7 @@ import {
   Calendar, Wrench, CheckCircle, Clock, AlertTriangle,
   BarChart3, List, ChevronLeft, ChevronRight, Info, Plus, X, ChevronDown,
   Gauge, Wifi, WifiOff, Bell, Filter, Search, RotateCcw
-} from "lucide-react"
+} from "@/components/ui/icons"
 
 /* ═══════════════════════════════════════
    ДАННЫЕ
@@ -1196,14 +1196,14 @@ export default function MaintenancePage() {
       )}
 
       {/* Заголовок */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">ТО и ремонты</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             График ТО и ремонтов
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:justify-end">
           {/* Колокольчик уведомлений */}
           <NotificationBell
             notifications={allNotifications}
@@ -1384,7 +1384,7 @@ export default function MaintenancePage() {
       </div>
 
       {/* KPI карточки */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
         {(["upcoming","in_progress","completed","overdue"] as Status[]).map(s => {
           const cfg = statusConfig[s]
           const count = counts[s]

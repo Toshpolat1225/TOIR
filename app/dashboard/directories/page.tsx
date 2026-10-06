@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Users, Package, ChevronRight, FolderOpen, Building2, Wrench, Gauge, Settings } from "lucide-react"
+import { Users, Package, ChevronRight, FolderOpen, Building2, Wrench, Gauge, Settings } from "@/components/ui/icons"
 
 const DIRECTORIES = [
   {

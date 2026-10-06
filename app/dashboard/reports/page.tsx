@@ -6,7 +6,7 @@ import { useSectionView } from "@/lib/section-view-context"
 import {
   FileText, ClipboardList, Landmark, Package,
   Calendar, Download, BarChart3, PieChart,
-} from "lucide-react"
+} from "@/components/ui/icons"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart as RechartsPie, Pie, Cell, Legend,
