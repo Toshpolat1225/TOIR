@@ -1,0 +1,15 @@
+.git
+.next
+node_modules
+postgres-data
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+backend/.venv
+backend/venv
+**/__pycache__
+**/*.py[cod]
+.venv
+venv
