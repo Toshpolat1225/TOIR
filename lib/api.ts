@@ -5,16 +5,14 @@
  * - Uses fetch for requests.
  * - Automatically manages and injects JWT for authorization.
  * - Provides typed methods for resources (e.g., auth, sections).
- * - Handles token persistence in localStorage.
+ * - Keeps access tokens in memory and sends refresh cookies with requests.
  * - Centralized error handling.
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-const TOKEN_KEY = "toir_access_token";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8010/api/v1";
 
-// In-memory token storage
 let inMemoryAccessToken: string | null = null;
-let isRefreshing = false;
+let refreshRequest: Promise<AccessTokenResponse> | null = null;
 
 type ApiRequestOptions = {
   method: "GET" | "POST" | "PATCH" | "DELETE";
@@ -53,19 +51,28 @@ async function request<T>(options: ApiRequestOptions): Promise<T> {
     const response = await fetch(url.toString(), {
       method,
       headers,
-      body: body ? JSON.stringify(body) : undefined,
+      credentials: "include",
+      body: body === undefined ? undefined : JSON.stringify(body),
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: response.statusText }));
       
       // If 401 Unauthorized, try to refresh the token and retry the request once.
-      if (response.status === 401 && !options.path.includes("/auth/")) {
+      if (
+        response.status === 401 &&
+        !["/auth/login", "/auth/refresh", "/auth/logout"].includes(options.path)
+      ) {
         try {
           await api.auth.refresh();
           // Retry the original request with the new token
           headers["Authorization"] = `Bearer ${inMemoryAccessToken}`;
-          const retryResponse = await fetch(url.toString(), { method, headers, body: body ? JSON.stringify(body) : undefined });
+          const retryResponse = await fetch(url.toString(), {
+            method,
+            headers,
+            credentials: "include",
+            body: body === undefined ? undefined : JSON.stringify(body),
+          });
           if (!retryResponse.ok) throw new Error(errorData.detail || `HTTP error! status: ${retryResponse.status}`);
           return retryResponse.status === 204 ? (null as T) : await retryResponse.json();
         } catch (refreshError) {
@@ -91,38 +98,62 @@ async function request<T>(options: ApiRequestOptions): Promise<T> {
 // --- Auth Module ---
 
 type LoginRequest = { email: string; password: string };
-type TokenResponse = {
-  access_token: string; // The only thing the client needs from login
-  user: CurrentUser;
+type AccessTokenResponse = {
+  access_token: string;
+  token_type: "bearer";
+  expires_in: number;
 };
+type LoginResponse = AccessTokenResponse & { user: CurrentUser };
 export type CurrentUser = {
   id: string;
   email: string;
-  full_name: string | null;
+  full_name: string;
   role: "admin" | "operator" | "master" | "management";
   is_active: boolean;
+  section_id: string | null;
+  section?: string | null;
 };
 
 const auth = {
-  async login(credentials: LoginRequest): Promise<TokenResponse> {
-    const response = await request<TokenResponse>({
+  async login(credentials: LoginRequest): Promise<LoginResponse> {
+    const response = await request<AccessTokenResponse>({
       method: "POST",
       path: "/auth/login",
       body: credentials,
       isPublic: true,
     });
-    if (response.access_token) {
-      inMemoryAccessToken = response.access_token;
+    inMemoryAccessToken = response.access_token;
+    try {
+      const user = await request<CurrentUser>({
+        method: "GET",
+        path: "/auth/me",
+      });
+      return { ...response, user };
+    } catch (error) {
+      inMemoryAccessToken = null;
+      try {
+        await request<null>({
+          method: "POST",
+          path: "/auth/logout",
+          isPublic: true,
+        });
+      } catch {
+        throw new Error("Could not load the user profile or clear the login session.");
+      }
+      throw error;
     }
-    return response;
   },
 
   async logout(): Promise<void> {
-    inMemoryAccessToken = null;
-    await request<null>({
-      method: "POST",
-      path: "/auth/logout",
-    });
+    try {
+      await request<null>({
+        method: "POST",
+        path: "/auth/logout",
+        isPublic: true,
+      });
+    } finally {
+      inMemoryAccessToken = null;
+    }
   },
 
   async me(): Promise<CurrentUser> {
@@ -132,19 +163,71 @@ const auth = {
     });
   },
 
-  async refresh(): Promise<TokenResponse> {
-    if (isRefreshing) return Promise.reject("Token refresh already in progress.");
-    isRefreshing = true;
-    try {
-      const response = await request<TokenResponse>({
+  async refresh(): Promise<AccessTokenResponse> {
+    if (!refreshRequest) {
+      refreshRequest = request<AccessTokenResponse>({
         method: "POST",
         path: "/auth/refresh",
-      });
-      inMemoryAccessToken = response.access_token;
-      return response;
-    } finally {
-      isRefreshing = false;
+        isPublic: true,
+      })
+        .then((response) => {
+          inMemoryAccessToken = response.access_token;
+          return response;
+        })
+        .catch((error: unknown) => {
+          inMemoryAccessToken = null;
+          throw error;
+        })
+        .finally(() => {
+          refreshRequest = null;
+        });
     }
+    return refreshRequest;
+  },
+};
+
+type UserRole = CurrentUser["role"];
+type UserCreate = {
+  email: string;
+  full_name: string;
+  password: string;
+  role: UserRole;
+  section_id: string | null;
+};
+type UserUpdate = {
+  full_name?: string;
+  role?: UserRole;
+  section_id?: string | null;
+  is_active?: boolean;
+};
+
+const users = {
+  async list(params: ListParams = {}): Promise<Paginated<CurrentUser>> {
+    return request<Paginated<CurrentUser>>({
+      method: "GET",
+      path: "/users",
+      params,
+    });
+  },
+
+  async create(data: UserCreate): Promise<CurrentUser> {
+    return request<CurrentUser>({ method: "POST", path: "/users", body: data });
+  },
+
+  async update(id: string, data: UserUpdate): Promise<CurrentUser> {
+    return request<CurrentUser>({
+      method: "PATCH",
+      path: `/users/${id}`,
+      body: data,
+    });
+  },
+
+  async resetPassword(id: string, password: string): Promise<void> {
+    await request<null>({
+      method: "POST",
+      path: `/users/${id}/reset-password`,
+      body: { password },
+    });
   },
 };
 
@@ -648,6 +731,7 @@ type WorkOrder = {
 
 export const api = {
   auth,
+  users,
   sections,
   departments,
   nomenclature,

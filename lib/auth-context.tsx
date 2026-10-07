@@ -1,19 +1,10 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
+import { api, type CurrentUser } from "@/lib/api"
 
-export type UserRole = "admin" | "operator" | "master" | "management"
-
-export type Profile = {
-  id: string
-  full_name: string | null
-  email: string
-  role: UserRole
-  section?: string | null
-  is_active?: boolean
-}
-
-type CurrentUser = Profile
+export type UserRole = CurrentUser["role"]
+export type Profile = CurrentUser
 
 type AuthContextType = {
   user: CurrentUser | null
@@ -23,9 +14,18 @@ type AuthContextType = {
   signOut: () => Promise<void>
 }
 
-const AUTH_TOKEN_KEY = "toir_access_token"
-const AUTH_REFRESH_KEY = "toir_refresh_token"
-const AUTH_USER_KEY = "toir_user"
+const SESSION_HINT_COOKIE = "toir_session_hint"
+const SESSION_HINT_MAX_AGE = 7 * 24 * 60 * 60
+
+function setSessionHint(): void {
+  const secure = window.location.protocol === "https:" ? "; Secure" : ""
+  document.cookie = `${SESSION_HINT_COOKIE}=1; Path=/dashboard; Max-Age=${SESSION_HINT_MAX_AGE}; SameSite=Lax${secure}`
+}
+
+function clearSessionHint(): void {
+  const secure = window.location.protocol === "https:" ? "; Secure" : ""
+  document.cookie = `${SESSION_HINT_COOKIE}=; Path=/dashboard; Max-Age=0; SameSite=Lax${secure}`
+}
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
@@ -44,33 +44,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const restoreSession = async () => {
       try {
-        const storedToken = localStorage.getItem(AUTH_TOKEN_KEY)
-
-        if (!storedToken) {
-          if (active) setUser(null)
-          return
-        }
-
-        const response = await fetch("/api/v1/auth/me", {
-          headers: { Authorization: `Bearer ${storedToken}` },
-        })
-
-        if (!response.ok) {
-          throw new Error("Session expired")
-        }
-
-        const profile = (await response.json()) as CurrentUser
+        await api.auth.refresh()
+        const currentUser = await api.auth.me()
         if (active) {
-          setUser(profile)
-          localStorage.setItem(AUTH_USER_KEY, JSON.stringify(profile))
+          setUser(currentUser)
+          setSessionHint()
         }
-      } catch (error) {
-        console.warn("Session restore failed:", error)
+      } catch {
         if (active) {
           setUser(null)
-          localStorage.removeItem(AUTH_TOKEN_KEY)
-        localStorage.removeItem(AUTH_REFRESH_KEY)
-        localStorage.removeItem(AUTH_USER_KEY)
+          clearSessionHint()
         }
       } finally {
         if (active) setLoading(false)
@@ -78,7 +61,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     void restoreSession()
-
     return () => {
       active = false
     }
@@ -86,50 +68,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const response = await fetch("/api/v1/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.detail || "Login failed")
-
-      const loggedInUser = result.user as CurrentUser
-      const token = result.access_token as string
-      const refreshToken = result.refresh_token as string | undefined
-
-      if (!loggedInUser || !token) {
-        throw new Error("Authentication response was incomplete.")
-      }
-
-      localStorage.setItem(AUTH_TOKEN_KEY, token)
-      if (refreshToken) localStorage.setItem(AUTH_REFRESH_KEY, refreshToken)
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(loggedInUser))
-      setUser(loggedInUser)
-      return { error: null, user: loggedInUser }
+      const result = await api.auth.login({ email, password })
+      setUser(result.user)
+      setSessionHint()
+      return { error: null, user: result.user }
     } catch (error) {
-      return { error: error instanceof Error ? error.message : "Login failed", user: null }
+      return {
+        error: error instanceof Error ? error.message : "Login failed",
+        user: null,
+      }
     }
   }
 
   const signOut = async () => {
     try {
-      const refreshToken = localStorage.getItem(AUTH_REFRESH_KEY)
-      if (refreshToken) {
-        await fetch("/api/v1/auth/logout", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ refresh_token: refreshToken }),
-        })
-      }
-    } catch (error) {
-      console.warn("Backend sign-out failed.", error)
+      await api.auth.logout()
     } finally {
-      localStorage.removeItem(AUTH_TOKEN_KEY)
-      localStorage.removeItem(AUTH_REFRESH_KEY)
-      localStorage.removeItem(AUTH_USER_KEY)
+      clearSessionHint()
       setUser(null)
     }
   }

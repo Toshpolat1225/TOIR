@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Users, Plus, X, Save, Pencil, ShieldCheck, Shield, HardHat, Trash2, Eye, EyeOff } from "@/components/ui/icons"
-import { supabase } from "@/lib/supabase"
+import { Users, Plus, X, Save, Pencil, ShieldCheck, Shield, HardHat, Eye, EyeOff } from "@/components/ui/icons"
+import { api } from "@/lib/api"
 import { useAuth, type Profile, type UserRole } from "@/lib/auth-context"
-import { useSections } from "@/lib/use-sections"
+import { useSections, type SectionData } from "@/lib/use-sections"
 import { Button } from "@/components/ui/button"
 
 const ROLE_CFG: Record<"admin" | "operator" | "master" | "management", { label: string; cls: string; Icon: React.ElementType }> = {
@@ -15,7 +15,7 @@ const ROLE_CFG: Record<"admin" | "operator" | "master" | "management", { label: 
 }
 
 /* ─── Модал создания пользователя ─── */
-function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void; onCreated: () => void; sections: string[] }) {
+function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void; onCreated: () => void; sections: SectionData[] }) {
   const [fullName, setFullName] = useState("")
   const [email,    setEmail]    = useState("")
   const [password, setPassword] = useState("")
@@ -30,18 +30,25 @@ function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void
       setError("Заполните все поля. Пароль — минимум 6 символов.")
       return
     }
+    if (role === "master" && !section) {
+      setError("Для мастера необходимо выбрать участок.")
+      return
+    }
     setBusy(true)
     setError("")
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName.trim(), role, section } },
-    })
-    if (error) {
-      setError(error.message)
+    try {
+      await api.users.create({
+        email: email.trim(),
+        full_name: fullName.trim(),
+        password,
+        role,
+        section_id: section || null,
+      })
+      onCreated()
+      onClose()
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Не удалось создать пользователя.")
       setBusy(false)
-    } else {
-      setTimeout(() => { onCreated(); onClose() }, 600)
     }
   }
 
@@ -82,13 +89,14 @@ function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void
                 <option value="admin">Администратор</option>
                 <option value="operator">Оператор</option>
                 <option value="master">Мастер</option>
+                <option value="management">Руководство</option>
               </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Участок</label>
               <select value={section} onChange={e=>setSection(e.target.value)} className={sel}>
                 <option value="">— не указан —</option>
-                {sections.map(s=><option key={s} value={s}>{s}</option>)}
+                {sections.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
           </div>
@@ -113,22 +121,57 @@ function EditUserModal({ profile, onClose, onSaved, sections }: {
   profile: Profile
   onClose: () => void
   onSaved: () => void
-  sections: string[]
+  sections: SectionData[]
 }) {
   const [fullName, setFullName] = useState(profile.full_name ?? "")
   const [role,     setRole]     = useState<UserRole>(profile.role)
-  const [section,  setSection]  = useState(profile.section ?? "")
+  const [section,  setSection]  = useState(profile.section_id ?? "")
+  const [isActive, setIsActive] = useState(profile.is_active)
+  const [newPassword, setNewPassword] = useState("")
   const [busy,     setBusy]     = useState(false)
+  const [resetBusy, setResetBusy] = useState(false)
   const [error,    setError]    = useState("")
+  const [resetSuccess, setResetSuccess] = useState(false)
 
   const handleSave = async () => {
+    if (role === "master" && !section) {
+      setError("Для мастера необходимо выбрать участок.")
+      return
+    }
     setBusy(true)
-    const { error } = await supabase
-      .from("profiles")
-      .update({ full_name: fullName.trim(), role, section })
-      .eq("id", profile.id)
-    if (error) { setError(error.message); setBusy(false) }
-    else { onSaved(); onClose() }
+    setError("")
+    try {
+      await api.users.update(profile.id, {
+        full_name: fullName.trim(),
+        role,
+        section_id: section || null,
+        is_active: isActive,
+      })
+      onSaved()
+      onClose()
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Не удалось обновить пользователя.")
+      setBusy(false)
+    }
+  }
+
+  const handlePasswordReset = async () => {
+    if (newPassword.length < 6) {
+      setError("Пароль должен содержать не менее 6 символов.")
+      return
+    }
+    setResetBusy(true)
+    setError("")
+    setResetSuccess(false)
+    try {
+      await api.users.resetPassword(profile.id, newPassword)
+      setNewPassword("")
+      setResetSuccess(true)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Не удалось сбросить пароль.")
+    } finally {
+      setResetBusy(false)
+    }
   }
 
   const inp = "w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -159,16 +202,43 @@ function EditUserModal({ profile, onClose, onSaved, sections }: {
                 <option value="admin">Администратор</option>
                 <option value="operator">Оператор</option>
                 <option value="master">Мастер</option>
+                <option value="management">Руководство</option>
               </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Участок</label>
               <select value={section} onChange={e=>setSection(e.target.value)} className={sel}>
                 <option value="">— не указан —</option>
-                {sections.map(s=><option key={s} value={s}>{s}</option>)}
+                {sections.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
           </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={e=>setIsActive(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            Активная учетная запись
+          </label>
+          <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Сбросить пароль</label>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={newPassword}
+                onChange={e=>setNewPassword(e.target.value)}
+                placeholder="Новый пароль (минимум 6 символов)"
+                className={inp}
+                autoComplete="new-password"
+              />
+              <Button variant="outline" onClick={handlePasswordReset} disabled={resetBusy || !newPassword}>
+                {resetBusy ? "..." : "Сбросить"}
+              </Button>
+            </div>
+          </div>
+          {resetSuccess && <p role="status" className="text-emerald-700 text-sm dark:text-emerald-400">Пароль успешно обновлён.</p>}
           {error && <p className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{error}</p>}
         </div>
 
@@ -187,35 +257,33 @@ function EditUserModal({ profile, onClose, onSaved, sections }: {
 /* ─── ГЛАВНАЯ СТРАНИЦА ─── */
 export default function AdminUsersPage() {
   const { profile: myProfile } = useAuth()
-  const { sections } = useSections()
+  const { sectionsData } = useSections()
   const [users,     setUsers]     = useState<Profile[]>([])
   const [loading,   setLoading]   = useState(true)
+  const [loadError, setLoadError] = useState("")
   const [showCreate, setShowCreate] = useState(false)
   const [editing,    setEditing]   = useState<Profile | null>(null)
   const [search,     setSearch]    = useState("")
 
   const fetchUsers = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .order("created_at", { ascending: true })
-    setUsers((data as Profile[]) ?? [])
-    setLoading(false)
+    setLoadError("")
+    try {
+      const response = await api.users.list({
+        limit: 1000,
+        offset: 0,
+        sort_by: "created_at",
+        sort_order: "asc",
+      })
+      setUsers(response.items)
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Не удалось загрузить пользователей.")
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { fetchUsers() }, [fetchUsers])
-
-  // Real-time подписка на изменения в profiles
-  useEffect(() => {
-    const channel = supabase
-      .channel("admin_users_sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
-        fetchUsers()
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [fetchUsers])
 
   if (myProfile?.role !== "admin") {
     return (
@@ -228,7 +296,7 @@ export default function AdminUsersPage() {
   const filtered = users.filter(u => {
     const q = search.toLowerCase()
     const fullName = (u.full_name ?? "").toLowerCase()
-    const section = (u.section ?? "").toLowerCase()
+    const section = (sectionsData.find(item => item.id === u.section_id)?.name ?? "").toLowerCase()
     return !q || fullName.includes(q) || u.email.toLowerCase().includes(q) || section.includes(q)
   })
 
@@ -241,8 +309,8 @@ export default function AdminUsersPage() {
 
   return (
     <div className="p-8 space-y-6">
-      {showCreate && <CreateUserModal onClose={()=>setShowCreate(false)} onCreated={fetchUsers} sections={sections}/>}
-      {editing    && <EditUserModal   profile={editing} onClose={()=>setEditing(null)} onSaved={fetchUsers} sections={sections}/>}
+      {showCreate && <CreateUserModal onClose={()=>setShowCreate(false)} onCreated={fetchUsers} sections={sectionsData}/>}
+      {editing    && <EditUserModal   profile={editing} onClose={()=>setEditing(null)} onSaved={fetchUsers} sections={sectionsData}/>}
 
       {/* Заголовок */}
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -254,6 +322,12 @@ export default function AdminUsersPage() {
           <Plus className="w-4 h-4"/> Создать пользователя
         </Button>
       </div>
+      {loadError && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+          {loadError}
+          <Button variant="outline" onClick={fetchUsers} className="ml-3">Повторить</Button>
+        </div>
+      )}
 
       {/* KPI карточки */}
       <div className="grid grid-cols-4 gap-4">
@@ -332,7 +406,9 @@ export default function AdminUsersPage() {
                         {cfg.label}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{u.section || "—"}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
+                      {sectionsData.find(section => section.id === u.section_id)?.name || "—"}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <button
                         onClick={()=>setEditing(u)}
@@ -350,8 +426,7 @@ export default function AdminUsersPage() {
       </div>
 
       <p className="text-xs text-gray-400 dark:text-gray-600">
-        Для сброса пароля пользователя используйте раздел Authentication в Supabase Dashboard.
-        Убедитесь что в настройках Supabase Auth отключено подтверждение email (Email Confirmations → Off).
+        Управление учетными записями выполняется через локальный API.
       </p>
     </div>
   )

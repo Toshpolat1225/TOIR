@@ -6,6 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation"
 import { api } from "@/lib/api"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/lib/auth-context"
+import { useSectionView } from "@/lib/section-view-context"
 import {
   ClipboardList, Plus, Search, CheckCircle, Clock, Wrench,
   AlertTriangle, X, Trash2, PackagePlus, ChevronDown,
@@ -1712,6 +1713,7 @@ function WorkOrdersPage() {
   const router       = useRouter()
 
   const { profile } = useAuth()
+  const { effectiveSection } = useSectionView()
   const isMaster   = profile?.role === "master"
 
   const [orders,         setOrders]         = useState<WorkOrder[]>([])
@@ -1839,8 +1841,10 @@ function WorkOrdersPage() {
   const clearFilters  = () => { setFSection(""); setFEquip(""); setFUnitType("") }
 
   // Мастер видит только наряды своего участка
-  const baseOrders = isMaster && profile?.section
-    ? orders.filter(o => o.section === profile.section)
+  const baseOrders = isMaster
+    ? effectiveSection
+      ? orders.filter(o => o.section === effectiveSection)
+      : []
     : orders
 
   const counts = {
@@ -2059,7 +2063,7 @@ function WorkOrdersPage() {
               {filtered.length===0 && (
                 <tr><td colSpan={10} className="px-5 py-12 text-center text-sm text-gray-400">
                   <Filter className="w-8 h-8 mx-auto mb-2 opacity-30"/>
-                  {isMaster && !profile?.section
+                  {isMaster && !effectiveSection
                     ? "Выберите ваш участок, чтобы увидеть наряды"
                     : tabStatus === "completed" ? "Выполненных нарядов нет"
                     : tabStatus === "in_progress" ? "Нарядов в работе нет"

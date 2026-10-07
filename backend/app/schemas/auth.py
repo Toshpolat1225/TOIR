@@ -34,3 +34,9 @@ class TokenResponse(BaseModel):
     token_type: Literal["bearer"] = "bearer"
     refresh_token: str
     expires_in: int = Field(gt=0)
+
+
+class AccessTokenResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_in: int = Field(gt=0)

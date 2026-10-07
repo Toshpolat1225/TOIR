@@ -8,14 +8,17 @@ import os
 import secrets
 import sys
 import uuid
+from copy import copy
 from dataclasses import dataclass
+from http.cookiejar import CookieJar
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 
 BASE_URL = os.environ.get("TOIR_API_BASE_URL", "http://localhost:8010").rstrip("/")
+FRONTEND_ORIGIN = os.environ.get("TOIR_FRONTEND_ORIGIN", "http://localhost:3000")
 FOREIGN_ORIGIN = "https://smoke-foreign.example.invalid"
 TIMEOUT_SECONDS = 15
 
@@ -52,6 +55,18 @@ class TestUser:
     inactive: bool = False
 
 
+class ApiSession:
+    def __init__(self) -> None:
+        self.cookies = CookieJar()
+        self.opener = build_opener(HTTPCookieProcessor(self.cookies))
+
+    def clone(self) -> "ApiSession":
+        cloned = ApiSession()
+        for cookie in self.cookies:
+            cloned.cookies.set_cookie(copy(cookie))
+        return cloned
+
+
 def request(
     method: str,
     path: str,
@@ -59,6 +74,7 @@ def request(
     payload: dict[str, Any] | None = None,
     bearer: str | None = None,
     headers: dict[str, str] | None = None,
+    session: ApiSession | None = None,
 ) -> ApiResponse:
     request_headers = dict(headers or {})
     body = None
@@ -75,7 +91,8 @@ def request(
         method=method,
     )
     try:
-        with urlopen(http_request, timeout=TIMEOUT_SECONDS) as response:
+        opener = session.opener if session is not None else build_opener()
+        with opener.open(http_request, timeout=TIMEOUT_SECONDS) as response:
             return ApiResponse(
                 response.status,
                 {name.lower(): value for name, value in response.headers.items()},
@@ -162,8 +179,10 @@ def print_results(checks: list[Check]) -> None:
 def main() -> int:
     checks: list[Check] = []
     users: list[TestUser] = []
+    admin_session = ApiSession()
+    user_session = ApiSession()
+    limiter_session = ApiSession()
     admin_access: str | None = None
-    admin_refresh: str | None = None
     stopped_reason: str | None = None
 
     parsed_base = urlsplit(BASE_URL)
@@ -183,31 +202,72 @@ def main() -> int:
             "POST",
             "/api/v1/auth/login",
             payload={"email": admin_email, "password": admin_password},
+            session=admin_session,
         )
         require_status(checks, "Admin login", login, 200)
         admin_tokens = parse_object(login)
         admin_access = required_text(admin_tokens, "access_token")
-        admin_refresh = required_text(admin_tokens, "refresh_token")
+        cookie_header = login.headers.get("set-cookie", "").lower()
+        cookie_attributes_present = (
+            "toir_refresh_token=" in cookie_header
+            and "httponly" in cookie_header
+            and "samesite=lax" in cookie_header
+        )
+        check_condition(
+            checks,
+            "Login sets HttpOnly SameSite=Lax refresh cookie",
+            cookie_attributes_present,
+            "Refresh cookie name and required attributes are present"
+            if cookie_attributes_present
+            else "Expected named cookie with HttpOnly and SameSite=Lax",
+        )
+        secure_expected = parsed_base.scheme == "https"
+        secure_present = any(
+            attribute.strip() == "secure"
+            for attribute in cookie_header.split(";")
+        )
+        check_condition(
+            checks,
+            "Refresh cookie Secure matches API scheme",
+            secure_present == secure_expected,
+            "Secure attribute matches HTTPS configuration"
+            if secure_present == secure_expected
+            else "Secure attribute does not match the API scheme",
+        )
+        check_condition(
+            checks,
+            "Refresh token omitted from login JSON",
+            "refresh_token" not in admin_tokens,
+            "No refresh_token field returned"
+            if "refresh_token" not in admin_tokens
+            else "Response contained a refresh_token field",
+        )
         admin_me = request("GET", "/api/v1/auth/me", bearer=admin_access)
         check_status(checks, "Admin /me", admin_me, 200)
 
+        previous_refresh_session = admin_session.clone()
         rotated = request(
             "POST",
             "/api/v1/auth/refresh",
-            payload={"refresh_token": admin_refresh},
+            session=admin_session,
         )
         require_status(checks, "Refresh token rotation", rotated, 200)
         rotated_tokens = parse_object(rotated)
         admin_access = required_text(rotated_tokens, "access_token")
-        next_refresh = required_text(rotated_tokens, "refresh_token")
 
         old_refresh = request(
             "POST",
             "/api/v1/auth/refresh",
-            payload={"refresh_token": admin_refresh},
+            session=previous_refresh_session,
         )
         check_status(checks, "Reused refresh token rejected", old_refresh, 401)
-        admin_refresh = next_refresh
+        rotated_again = request(
+            "POST",
+            "/api/v1/auth/refresh",
+            session=admin_session,
+        )
+        require_status(checks, "Rotated refresh cookie accepted", rotated_again, 200)
+        admin_access = required_text(parse_object(rotated_again), "access_token")
 
         user_response, email, password = create_test_user(admin_access, "user")
         require_status(checks, "Create regular smoke user", user_response, 201)
@@ -236,6 +296,7 @@ def main() -> int:
             "POST",
             "/api/v1/auth/login",
             payload={"email": user.email, "password": user.password},
+            session=user_session,
         )
         check_status(checks, "Regular user login", user_login, 200)
         user_access: str | None = None
@@ -255,6 +316,7 @@ def main() -> int:
                     "email": limiter_user.email,
                     "password": secrets.token_urlsafe(32),
                 },
+                session=limiter_session,
             )
             check_status(
                 checks,
@@ -269,10 +331,31 @@ def main() -> int:
                 "email": limiter_user.email,
                 "password": secrets.token_urlsafe(32),
             },
+            session=limiter_session,
         )
         check_status(checks, "Five failures trigger rate limit", limited, 429)
 
         cors = request(
+            "OPTIONS",
+            "/api/v1/auth/login",
+            headers={
+                "Origin": FRONTEND_ORIGIN,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+        allow_origin = cors.headers.get("access-control-allow-origin")
+        check_condition(
+            checks,
+            "Frontend Origin allowed by CORS with credentials",
+            allow_origin == FRONTEND_ORIGIN
+            and cors.headers.get("access-control-allow-credentials") == "true",
+            "Exact origin and credentials permission returned"
+            if allow_origin == FRONTEND_ORIGIN
+            and cors.headers.get("access-control-allow-credentials") == "true"
+            else "Expected exact frontend origin and allow-credentials: true",
+        )
+        foreign_cors = request(
             "OPTIONS",
             "/api/v1/auth/login",
             headers={
@@ -281,13 +364,13 @@ def main() -> int:
                 "Access-Control-Request-Headers": "content-type",
             },
         )
-        allow_origin = cors.headers.get("access-control-allow-origin")
+        foreign_allow_origin = foreign_cors.headers.get("access-control-allow-origin")
         check_condition(
             checks,
             "Foreign Origin not allowed by CORS",
-            allow_origin not in {FOREIGN_ORIGIN, "*"},
+            foreign_allow_origin not in {FOREIGN_ORIGIN, "*"},
             "No matching Access-Control-Allow-Origin header"
-            if allow_origin not in {FOREIGN_ORIGIN, "*"}
+            if foreign_allow_origin not in {FOREIGN_ORIGIN, "*"}
             else "Foreign origin was allowed",
         )
 
@@ -330,13 +413,13 @@ def main() -> int:
         logout = request(
             "POST",
             "/api/v1/auth/logout",
-            payload={"refresh_token": admin_refresh},
+            session=admin_session,
         )
         require_status(checks, "Logout", logout, 204)
         after_logout = request(
             "POST",
             "/api/v1/auth/refresh",
-            payload={"refresh_token": admin_refresh},
+            session=admin_session,
         )
         check_status(checks, "Logged-out refresh token rejected", after_logout, 401)
     except SmokeError as exc:

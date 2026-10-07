@@ -11,7 +11,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 import { SectionViewProvider, useSectionView } from "@/lib/section-view-context"
-import { useSections } from "@/lib/use-sections"
+import { useSections, type SectionData } from "@/lib/use-sections"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 
 const ALL_NAV = [
@@ -37,18 +37,26 @@ function UserBlockWithSection({
   user,
   role,
   badge,
+  sections,
+  sectionsData,
+  sectionsLoading,
   onSignOut,
 }: {
-  profile: { full_name?: string | null; section?: string | null } | null
+  profile: { full_name?: string | null; section?: string | null; section_id?: string | null } | null
   user: { email?: string } | null
   role: string
   badge: { label: string; cls: string }
+  sections: string[]
+  sectionsData: SectionData[]
+  sectionsLoading: boolean
   onSignOut: () => void
 }) {
   const isAdmin = role === "admin"
   const { viewSection, setViewSection } = useSectionView()
-  const { sections, loading: sectionsLoading } = useSections()
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const sectionName = profile?.section
+    ?? sectionsData.find((section) => section.id === profile?.section_id)?.name
+    ?? null
 
   return (
     <div className="px-3 py-4 border-t border-gray-200 dark:border-gray-800 flex-shrink-0">
@@ -103,9 +111,9 @@ function UserBlockWithSection({
               </>
             )}
           </div>
-        ) : profile?.section ? (
+        ) : sectionName ? (
           <div className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300">
-            <span className="truncate">{profile.section}</span>
+            <span className="truncate">{sectionName}</span>
           </div>
         ) : null}
         <span className={cn("inline-block text-xs px-2 py-0.5 rounded-full font-medium mt-2", badge.cls)}>
@@ -128,6 +136,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname()
   const router   = useRouter()
   const { user, profile, loading, signOut } = useAuth()
+  const { sections, sectionsData, loading: sectionsLoading } = useSections()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   useEffect(() => {
@@ -149,6 +158,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const navItems = ALL_NAV.filter(n => n.roles.includes(role))
   const badge    = ROLE_BADGE[role]
   const isAdmin  = role === "admin"
+  const sectionName = profile?.section
+    ?? sectionsData.find((section) => section.id === profile?.section_id)?.name
+    ?? null
   const currentPage = navItems.find((item) =>
     item.exact ? pathname === item.href : pathname.startsWith(item.href)
   )
@@ -160,7 +172,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <SectionViewProvider
-      effectiveSectionFromProfile={profile?.section ?? null}
+      effectiveSectionFromProfile={sectionName}
       isAdmin={isAdmin}
     >
       <div className="min-h-screen bg-slate-50 dark:bg-gray-950">
@@ -198,7 +210,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               )
             })}
           </nav>
-          <UserBlockWithSection profile={profile} user={user} role={role} badge={badge} onSignOut={handleSignOut} />
+          <UserBlockWithSection
+            profile={profile}
+            user={user}
+            role={role}
+            badge={badge}
+            sections={sections}
+            sectionsData={sectionsData}
+            sectionsLoading={sectionsLoading}
+            onSignOut={handleSignOut}
+          />
         </aside>
         <div className="min-h-screen md:ml-[272px]">
           <header className="navbar navbar-expand-lg sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur md:px-8 dark:border-gray-800 dark:bg-gray-900/95">
