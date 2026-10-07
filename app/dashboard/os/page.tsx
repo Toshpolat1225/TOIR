@@ -2,7 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRealtime } from "@/lib/use-realtime"
-import { api } from "@/lib/api" // Keep this import
+import {
+  api,
+  type FixedAsset as ApiFixedAsset,
+  type FixedAssetCreate,
+  type FixedAssetUpdate,
+} from "@/lib/api"
 import { useSections } from "@/lib/use-sections"
 import {
   Train, Container, Plus, Search, X, Save, ChevronDown,
@@ -19,11 +24,12 @@ type AssetType = "locomotive" | "wagon" | "diesel"
 type AssetStatus = "operational" | "maintenance" | "repair" | "out_of_service"
 
 type FixedAsset = {
-  id:           string   // инвентарный номер
+  id:           string
   name:         string   // наименование
   assetType:    AssetType
   series:       string
   depot:        string
+  sectionId:    string | null
   status:       AssetStatus
   commDate:     string   // дата ввода в эксплуатацию
   yearBuilt:    string
@@ -33,6 +39,7 @@ type FixedAsset = {
   invNumber:    string   // инвентарный номер ОС
   initialCost:  string   // первоначальная стоимость (сум)
   owner:        string
+  wialonId:     string | null
   /** Пробег синхронизирован из Wialon */
   wialonLastSync?: string | null
   wialonOnline?: boolean
@@ -214,7 +221,7 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections }: {
               ) : (
                 <>
                   <p className={fieldCls(false)}>{mileage || "—"}</p>
-                  {(asset.assetType === "locomotive" || asset.assetType === "diesel") && asset.wialonLastSync && (
+                  {(asset.assetType === "locomotive" || asset.assetType === "diesel") && asset.wialonOnline && asset.wialonLastSync && (
                     <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1">
                       <Radio className="w-3 h-3"/> Актуальные данные с Wialon · обновлено {new Date(asset.wialonLastSync).toLocaleString("ru-RU")}
                     </p>
@@ -295,8 +302,8 @@ function AddAssetModal({ onClose, onSave, sections }: { onClose: () => void; onS
   const [error,       setError]       = useState("")
 
   const handleSave = () => {
-    if (!name.trim() || !commDate.trim()) {
-      setError("Заполните обязательные поля: Наименование, Дата ввода")
+    if (!name.trim() || !invNumber.trim() || !commDate.trim()) {
+      setError("Заполните обязательные поля: Инвентарный номер, Наименование, Дата ввода")
       return
     }
     // Генерируем уникальный ID
@@ -307,6 +314,7 @@ function AddAssetModal({ onClose, onSave, sections }: { onClose: () => void; onS
       assetType,
       series,
       depot,
+      sectionId: null,
       status: "operational",
       commDate: commDate.trim(),
       yearBuilt,
@@ -316,6 +324,7 @@ function AddAssetModal({ onClose, onSave, sections }: { onClose: () => void; onS
       invNumber: invNumber.trim(),
       initialCost,
       owner,
+      wialonId: null,
     })
   }
 
@@ -398,8 +407,8 @@ function AddAssetModal({ onClose, onSave, sections }: { onClose: () => void; onS
               <input value={yearBuilt} onChange={e => setYearBuilt(e.target.value)} className={inp} placeholder="2015"/>
             </div>
             <div>
-              <label className={lbl}>Номер вагона</label>
-              <input value={initialCost} onChange={e => setInitialCost(e.target.value)} className={inp} placeholder="33-9909"/>
+              <label className={lbl}>Первоначальная стоимость (сум)</label>
+                <input type="number" min="0" step="0.01" value={initialCost} onChange={e => setInitialCost(e.target.value)} className={inp}/>
             </div>
           </div>
 
@@ -435,51 +444,68 @@ function AddAssetModal({ onClose, onSave, sections }: { onClose: () => void; onS
 /* ════════════════════════════════════════
    СТРАНИЦА
 ════════════════════════════════════════ */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function fromRow(r: any): FixedAsset {
+function displayDate(value: string | null): string {
+  if (!value) return ""
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : value
+}
+
+function apiDate(value: string): string | null {
+  const normalized = value.trim()
+  if (!normalized || normalized === "—") return null
+  const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(normalized)
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : normalized
+}
+
+function fromRow(r: ApiFixedAsset): FixedAsset {
   return {
     id:               r.id,
     name:             r.name,
     assetType:        r.asset_type,
-    series:           r.series,
-    depot:            r.depot,
+    series:           r.series ?? "",
+    depot:            r.depot ?? "",
+    sectionId:        r.section_id,
     status:           r.status,
-    commDate:         r.comm_date,
-    yearBuilt:        r.year_built,
+    commDate:         displayDate(r.comm_date),
+    yearBuilt:        String(r.year_built ?? ""),
     mileage:          String(r.mileage ?? ""),
-    lastMaint:        r.last_maint,
-    nextMaint:        r.next_maint,
+    lastMaint:        displayDate(r.last_maint_date),
+    nextMaint:        displayDate(r.next_maint_date),
     invNumber:        r.inv_number,
-    initialCost:      r.initial_cost,
-    owner:            r.owner,
+    initialCost:      String(r.initial_cost ?? ""),
+    owner:            r.owner ?? "",
+    wialonId:         r.wialon_id,
     wialonLastSync:   r.wialon_last_sync ?? null,
-    wialonOnline:     !!r.wialon_online,
+    wialonOnline:     r.wialon_online,
   }
 }
 
-function toRow(a: FixedAsset) {
+function toRow(
+  a: FixedAsset
+): FixedAssetUpdate & Pick<FixedAssetCreate, "inv_number" | "name" | "asset_type"> {
   return {
-    id:           a.id,
+    inv_number:   a.invNumber,
     name:         a.name,
     asset_type:   a.assetType,
-    series:       a.series,
-    depot:        a.depot,
+    series:       a.series || null,
+    depot:        a.depot || null,
+    section_id:   a.sectionId,
     status:       a.status,
-    comm_date:    a.commDate,
-    year_built:   a.yearBuilt,
+    comm_date:    apiDate(a.commDate),
+    year_built:   a.yearBuilt ? Number(a.yearBuilt) : null,
     mileage:      Number(a.mileage) || 0,
-    last_maint:   a.lastMaint,
-    next_maint:   a.nextMaint,
-    inv_number:   a.invNumber,
-    initial_cost: a.initialCost,
-    owner:        a.owner,
+    last_maint_date: apiDate(a.lastMaint),
+    next_maint_date: apiDate(a.nextMaint),
+    initial_cost: a.initialCost ? Number(a.initialCost) : null,
+    owner:        a.owner || null,
+    wialon_id:    a.wialonId,
   }
 }
 
 const PAGE_SIZE = 50
 
 export default function OsPage() {
-  const { sections } = useSections()
+  const { sections, getSectionId } = useSections()
   const [assets,    setAssets]    = useState<FixedAsset[]>([])
   const [total,     setTotal]     = useState(0)
   const [counts,    setCounts]    = useState({ total:0, loco:0, wagon:0, operational:0, repair:0, retired:0 })
@@ -498,32 +524,22 @@ export default function OsPage() {
 
   // Загружаем счётчики и список депо один раз (оптимизированные запросы)
   const fetchCounts = useCallback(async () => {
-    // This function is now simplified. Counts are derived from the full dataset fetched once.
-    // A more scalable approach would be a dedicated `/fixed-assets/stats` endpoint.
     try {
-      const { items, total } = await api.fixedAssets.list({ limit: 10000, offset: 0 }) // Fetch all for stats
-      const locoCount = items.filter(a => a.asset_type === 'locomotive').length;
-      const wagonCount = items.filter(a => a.asset_type === 'wagon').length;
-      const operCount = items.filter(a => a.status === 'operational').length;
-      const maintCount = items.filter(a => a.status === 'maintenance').length;
-      const repairCount = items.filter(a => a.status === 'repair').length;
-      const retiredCount = items.filter(a => a.status === 'out_of_service').length;
-
+      const stats = await api.fixedAssets.stats()
       setCounts({
-        total: total,
-        loco: locoCount,
-        wagon: wagonCount,
-        operational: operCount,
-        repair: maintCount + repairCount,
-        retired: retiredCount,
+        total: stats.total,
+        loco: stats.by_asset_type.locomotive,
+        wagon: stats.by_asset_type.wagon,
+        operational: stats.by_status.operational,
+        repair: stats.by_status.maintenance + stats.by_status.repair,
+        retired: stats.by_status.out_of_service,
       });
-      
-      const deps = [...new Set(items.map(a => a.depot).filter(Boolean) as string[])].sort();
+      const deps = [...new Set([...sections, ...stats.depots])].sort();
       setAllDepots(deps);
     } catch (error) {
       console.error("Failed to fetch asset counts:", error);
     }
-  }, [])
+  }, [sections])
 
   const fetchAssets = useCallback(async (pg: number, q: string, ft: string, fd: string, fs: string) => {
     setLoading(true)
@@ -534,10 +550,12 @@ export default function OsPage() {
         sort_by: 'created_at',
         sort_order: 'desc',
       };
-      if (q) params.name = q; // Backend should handle ilike search on multiple fields
+      if (q) params.q = q;
       if (ft) params.asset_type = ft as AssetType;
       if (fd) params.depot = fd;
       if (fs) params.status = fs as AssetStatus;
+      const selectedSectionId = fd ? getSectionId(fd) : undefined;
+      if (selectedSectionId) params.section_id = selectedSectionId;
 
       const response = await api.fixedAssets.list(params);
       
@@ -553,7 +571,7 @@ export default function OsPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [getSectionId])
 
   useEffect(() => { fetchCounts() }, [fetchCounts])
 
@@ -587,7 +605,10 @@ export default function OsPage() {
 
   const handleSave = async (updated: FixedAsset) => {
     try {
-      await api.fixedAssets.update(updated.id, toRow(updated));
+      await api.fixedAssets.update(updated.id, {
+        ...toRow(updated),
+        section_id: getSectionId(updated.depot) ?? updated.sectionId,
+      });
       fetchAssets(page, search, fType, fDepot, fStatus)
       fetchCounts()
       setSelected(null)
@@ -609,9 +630,10 @@ export default function OsPage() {
 
   const handleAdd = async (a: FixedAsset) => {
     try {
-      // The backend will generate the ID, so we can omit it here.
-      const { id, ...newAssetData } = toRow(a);
-      await api.fixedAssets.create(newAssetData);
+      await api.fixedAssets.create({
+        ...toRow(a),
+        section_id: getSectionId(a.depot) ?? null,
+      });
       fetchAssets(0, search, fType, fDepot, fStatus)
       fetchCounts()
       setPage(0)
@@ -671,7 +693,7 @@ export default function OsPage() {
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[200px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/>
-            <Input placeholder="Поиск по номеру, наименованию, депо..." className="pl-9"
+            <Input placeholder="Поиск по инвентарному номеру, наименованию, серии..." className="pl-9"
               value={search} onChange={e => setSearch(e.target.value)}/>
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -782,9 +804,9 @@ export default function OsPage() {
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{a.mileage || "—"}</span>
-                      {(a.assetType === "locomotive" || a.assetType === "diesel") && (a.wialonOnline || a.wialonLastSync) && (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400" title={a.wialonLastSync ? `Обновлено: ${new Date(a.wialonLastSync).toLocaleString("ru-RU")}` : "Данные из Wialon"}>
-                          <Radio className="w-2.5 h-2.5"/> Wialon
+                      {(a.assetType === "locomotive" || a.assetType === "diesel") && a.wialonLastSync && (
+                        <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded ${a.wialonOnline ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`} title={`Обновлено: ${new Date(a.wialonLastSync).toLocaleString("ru-RU")}`}>
+                          <Radio className="w-2.5 h-2.5"/> {a.wialonOnline ? "Wialon" : "Офлайн"}
                         </span>
                       )}
                     </div>

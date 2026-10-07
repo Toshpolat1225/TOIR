@@ -417,39 +417,95 @@ const nomenclature = {
 
 // --- Fixed Assets Module ---
 
-type FixedAsset = {
+export type FixedAsset = {
   id: string;
+  inv_number: string;
   name: string;
-  asset_type: "locomotive" | "wagon" | "diesel" | null;
-  depot: string | null;
-  status?: "operational" | "maintenance" | "repair" | "out_of_service";
+  asset_type: "locomotive" | "wagon" | "diesel";
   series: string | null;
+  depot: string | null;
+  section_id: string | null;
+  status: "operational" | "maintenance" | "repair" | "out_of_service";
   comm_date: string | null;
-  year_built: string | null;
-  mileage: number | null;
+  year_built: number | null;
+  mileage: number | string;
   last_maint_date: string | null;
-  inv_number: string | null;
-  initial_cost: string | null;
+  next_maint_date: string | null;
+  initial_cost: number | string | null;
   owner: string | null;
+  wialon_id: string | null;
   wialon_last_sync: string | null;
-  wialon_online: boolean | null;
+  wialon_speed: number | string | null;
+  wialon_online: boolean;
+  failure_probability: number | string | null;
+  health_score: number | string | null;
+  predicted_failure_km: number | string | null;
+  last_ml_update: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
-type FixedAssetListParams = ListParams & {
-  name?: string;
-  asset_type?: string;
+export type FixedAssetListParams = ListParams & {
+  q?: string;
+  asset_type?: FixedAsset["asset_type"];
+  status?: FixedAsset["status"];
+  section_id?: string;
   depot?: string;
-  status?: "operational" | "maintenance" | "repair" | "out_of_service";
 };
+
+export type FixedAssetStats = {
+  total: number;
+  by_asset_type: Record<FixedAsset["asset_type"], number>;
+  by_status: Record<FixedAsset["status"], number>;
+  depots: string[];
+};
+
+export type MileageHistory = {
+  id: number;
+  asset_id: string;
+  mileage: number | string;
+  source: "wialon" | "manual";
+  recorded_at: string;
+};
+
+export type FixedAssetCreate = Pick<FixedAsset, "inv_number" | "name" | "asset_type"> &
+  Partial<Omit<FixedAsset, "id" | "inv_number" | "name" | "asset_type" | "created_at" | "updated_at" |
+    "wialon_last_sync" | "wialon_speed" | "wialon_online" | "failure_probability" |
+    "health_score" | "predicted_failure_km" | "last_ml_update">>;
+
+export type FixedAssetUpdate = Partial<Omit<FixedAsset, "id" | "created_at" | "updated_at" |
+  "wialon_last_sync" | "wialon_speed" | "wialon_online" | "failure_probability" |
+  "health_score" | "predicted_failure_km" | "last_ml_update">>;
 
 const fixedAssets = {
   async list(params: FixedAssetListParams): Promise<Paginated<FixedAsset>> {
     return request<Paginated<FixedAsset>>({ method: "GET", path: "/fixed-assets", params });
   },
-  async create(data: Partial<FixedAsset>): Promise<FixedAsset> {
+  async get(id: string): Promise<FixedAsset> {
+    return request<FixedAsset>({ method: "GET", path: `/fixed-assets/${id}` });
+  },
+  async stats(): Promise<FixedAssetStats> {
+    return request<FixedAssetStats>({ method: "GET", path: "/fixed-assets/stats" });
+  },
+  async mileageHistory(id: string, params: { days?: number; limit?: number } = {}): Promise<{
+    items: MileageHistory[];
+    total: number;
+    days: number;
+    limit: number;
+  }> {
+    return request({ method: "GET", path: `/fixed-assets/${id}/mileage-history`, params });
+  },
+  async setMileage(id: string, mileage: number): Promise<FixedAsset> {
+    return request<FixedAsset>({
+      method: "POST",
+      path: `/fixed-assets/${id}/mileage`,
+      body: { mileage },
+    });
+  },
+  async create(data: FixedAssetCreate): Promise<FixedAsset> {
     return request<FixedAsset>({ method: "POST", path: "/fixed-assets", body: data });
   },
-  async update(id: string, data: Partial<FixedAsset>): Promise<FixedAsset> {
+  async update(id: string, data: FixedAssetUpdate): Promise<FixedAsset> {
     return request<FixedAsset>({ method: "PATCH", path: `/fixed-assets/${id}`, body: data });
   },
   async remove(id: string): Promise<void> {
