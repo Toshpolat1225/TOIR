@@ -39,7 +39,7 @@ function UserBlockWithSection({
   badge,
   onSignOut,
 }: {
-  profile: { full_name?: string; section?: string } | null
+  profile: { full_name?: string | null; section?: string | null } | null
   user: { email?: string } | null
   role: string
   badge: { label: string; cls: string }

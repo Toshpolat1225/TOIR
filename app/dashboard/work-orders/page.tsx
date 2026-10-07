@@ -1734,10 +1734,29 @@ function WorkOrdersPage() {
   // Справочник участков (перемещён выше для использования в realtime подписке)
   const { sections: sectionsFromDb, refresh: refreshSections, getSectionId } = useSections()
 
-  // Load operational data from the same Supabase database used by the frontend.
+  // Try the current FastAPI backend first; fall back to legacy Supabase access only when needed.
   const fetchData = useCallback(async () => {
     setLoading(true)
     setApiError(null)
+
+    try {
+      const backendParams = {
+        limit: 1000,
+        offset: 0,
+        ...(fSection ? { section_id: fSection } : {}),
+        ...(tabStatus !== "open" ? { status: tabStatus } : {}),
+      }
+
+      const backendOrders = await api.workOrders.list(backendParams)
+      setOrders((backendOrders.items ?? []).map(fromRow))
+      setFixedAssets([])
+      setEmployees([])
+      setWorkTypesDb([])
+      return
+    } catch (backendError) {
+      console.warn("Backend work-orders API is unavailable, falling back to legacy data source:", backendError)
+    }
+
     try {
       let ordersQuery = supabase
         .from("work_orders")
@@ -1773,13 +1792,23 @@ function WorkOrdersPage() {
       }
 
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = typeof err === 'string'
+        ? err
+        : err && typeof err === 'object' && 'message' in err && typeof (err as { message?: unknown }).message === 'string'
+          ? (err as { message: string }).message
+          : err && typeof err === 'object' && 'detail' in err && typeof (err as { detail?: unknown }).detail === 'string'
+            ? (err as { detail: string }).detail
+            : 'An unknown error occurred';
+
       setApiError(`Failed to load data: ${message}`);
       setOrders([])
+      setFixedAssets([])
+      setEmployees([])
+      setWorkTypesDb([])
     } finally {
       setLoading(false)
     }
-  }, [search, fSection, tabStatus])
+  }, [fSection, tabStatus])
 
   useEffect(() => { 
     fetchData()

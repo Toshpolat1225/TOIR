@@ -421,7 +421,7 @@ export default function EmployeesPage() {
             <MapPin className="w-4 h-4 text-gray-400" />
           </div>
           <p className="text-2xl font-bold text-gray-900 dark:text-white mt-2">
-            {employees.filter((e) => e.location).length}
+            {employees.filter((e) => e.location_id).length}
           </p>
         </div>
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4">

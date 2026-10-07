@@ -53,8 +53,9 @@ export async function GET(request: NextRequest) {
       mileage: number
       recorded_at: string
       source: string
-      fixed_assets: { id: string; name: string; asset_type: string; series: string } | null
+      fixed_assets: { id: string; name: string; asset_type: string; series: string }[] | { id: string; name: string; asset_type: string; series: string } | null
     }) => {
+      const asset = Array.isArray(h.fixed_assets) ? h.fixed_assets[0] ?? null : h.fixed_assets
       const mileage = h.mileage
       const nearestThreshold = MAINTENANCE_THRESHOLDS.find(t => 
         mileage >= t * 0.9 && mileage <= t * 1.1
@@ -69,8 +70,8 @@ export async function GET(request: NextRequest) {
         datetime: h.recorded_at,
         mileage: h.mileage,
         asset_id: h.asset_id,
-        asset_name: h.fixed_assets?.name || "Unknown",
-        asset_type: h.fixed_assets?.asset_type,
+        asset_name: asset?.name || "Unknown",
+        asset_type: asset?.asset_type,
         threshold: nearestThreshold,
         isOverThreshold,
         source: h.source

@@ -141,17 +141,17 @@ export default function ReportsPage() {
     })
   }
 
-  const woByStatus = filteredWo.reduce((acc, row) => {
+  const woByStatus = filteredWo.reduce<Record<string, number>>((acc, row) => {
     const s = (row.status as string) || "pending"
-    acc[s] = (acc[s] || 0) + 1
+    acc[s] = (acc[s] ?? 0) + 1
     return acc
-  }, {} as Record<string, number>)
+  }, {})
 
-  const woBySection = filteredWo.reduce((acc, row) => {
+  const woBySection = filteredWo.reduce<Record<string, number>>((acc, row) => {
     const s = (row.section as string) || "—"
-    acc[s] = (acc[s] || 0) + 1
+    acc[s] = (acc[s] ?? 0) + 1
     return acc
-  }, {} as Record<string, number>)
+  }, {})
 
   const woChartData = Object.entries(woByStatus).map(([k, v]) => ({
     name: WO_STATUS_LABEL[k] || k,
@@ -164,17 +164,17 @@ export default function ReportsPage() {
     .slice(0, 10)
     .map(([name, count]) => ({ name, count }))
 
-  const assetsByStatus = filteredAssetsData.reduce((acc, row) => {
+  const assetsByStatus = filteredAssetsData.reduce<Record<string, number>>((acc, row) => {
     const s = (row.status as string) || "operational"
-    acc[s] = (acc[s] || 0) + 1
+    acc[s] = (acc[s] ?? 0) + 1
     return acc
-  }, {} as Record<string, number>)
+  }, {})
 
-  const assetsByType = filteredAssetsData.reduce((acc, row) => {
+  const assetsByType = filteredAssetsData.reduce<Record<string, number>>((acc, row) => {
     const t = (row.asset_type as string) || "locomotive"
-    acc[t] = (acc[t] || 0) + 1
+    acc[t] = (acc[t] ?? 0) + 1
     return acc
-  }, {} as Record<string, number>)
+  }, {})
 
   const assetsPieData = [
     ...Object.entries(assetsByStatus).map(([k, v]) => ({ name: ASSET_STATUS_LABEL[k] || k, value: v })),

@@ -1,27 +1,31 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react"
-import { supabase } from "./supabase"
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 
-export type UserRole = "admin" | "operator" | "master"
+export type UserRole = "admin" | "operator" | "master" | "management"
 
 export type Profile = {
   id: string
-  full_name: string
+  full_name: string | null
   email: string
   role: UserRole
-  section: string
+  section?: string | null
+  is_active?: boolean
 }
 
 type CurrentUser = Profile
 
 type AuthContextType = {
   user: CurrentUser | null
-  profile: CurrentUser | null // Merging profile into user for simplicity
+  profile: CurrentUser | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<{ error: string | null; user: CurrentUser | null }>
   signOut: () => Promise<void>
 }
+
+const AUTH_TOKEN_KEY = "toir_access_token"
+const AUTH_REFRESH_KEY = "toir_refresh_token"
+const AUTH_USER_KEY = "toir_user"
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
@@ -32,68 +36,51 @@ const AuthContext = createContext<AuthContextType>({
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user,    setUser]    = useState<CurrentUser | null>(null)
+  const [user, setUser] = useState<CurrentUser | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    let mounted = true
-    const loadUser = async (userId: string) => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, full_name, email, role, section")
-        .eq("id", userId)
-        .maybeSingle()
-
-      if (error) throw error
-      if (!data) throw new Error("User profile was not found.")
-      return data as Profile
-    }
+    let active = true
 
     const restoreSession = async () => {
       try {
-        const { data, error } = await supabase.auth.getSession()
-        if (error) throw error
+        const storedToken = localStorage.getItem(AUTH_TOKEN_KEY)
 
-        if (data.session) {
-          const currentUser = await loadUser(data.session.user.id)
-          if (mounted) setUser(currentUser)
+        if (!storedToken) {
+          if (active) setUser(null)
+          return
+        }
+
+        const response = await fetch("/api/v1/auth/me", {
+          headers: { Authorization: `Bearer ${storedToken}` },
+        })
+
+        if (!response.ok) {
+          throw new Error("Session expired")
+        }
+
+        const profile = (await response.json()) as CurrentUser
+        if (active) {
+          setUser(profile)
+          localStorage.setItem(AUTH_USER_KEY, JSON.stringify(profile))
         }
       } catch (error) {
-        console.error("Failed to restore Supabase session.", error)
-        if (mounted) setUser(null)
+        console.warn("Session restore failed:", error)
+        if (active) {
+          setUser(null)
+          localStorage.removeItem(AUTH_TOKEN_KEY)
+        localStorage.removeItem(AUTH_REFRESH_KEY)
+        localStorage.removeItem(AUTH_USER_KEY)
+        }
       } finally {
-        if (mounted) setLoading(false)
+        if (active) setLoading(false)
       }
     }
 
     void restoreSession()
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        if (mounted) {
-          setUser(null)
-          setLoading(false)
-        }
-        return
-      }
-
-      setTimeout(() => {
-        void loadUser(session.user.id)
-          .then(currentUser => {
-            if (mounted) setUser(currentUser)
-          })
-          .catch(error => {
-            console.error("Failed to load Supabase user profile.", error)
-            if (mounted) setUser(null)
-          })
-          .finally(() => {
-            if (mounted) setLoading(false)
-          })
-      }, 0)
-    })
 
     return () => {
-      mounted = false
-      subscription.unsubscribe()
+      active = false
     }
   }, [])
 
@@ -107,13 +94,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = await response.json()
       if (!response.ok) throw new Error(result.detail || "Login failed")
 
-      const { error } = await supabase.auth.setSession({
-        access_token: result.access_token,
-        refresh_token: result.refresh_token,
-      })
-      if (error) throw error
-
       const loggedInUser = result.user as CurrentUser
+      const token = result.access_token as string
+      const refreshToken = result.refresh_token as string | undefined
+
+      if (!loggedInUser || !token) {
+        throw new Error("Authentication response was incomplete.")
+      }
+
+      localStorage.setItem(AUTH_TOKEN_KEY, token)
+      if (refreshToken) localStorage.setItem(AUTH_REFRESH_KEY, refreshToken)
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(loggedInUser))
       setUser(loggedInUser)
       return { error: null, user: loggedInUser }
     } catch (error) {
@@ -123,11 +114,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut()
-      if (error) throw error
+      const refreshToken = localStorage.getItem(AUTH_REFRESH_KEY)
+      if (refreshToken) {
+        await fetch("/api/v1/auth/logout", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        })
+      }
     } catch (error) {
-      console.error("Supabase sign-out failed.", error)
+      console.warn("Backend sign-out failed.", error)
     } finally {
+      localStorage.removeItem(AUTH_TOKEN_KEY)
+      localStorage.removeItem(AUTH_REFRESH_KEY)
+      localStorage.removeItem(AUTH_USER_KEY)
       setUser(null)
     }
   }

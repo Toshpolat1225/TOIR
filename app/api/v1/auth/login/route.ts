@@ -1,46 +1,53 @@
-import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
-export async function POST(request: Request) {
-  const { email, password } = await request.json()
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } },
-  )
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: String(email ?? "").trim().toLowerCase(),
-    password: String(password ?? ""),
+export async function POST(request: Request) {
+  const payload = await request.json().catch(() => ({}))
+
+  const backendResponse = await fetch(`${BACKEND_URL}/api/v1/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: String(payload.email ?? "").trim().toLowerCase(),
+      password: String(payload.password ?? ""),
+    }),
   })
 
-  if (error) {
-    const status = error.code === "email_not_confirmed" ? 403 : 401
-    return NextResponse.json({ detail: error.message }, { status })
-  }
-  if (!data.session) {
-    return NextResponse.json({ detail: "Authentication session was not created." }, { status: 401 })
+  const backendData = await backendResponse.json().catch(() => null)
+
+  if (!backendResponse.ok) {
+    return NextResponse.json(
+      { detail: backendData?.detail || "Authentication failed" },
+      { status: backendResponse.status || 401 },
+    )
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("id, email, full_name, role, section")
-    .eq("id", data.user.id)
-    .maybeSingle()
-
-  if (profileError) {
-    return NextResponse.json({ detail: profileError.message }, { status: 500 })
+  const accessToken = backendData?.access_token
+  const refreshToken = backendData?.refresh_token
+  if (!accessToken) {
+    return NextResponse.json({ detail: "Authentication token was not returned." }, { status: 401 })
   }
-  if (!profile) {
-    return NextResponse.json({ detail: "User profile was not found." }, { status: 404 })
+
+  const meResponse = await fetch(`${BACKEND_URL}/api/v1/auth/me`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  const profile = await meResponse.json().catch(() => null)
+
+  if (!meResponse.ok || !profile) {
+    return NextResponse.json(
+      { detail: profile?.detail || "Could not load current user profile." },
+      { status: meResponse.status || 401 },
+    )
   }
 
   return NextResponse.json({
-    access_token: data.session.access_token,
-    refresh_token: data.session.refresh_token,
+    access_token: accessToken,
+    refresh_token: refreshToken,
     token_type: "bearer",
+    expires_in: backendData?.expires_in ?? 1800,
     user: profile,
   })
 }

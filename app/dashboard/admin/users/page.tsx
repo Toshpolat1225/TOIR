@@ -7,10 +7,11 @@ import { useAuth, type Profile, type UserRole } from "@/lib/auth-context"
 import { useSections } from "@/lib/use-sections"
 import { Button } from "@/components/ui/button"
 
-const ROLE_CFG: Record<UserRole, { label: string; cls: string; Icon: React.ElementType }> = {
-  admin:    { label: "Администратор", cls: "bg-purple-100 text-purple-700 dark:bg-purple-900/60 dark:text-purple-300", Icon: ShieldCheck },
-  operator: { label: "Оператор",      cls: "bg-blue-100   text-blue-700   dark:bg-blue-900/60   dark:text-blue-300",   Icon: Shield      },
-  master:   { label: "Мастер",        cls: "bg-amber-100  text-amber-700  dark:bg-amber-900/60  dark:text-amber-300",  Icon: HardHat     },
+const ROLE_CFG: Record<"admin" | "operator" | "master" | "management", { label: string; cls: string; Icon: React.ElementType }> = {
+  admin:      { label: "Администратор", cls: "bg-purple-100 text-purple-700 dark:bg-purple-900/60 dark:text-purple-300", Icon: ShieldCheck },
+  operator:   { label: "Оператор",      cls: "bg-blue-100   text-blue-700   dark:bg-blue-900/60   dark:text-blue-300",   Icon: Shield      },
+  master:     { label: "Мастер",        cls: "bg-amber-100  text-amber-700  dark:bg-amber-900/60  dark:text-amber-300",  Icon: HardHat     },
+  management: { label: "Руководство",  cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300", Icon: ShieldCheck },
 }
 
 /* ─── Модал создания пользователя ─── */
@@ -114,9 +115,9 @@ function EditUserModal({ profile, onClose, onSaved, sections }: {
   onSaved: () => void
   sections: string[]
 }) {
-  const [fullName, setFullName] = useState(profile.full_name)
+  const [fullName, setFullName] = useState(profile.full_name ?? "")
   const [role,     setRole]     = useState<UserRole>(profile.role)
-  const [section,  setSection]  = useState(profile.section)
+  const [section,  setSection]  = useState(profile.section ?? "")
   const [busy,     setBusy]     = useState(false)
   const [error,    setError]    = useState("")
 
@@ -226,7 +227,9 @@ export default function AdminUsersPage() {
 
   const filtered = users.filter(u => {
     const q = search.toLowerCase()
-    return !q || u.full_name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.section.toLowerCase().includes(q)
+    const fullName = (u.full_name ?? "").toLowerCase()
+    const section = (u.section ?? "").toLowerCase()
+    return !q || fullName.includes(q) || u.email.toLowerCase().includes(q) || section.includes(q)
   })
 
   const counts = {

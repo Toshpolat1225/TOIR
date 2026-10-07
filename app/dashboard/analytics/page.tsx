@@ -266,28 +266,36 @@ export default function AnalyticsDashboard() {
   const fetchAiData = useCallback(async () => {
     setLoadingAi(true)
     try {
+      const safeQuery = async <T,>(query: PromiseLike<T>) => {
+        try {
+          return await query
+        } catch {
+          return { data: null, error: true } as { data: null; error: true }
+        }
+      }
+
       // Все AI запросы параллельно
       const [insightsRes, healthRes, equipmentRes] = await Promise.all([
-        supabase.from("ai_insights")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(10)
-          .then(r => r)
-          .catch(() => ({ data: null, error: true })),
-        supabase.from("fleet_health")
-          .select("*")
-          .limit(1)
-          .maybeSingle()
-          .then(r => r)
-          .catch(() => ({ data: null, error: true })),
-        supabase.from("fixed_assets")
-          .select("id, name, failure_probability, health_score, predicted_failure_km, last_ml_update")
-          .in("asset_type", ["locomotive", "wagon", "diesel"])
-          .gt("failure_probability", 0.3)
-          .order("failure_probability", { ascending: false })
-          .limit(5)
-          .then(r => r)
-          .catch(() => ({ data: null, error: true }))
+        safeQuery(
+          supabase.from("ai_insights")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .limit(10)
+        ),
+        safeQuery(
+          supabase.from("fleet_health")
+            .select("*")
+            .limit(1)
+            .maybeSingle()
+        ),
+        safeQuery(
+          supabase.from("fixed_assets")
+            .select("id, name, failure_probability, health_score, predicted_failure_km, last_ml_update")
+            .in("asset_type", ["locomotive", "wagon", "diesel"])
+            .gt("failure_probability", 0.3)
+            .order("failure_probability", { ascending: false })
+            .limit(5)
+        )
       ])
 
       // Загружаем названия оборудования параллельно с основными данными
@@ -325,30 +333,38 @@ export default function AnalyticsDashboard() {
     setLoadingMain(true)
     
     try {
+      const safeQuery = async <T,>(query: PromiseLike<T>) => {
+        try {
+          return await query
+        } catch {
+          return { data: null, error: true } as { data: null; error: true }
+        }
+      }
+
       // ВСЕ запросы параллельно через Promise.all
       const [sectionRes, workTypeRes, monthlyRes, summaryRes] = await Promise.all([
-        supabase.from("section_efficiency")
-          .select("*")
-          .limit(20)
-          .then(r => r)
-          .catch(() => ({ data: null, error: true })),
-        supabase.from("work_type_efficiency")
-          .select("*")
-          .limit(20)
-          .then(r => r)
-          .catch(() => ({ data: null, error: true })),
-        supabase.from("monthly_efficiency")
-          .select("*")
-          .order("month", { ascending: false })
-          .limit(12) // Только последние 12 месяцев
-          .then(r => r)
-          .catch(() => ({ data: null, error: true })),
-        supabase.from("executive_summary")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(50) // Уменьшено с 100 до 50
-          .then(r => r)
-          .catch(() => ({ data: null, error: true }))
+        safeQuery(
+          supabase.from("section_efficiency")
+            .select("*")
+            .limit(20)
+        ),
+        safeQuery(
+          supabase.from("work_type_efficiency")
+            .select("*")
+            .limit(20)
+        ),
+        safeQuery(
+          supabase.from("monthly_efficiency")
+            .select("*")
+            .order("month", { ascending: false })
+            .limit(12) // Только последние 12 месяцев
+        ),
+        safeQuery(
+          supabase.from("executive_summary")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .limit(50) // Уменьшено с 100 до 50
+        )
       ])
 
       // Устанавливаем данные если они есть

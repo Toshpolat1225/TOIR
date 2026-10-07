@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import { supabase } from "@/lib/supabase"
 import { useRealtime } from "@/lib/use-realtime"
 import { api } from "@/lib/api"
 import { useSections } from "@/lib/use-sections"
@@ -27,6 +28,28 @@ type ScheduleItem = {
   mileage?: number
   remainingKm?: number
   nextThreshold?: number
+}
+
+const normalizeScheduleItem = (item: any): ScheduleItem => {
+  const normalizedStatus: Status =
+    item?.status === "in_progress" || item?.status === "completed" || item?.status === "overdue"
+      ? item.status
+      : "upcoming"
+
+  return {
+    id: item?.id ?? "",
+    unit: item?.unit ?? "",
+    type: item?.type ?? "",
+    startDate: item?.startDate ?? "",
+    durationH: item?.durationH ?? 0,
+    depot: item?.depot ?? "",
+    tech: item?.tech ?? "",
+    status: normalizedStatus,
+    note: item?.note,
+    mileage: item?.mileage,
+    remainingKm: item?.remainingKm,
+    nextThreshold: item?.nextThreshold,
+  }
 }
 
 type MaintenanceInterval = {
@@ -653,6 +676,7 @@ function QuickOrderModal({ item, onClose, sections, onOrderCreated, onNotify }: 
   const [saved,     setSaved]     = useState(false)
   const [orderId,   setOrderId]   = useState("")
   const [error,     setError]     = useState("")
+  const nextThresholdDisplay = typeof item.nextThreshold === "number" ? item.nextThreshold.toLocaleString() : null
 
   const handleSend = async () => {
     if (!section) { setError("Выберите участок для отправки наряда"); return }
@@ -756,9 +780,9 @@ function QuickOrderModal({ item, onClose, sections, onOrderCreated, onNotify }: 
                     <Gauge className="w-3 h-3 inline mr-1" />
                     Это ТО теперь не будет показываться в графике до завершения наряда.
                   </p>
-                  {item.nextThreshold && (
+                  {nextThresholdDisplay !== null && (
                     <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
-                      Следующее {item.type} запланируется при пробеге {item.nextThreshold.toLocaleString()} км
+                      Следующее {item.type} запланируется при пробеге {nextThresholdDisplay} км
                     </p>
                   )}
                 </div>
@@ -1104,7 +1128,8 @@ export default function MaintenancePage() {
       const queryMonth = `${y}-${String(m).padStart(2, "0")}`
 
       const response = await api.maintenanceSchedule.get({ month: queryMonth });
-      setSchedule(response.schedule || []);
+      const nextSchedule = (response.schedule || []).map((item) => normalizeScheduleItem(item))
+      setSchedule(nextSchedule)
       setInitialLoadDone(true)
     } catch (e) {
       console.error("Ошибка загрузки ТО и ремонтов:", e)

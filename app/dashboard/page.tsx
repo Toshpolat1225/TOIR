@@ -139,8 +139,8 @@ export default function DashboardPage() {
 
   /* ── Счётчики активов (по отфильтрованным) + учёт открытых нарядов ── */
   const totalAssets  = filteredAssets.length
-  const locoCount    = filteredAssets.filter(a => a.asset_type === "locomotive").length
-  const wagonCount   = filteredAssets.filter(a => a.asset_type === "wagon").length
+  const locoCount    = filteredAssets.filter((a: { asset_type?: string }) => a.asset_type === "locomotive").length
+  const wagonCount   = filteredAssets.filter((a: { asset_type?: string }) => a.asset_type === "wagon").length
   /* В эксплуатации: статус operational и нет открытого наряда */
   const operational  = useMemo(() => 
     filteredAssets.filter((a: { status?: string; name?: string }) => 
@@ -173,9 +173,9 @@ export default function DashboardPage() {
     .slice(0, 8)
 
   /* ── Счётчики нарядов ── */
-  const openOrders      = filteredOrders.filter(o => o.status === "pending" || o.status === "in_progress").length
-  const inProgressOrders = filteredOrders.filter(o => o.status === "in_progress").length
-  const completedOrders = filteredOrders.filter(o => o.status === "completed").length
+  const openOrders      = filteredOrders.filter((o: { status?: string }) => o.status === "pending" || o.status === "in_progress").length
+  const inProgressOrders = filteredOrders.filter((o: { status?: string }) => o.status === "in_progress").length
+  const completedOrders = filteredOrders.filter((o: { status?: string }) => o.status === "completed").length
 
   /* ── KPI карточки ── */
   const kpi = [
@@ -225,7 +225,7 @@ export default function DashboardPage() {
 
   /* ── Тренд нарядов по месяцам ── */
   const workOrdersTrend = months6.map(({ key, label }) => {
-    const mo = filteredOrders.filter(o => {
+    const mo = filteredOrders.filter((o: { created_at?: string; created?: string; status?: string }) => {
       // Проверяем оба поля: created_at и created
       const dateStr = o.created_at || o.created || ""
       return dateStr.slice(0, 7) === key
@@ -233,8 +233,8 @@ export default function DashboardPage() {
     return {
       month:    label,
       открыто:  mo.length,
-      закрыто:  mo.filter(o => o.status === "completed").length,
-      вработе:  mo.filter(o => o.status === "in_progress").length,
+      закрыто:  mo.filter((o: { status?: string }) => o.status === "completed").length,
+      вработе:  mo.filter((o: { status?: string }) => o.status === "in_progress").length,
     }
   })
 
@@ -258,7 +258,7 @@ export default function DashboardPage() {
 
   /* ── Предстоящее ТО (pending наряды с датой) ── */
   const upcomingOrders = filteredOrders
-    .filter(o => o.status === "pending" && o.date_start)
+    .filter((o: { status?: string; date_start?: string }) => o.status === "pending" && o.date_start)
     .slice(0, 5)
 
   /* ── Последние наряды ── */
@@ -686,7 +686,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-center h-24 text-gray-400 text-xs">Нет запланированных нарядов</div>
           ) : (
             <div className="space-y-2">
-              {upcomingOrders.map(item=>(
+              {upcomingOrders.map((item: { id?: string; unit?: string; date_start?: string; type?: string; repair_kind?: string; priority?: string }) => (
                 <div key={item.id}
                   className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60">
                   <div className="flex items-center gap-2.5">
@@ -699,8 +699,8 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${prioCls[item.priority] ?? prioCls.normal}`}>
-                      {prioLabel[item.priority] ?? "Обычный"}
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${prioCls[item.priority ?? "normal"] ?? prioCls.normal}`}>
+                      {prioLabel[item.priority ?? "normal"] ?? "Обычный"}
                     </span>
                     <span className="text-[10px] text-gray-400 whitespace-nowrap">{item.date_start}</span>
                   </div>
@@ -727,13 +727,13 @@ export default function DashboardPage() {
             <div className="flex items-center justify-center h-24 text-gray-400 text-xs">Нет нарядов</div>
           ) : (
             <div className="space-y-2">
-              {recentWO.map(wo=>(
+              {recentWO.map((wo: { id?: string; status?: string; unit?: string; description?: string; tech?: string }) => (
                 <div key={wo.id}
                   className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] font-mono text-gray-400 truncate">{wo.id}</span>
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${(woStatusCfg[wo.status] ?? woStatusCfg.pending).cls}`}>
-                      {(woStatusCfg[wo.status] ?? woStatusCfg.pending).label}
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${(woStatusCfg[wo.status ?? "pending"] ?? woStatusCfg.pending).cls}`}>
+                      {(woStatusCfg[wo.status ?? "pending"] ?? woStatusCfg.pending).label}
                     </span>
                   </div>
                   <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 truncate">{wo.unit}</p>
