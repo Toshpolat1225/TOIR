@@ -3,23 +3,11 @@
 import { useState, useEffect, useCallback } from "react"
 import { Users, Plus, X, Save, Pencil, Trash2, Search, ArrowLeft, MapPin, Briefcase, Hash } from "@/components/ui/icons"
 import Link from "next/link"
-import { supabase } from "@/lib/supabase"
+import { api, type Employee as ApiEmployee, type Section } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
-interface Section {
-  id: string
-  name: string
-}
-
-interface Employee {
-  id: string
-  tab_number: string
-  full_name: string
-  position: string
-  section_id: string | null
-  location_id: string | null
-  created_at: string
+type Employee = ApiEmployee & {
   section_name?: string
   location_name?: string
 }
@@ -49,21 +37,20 @@ function AddEmployeeModal({
     setSaving(true)
     setError("")
 
-    const { error: insertError } = await supabase.from("employees").insert({
-      tab_number: tabNumber.trim(),
-      full_name: fullName.trim(),
-      position: position.trim(),
-      section_id: sectionId || null,
-      location_id: locationId || null,
-    })
-
-    if (insertError) {
-      setError(insertError.message)
-      setSaving(false)
-    } else {
+    try {
+      await api.employees.create({
+        tab_number: tabNumber.trim(),
+        full_name: fullName.trim(),
+        position: position.trim() || null,
+        section_id: sectionId || null,
+        location_id: locationId || null,
+      })
       await onSaved()
       setSaving(false)
       onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось создать работника")
+      setSaving(false)
     }
   }
 
@@ -169,7 +156,7 @@ function EditEmployeeModal({
 }) {
   const [tabNumber, setTabNumber] = useState(employee.tab_number)
   const [fullName, setFullName] = useState(employee.full_name)
-  const [position, setPosition] = useState(employee.position)
+  const [position, setPosition] = useState(employee.position ?? "")
   const [sectionId, setSectionId] = useState(employee.section_id || "")
   const [locationId, setLocationId] = useState(employee.location_id || "")
   const [saving, setSaving] = useState(false)
@@ -183,24 +170,20 @@ function EditEmployeeModal({
     setSaving(true)
     setError("")
 
-    const { error: updateError } = await supabase
-      .from("employees")
-      .update({
+    try {
+      await api.employees.update(employee.id, {
         tab_number: tabNumber.trim(),
         full_name: fullName.trim(),
-        position: position.trim(),
+        position: position.trim() || null,
         section_id: sectionId || null,
         location_id: locationId || null,
       })
-      .eq("id", employee.id)
-
-    if (updateError) {
-      setError(updateError.message)
-      setSaving(false)
-    } else {
       await onSaved()
       setSaving(false)
       onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось сохранить работника")
+      setSaving(false)
     }
   }
 
@@ -302,29 +285,34 @@ export default function EmployeesPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<Employee | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [error, setError] = useState("")
 
   const fetchSections = useCallback(async () => {
-    const { data } = await supabase.from("sections").select("id, name").order("name")
-    setSections((data as Section[]) ?? [])
+    try {
+      const response = await api.sections.list({
+        limit: 1000,
+        sort_by: "name",
+        sort_order: "asc",
+      })
+      setSections(response.items)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось загрузить участки")
+    }
   }, [])
 
   const fetchEmployees = useCallback(async () => {
     setLoading(true)
-    
+    setError("")
     try {
-      // ОПТИМИЗАЦИЯ: Параллельная загрузка employees и sections
-      let empQuery = supabase.from("employees").select("*").order("full_name")
-      if (filterSectionId) {
-        empQuery = empQuery.eq("section_id", filterSectionId)
-      }
-
-      const [empRes, secRes] = await Promise.all([
-        empQuery,
-        supabase.from("sections").select("id, name")
+      const [emps, sectionResponse] = await Promise.all([
+        api.fetchAllPaginated<Employee>(api.employees.list, {
+          section_id: filterSectionId || undefined,
+          sort_by: "full_name",
+          sort_order: "asc",
+        }),
+        api.sections.list({ limit: 1000, sort_by: "name", sort_order: "asc" }),
       ])
-
-      const emps = (empRes.data as Employee[]) ?? []
-      const secMap = new Map((secRes.data ?? []).map((s: Section) => [s.id, s.name]))
+      const secMap = new Map(sectionResponse.items.map((section) => [section.id, section.name]))
 
       setEmployees(
         emps.map((e) => ({
@@ -333,8 +321,8 @@ export default function EmployeesPage() {
           location_name: e.location_id ? secMap.get(e.location_id) || "" : "",
         }))
       )
-    } catch (error) {
-      console.error("Failed to fetch employees:", error)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось загрузить работников")
       setEmployees([])
     } finally {
       setLoading(false)
@@ -350,9 +338,13 @@ export default function EmployeesPage() {
   }, [fetchEmployees])
 
   const handleDelete = async (id: string) => {
-    await supabase.from("employees").delete().eq("id", id)
-    setDeleteConfirmId(null)
-    fetchEmployees()
+    try {
+      await api.employees.remove(id)
+      setDeleteConfirmId(null)
+      await fetchEmployees()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось удалить работника")
+    }
   }
 
   const filtered = employees.filter((e) => {
@@ -361,7 +353,7 @@ export default function EmployeesPage() {
       !q ||
       e.tab_number.toLowerCase().includes(q) ||
       e.full_name.toLowerCase().includes(q) ||
-      e.position.toLowerCase().includes(q) ||
+      (e.position?.toLowerCase().includes(q) ?? false) ||
       (e.location_name && e.location_name.toLowerCase().includes(q)) ||
       (e.section_name && e.section_name.toLowerCase().includes(q))
     )
@@ -393,6 +385,12 @@ export default function EmployeesPage() {
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Справочник сотрудников предприятия</p>
         </div>
+
+        {error && (
+          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+            {error}
+          </p>
+        )}
         <Button className="gap-2 bg-blue-600 hover:bg-blue-700" onClick={() => setShowAdd(true)}>
           <Plus className="w-4 h-4" /> Добавить работника
         </Button>

@@ -6,26 +6,17 @@ import {
   ChevronDown, ChevronRight, ListTodo, Search
 } from "@/components/ui/icons"
 import Link from "next/link"
-import { supabase } from "@/lib/supabase"
+import {
+  api,
+  type WorkSubtask as ApiWorkSubtask,
+  type WorkType as ApiWorkType,
+  type WorkTypeTemplate,
+} from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
-interface WorkType {
-  id: string
-  code: string
-  name: string
-  description: string
-  unit_type: "locomotive" | "wagon"
-  sort_order: number
-}
-
-interface WorkSubtask {
-  id: string
-  work_type_id: string
-  name: string
-  description: string
-  sort_order: number
-}
+type WorkType = ApiWorkType
+type WorkSubtask = ApiWorkSubtask
 
 interface WorkTypeTmc {
   id: string
@@ -34,16 +25,33 @@ interface WorkTypeTmc {
   inv_no: string
   unit: string
   qty: number
-  note: string
+  note: string | null
   sort_order: number
+  department_id: string | null
+  nomenclature_id: string | null
 }
 
 interface NomenclatureItem {
   id: string
   name: string
-  code: string
+  code: string | null
   unit: string
   department_id: string | null
+}
+
+function toWorkTypeTmc(template: WorkTypeTemplate, sortOrder: number): WorkTypeTmc {
+  return {
+    id: template.id,
+    work_type_id: template.work_type_id,
+    name: template.name ?? template.nomenclature?.name ?? "",
+    inv_no: template.inv_no ?? template.nomenclature?.code ?? "",
+    unit: template.unit ?? template.nomenclature?.unit ?? "шт.",
+    qty: Number(template.default_quantity),
+    note: template.note,
+    sort_order: sortOrder,
+    department_id: template.department_id,
+    nomenclature_id: template.nomenclature_id,
+  }
 }
 
 const UNITS = ["шт.", "кг.", "м.", "л.", "уп.", "рул.", "кан.", "к-т"]
@@ -70,24 +78,19 @@ function AddWorkTypeModal({
     setSaving(true)
     setError("")
 
-    const { error: insertError } = await supabase.from("work_types").insert({
-      code: code.trim().toUpperCase(),
-      name: name.trim(),
-      description: description.trim(),
-      unit_type: unitType,
-    })
-
-    if (insertError) {
-      if (insertError.code === "23505") {
-        setError("Вид работ с таким кодом уже существует")
-      } else {
-        setError(insertError.message)
-      }
-      setSaving(false)
-    } else {
+    try {
+      await api.workTypes.create({
+        code: code.trim().toUpperCase(),
+        name: name.trim(),
+        description: description.trim() || null,
+        unit_type: unitType,
+      })
       await onSaved()
       setSaving(false)
       onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось создать вид работ")
+      setSaving(false)
     }
   }
 
@@ -222,11 +225,20 @@ function TmcRow({
   const [invNo, setInvNo] = useState(tmc.inv_no)
   const [unit, setUnit] = useState(tmc.unit)
   const [qty, setQty] = useState(String(tmc.qty))
-  const [note, setNote] = useState(tmc.note)
+  const [note, setNote] = useState(tmc.note ?? "")
 
   const handleSave = () => {
     if (name.trim()) {
-      onUpdate({ ...tmc, name: name.trim(), inv_no: invNo.trim(), unit, qty: Number(qty) || 1, note: note.trim() })
+      onUpdate({
+        ...tmc,
+        name: name.trim(),
+        inv_no: invNo.trim(),
+        unit,
+        qty: Number(qty) || 1,
+        note: note.trim() || null,
+        department_id: null,
+        nomenclature_id: null,
+      })
     }
     setEditing(false)
   }
@@ -294,7 +306,7 @@ function NomenclatureCombobox({
     ? nomenclature.slice(0, 50)
     : nomenclature.filter(i =>
         i.name.toLowerCase().includes(query.toLowerCase()) ||
-        i.code.toLowerCase().includes(query.toLowerCase())
+      (i.code ?? "").toLowerCase().includes(query.toLowerCase())
       ).slice(0, 50)
 
   return (
@@ -355,78 +367,128 @@ function WorkTypeCard({
   const [newSubtask, setNewSubtask] = useState("")
   const [addingSubtask, setAddingSubtask] = useState(false)
   const [addingTmc, setAddingTmc] = useState(false)
-  const [newTmc, setNewTmc] = useState({ name: "", inv_no: "", unit: "шт.", qty: "1", note: "" })
+  const [newTmc, setNewTmc] = useState({
+    name: "",
+    inv_no: "",
+    unit: "шт.",
+    qty: "1",
+    note: "",
+    department_id: null as string | null,
+    nomenclature_id: null as string | null,
+  })
+  const [apiError, setApiError] = useState("")
 
   const handleSelectNomenclature = (item: NomenclatureItem) => {
     setNewTmc({
       ...newTmc,
       name: item.name,
-      inv_no: item.code,
+      inv_no: item.code ?? "",
       unit: item.unit || "шт.",
+      department_id: item.department_id,
+      nomenclature_id: item.id,
     })
   }
 
   const handleAddSubtask = async () => {
     if (!newSubtask.trim()) return
     setAddingSubtask(true)
-    const { data, error } = await supabase
-      .from("work_subtasks")
-      .insert({ work_type_id: workType.id, name: newSubtask.trim(), sort_order: subtasks.length })
-      .select()
-      .single()
-    if (!error && data) {
-      onSubtasksChange([...subtasks, data as WorkSubtask])
+    setApiError("")
+    try {
+      const created = await api.workTypes.createSubtask(workType.id, {
+        name: newSubtask.trim(),
+        sort_order: subtasks.length,
+      })
+      onSubtasksChange([...subtasks, created])
+      setNewSubtask("")
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : "Не удалось создать подзадачу")
+    } finally {
+      setAddingSubtask(false)
     }
-    setNewSubtask("")
-    setAddingSubtask(false)
   }
 
   const handleUpdateSubtask = async (updated: WorkSubtask) => {
-    await supabase.from("work_subtasks").update({ name: updated.name }).eq("id", updated.id)
-    onSubtasksChange(subtasks.map(s => s.id === updated.id ? updated : s))
+    setApiError("")
+    try {
+      const saved = await api.workTypes.updateSubtask(workType.id, updated.id, {
+        name: updated.name,
+        sort_order: updated.sort_order,
+      })
+      onSubtasksChange(subtasks.map((subtask) => subtask.id === saved.id ? saved : subtask))
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : "Не удалось обновить подзадачу")
+    }
   }
 
   const handleDeleteSubtask = async (id: string) => {
-    await supabase.from("work_subtasks").delete().eq("id", id)
-    onSubtasksChange(subtasks.filter(s => s.id !== id))
+    setApiError("")
+    try {
+      await api.workTypes.removeSubtask(workType.id, id)
+      onSubtasksChange(subtasks.filter((subtask) => subtask.id !== id))
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : "Не удалось удалить подзадачу")
+    }
   }
 
   const handleAddTmc = async () => {
     if (!newTmc.name.trim()) return
-    const { data, error } = await supabase
-      .from("work_type_tmc")
-      .insert({
+    setApiError("")
+    try {
+      const created = await api.workTypeTemplates.create({
         work_type_id: workType.id,
+        department_id: newTmc.department_id,
+        nomenclature_id: newTmc.nomenclature_id,
         name: newTmc.name.trim(),
-        inv_no: newTmc.inv_no.trim(),
+        inv_no: newTmc.inv_no.trim() || null,
         unit: newTmc.unit,
-        qty: Number(newTmc.qty) || 1,
-        note: newTmc.note.trim(),
-        sort_order: tmcItems.length,
+        default_quantity: Number(newTmc.qty) || 1,
+        is_required: false,
+        note: newTmc.note.trim() || null,
       })
-      .select()
-      .single()
-    if (!error && data) {
-      onTmcChange([...tmcItems, data as WorkTypeTmc])
+      onTmcChange([...tmcItems, toWorkTypeTmc(created, tmcItems.length)])
+      setNewTmc({
+        name: "",
+        inv_no: "",
+        unit: "шт.",
+        qty: "1",
+        note: "",
+        department_id: null,
+        nomenclature_id: null,
+      })
+      setAddingTmc(false)
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : "Не удалось добавить шаблон ТМЦ")
     }
-    setNewTmc({ name: "", inv_no: "", unit: "шт.", qty: "1", note: "" })
-    setAddingTmc(false)
   }
 
   const handleUpdateTmc = async (updated: WorkTypeTmc) => {
-    await supabase.from("work_type_tmc").update({
-      name: updated.name,
-      inv_no: updated.inv_no,
-      unit: updated.unit,
-      qty: updated.qty,
-      note: updated.note,
-    }).eq("id", updated.id)
-    onTmcChange(tmcItems.map(t => t.id === updated.id ? updated : t))
+    setApiError("")
+    try {
+      const saved = await api.workTypeTemplates.update(updated.id, {
+        department_id: updated.department_id,
+        nomenclature_id: updated.nomenclature_id,
+        name: updated.name,
+        inv_no: updated.inv_no || null,
+        unit: updated.unit,
+        default_quantity: updated.qty,
+        note: updated.note,
+      })
+      onTmcChange(tmcItems.map((item, index) =>
+        item.id === saved.id ? toWorkTypeTmc(saved, index) : item
+      ))
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : "Не удалось обновить шаблон ТМЦ")
+    }
   }
 
   const handleDeleteTmc = async (id: string) => {
-    await supabase.from("work_type_tmc").delete().eq("id", id)
-    onTmcChange(tmcItems.filter(t => t.id !== id))
+    setApiError("")
+    try {
+      await api.workTypeTemplates.remove(id)
+      onTmcChange(tmcItems.filter((item) => item.id !== id))
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : "Не удалось удалить шаблон ТМЦ")
+    }
   }
 
   return (
@@ -468,6 +530,11 @@ function WorkTypeCard({
 
       {expanded && (
         <div className="border-t border-gray-200 dark:border-gray-700">
+          {apiError && (
+            <p role="alert" className="mx-4 mt-4 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-300">
+              {apiError}
+            </p>
+          )}
           <div className="grid grid-cols-2 divide-x divide-gray-200 dark:divide-gray-700">
             {/* Подзадачи */}
             <div className="p-4">
@@ -550,7 +617,12 @@ function WorkTypeCard({
                       <label className="block text-[10px] font-medium text-gray-500 mb-1">Наименование ТМЦ (из справочника)</label>
                       <NomenclatureCombobox
                         value={newTmc.name}
-                        onChange={(v) => setNewTmc({ ...newTmc, name: v })}
+                        onChange={(v) => setNewTmc({
+                          ...newTmc,
+                          name: v,
+                          department_id: null,
+                          nomenclature_id: null,
+                        })}
                         onSelect={handleSelectNomenclature}
                         nomenclature={nomenclature}
                       />
@@ -598,7 +670,24 @@ function WorkTypeCard({
                       </div>
                     </div>
                     <div className="flex justify-end gap-2">
-                      <Button size="sm" variant="outline" onClick={() => { setAddingTmc(false); setNewTmc({ name: "", inv_no: "", unit: "шт.", qty: "1", note: "" }) }}>Отмена</Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setAddingTmc(false)
+                          setNewTmc({
+                            name: "",
+                            inv_no: "",
+                            unit: "шт.",
+                            qty: "1",
+                            note: "",
+                            department_id: null,
+                            nomenclature_id: null,
+                          })
+                        }}
+                      >
+                        Отмена
+                      </Button>
                       <Button size="sm" onClick={handleAddTmc} disabled={!newTmc.name.trim()}>Добавить</Button>
                     </div>
                   </div>
@@ -624,61 +713,55 @@ export default function WorkTypesPage() {
   const [tmcMap, setTmcMap] = useState<Record<string, WorkTypeTmc[]>>({})
   const [nomenclature, setNomenclature] = useState<NomenclatureItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [apiError, setApiError] = useState("")
   const [showAdd, setShowAdd] = useState(false)
   const [search, setSearch] = useState("")
   const [filterUnitType, setFilterUnitType] = useState("")
 
   const fetchNomenclature = useCallback(async () => {
-    const { data } = await supabase
-      .from("nomenclature")
-      .select("id, name, code, unit, department_id")
-      .order("name")
-    setNomenclature((data as NomenclatureItem[]) ?? [])
+    try {
+      const response = await api.nomenclature.list({
+        limit: 1000,
+        sort_by: "name",
+        sort_order: "asc",
+      })
+      setNomenclature(response.items)
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : "Не удалось загрузить номенклатуру")
+      setNomenclature([])
+    }
   }, [])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-
-    const { data: wtData } = await supabase
-      .from("work_types")
-      .select("*")
-      .order("sort_order")
-      .order("code")
-
-    const types = (wtData as WorkType[]) ?? []
-    setWorkTypes(types)
-
-    if (types.length > 0) {
-      const ids = types.map(t => t.id)
-
-      const { data: stData } = await supabase
-        .from("work_subtasks")
-        .select("*")
-        .in("work_type_id", ids)
-        .order("sort_order")
+    setApiError("")
+    try {
+      const [workTypeResponse, templateResponse] = await Promise.all([
+        api.workTypes.list({ limit: 1000, sort_by: "sort_order", sort_order: "asc" }),
+        api.workTypeTemplates.list({ limit: 1000, sort_by: "name", sort_order: "asc" }),
+      ])
+      setWorkTypes(workTypeResponse.items)
 
       const stMap: Record<string, WorkSubtask[]> = {}
-      for (const st of (stData ?? []) as WorkSubtask[]) {
-        if (!stMap[st.work_type_id]) stMap[st.work_type_id] = []
-        stMap[st.work_type_id].push(st)
+      for (const workType of workTypeResponse.items) {
+        stMap[workType.id] = workType.subtasks
       }
-      setSubtasksMap(stMap)
-
-      const { data: tmcData } = await supabase
-        .from("work_type_tmc")
-        .select("*")
-        .in("work_type_id", ids)
-        .order("sort_order")
-
       const tMap: Record<string, WorkTypeTmc[]> = {}
-      for (const t of (tmcData ?? []) as WorkTypeTmc[]) {
-        if (!tMap[t.work_type_id]) tMap[t.work_type_id] = []
-        tMap[t.work_type_id].push(t)
-      }
+      templateResponse.items.forEach((template, index) => {
+        const workTypeItems = tMap[template.work_type_id] ?? []
+        workTypeItems.push(toWorkTypeTmc(template, index))
+        tMap[template.work_type_id] = workTypeItems
+      })
       setTmcMap(tMap)
+      setSubtasksMap(stMap)
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : "Не удалось загрузить виды работ")
+      setWorkTypes([])
+      setSubtasksMap({})
+      setTmcMap({})
+    } finally {
+      setLoading(false)
     }
-
-    setLoading(false)
   }, [])
 
   useEffect(() => {
@@ -688,8 +771,19 @@ export default function WorkTypesPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Удалить этот вид работ? Все подзадачи и ТМЦ будут удалены.")) return
-    await supabase.from("work_types").delete().eq("id", id)
-    setWorkTypes(workTypes.filter(w => w.id !== id))
+    setApiError("")
+    try {
+      await api.workTypes.remove(id)
+      setWorkTypes(workTypes.filter((workType) => workType.id !== id))
+      const nextSubtasks = { ...subtasksMap }
+      const nextTemplates = { ...tmcMap }
+      delete nextSubtasks[id]
+      delete nextTemplates[id]
+      setSubtasksMap(nextSubtasks)
+      setTmcMap(nextTemplates)
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : "Не удалось удалить вид работ")
+    }
   }
 
   const filtered = workTypes.filter(wt => {
@@ -722,10 +816,17 @@ export default function WorkTypesPage() {
             Шаблоны видов работ с подзадачами и списками ТМЦ
           </p>
         </div>
+
         <Button className="gap-2 bg-blue-600 hover:bg-blue-700" onClick={() => setShowAdd(true)}>
           <Plus className="w-4 h-4" /> Добавить вид работ
         </Button>
       </div>
+
+      {apiError && (
+        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+          {apiError}
+        </p>
+      )}
 
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4">

@@ -553,7 +553,7 @@ function TmcModal({ repairKind, rows, onSave, onClose, zClass = "z-[60]", depart
           .map((t, i) => ({
             id: i + 1,
             name: t.nomenclature!.name,
-            invNo: t.nomenclature!.code,
+            invNo: t.nomenclature!.code ?? "",
             unit: t.nomenclature!.unit,
             qty: String(t.default_quantity),
             note: "Из шаблона " + workType,

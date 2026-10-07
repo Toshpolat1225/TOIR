@@ -233,7 +233,7 @@ const users = {
 
 // --- Sections Module ---
 
-type Section = {
+export type Section = {
   id: string;
   name: string;
   department_id: string | null;
@@ -241,7 +241,7 @@ type Section = {
   updated_at: string;
 };
 
-type Paginated<T> = {
+export type Paginated<T> = {
   items: T[];
   total: number;
   limit: number;
@@ -290,10 +290,10 @@ const sections = {
 
 // --- Departments Module ---
 
-type Department = {
+export type Department = {
   id: string;
   name: string;
-  color: string | null;
+  color: string;
   created_at: string;
   updated_at: string;
 };
@@ -328,6 +328,41 @@ const departments = {
       method: "DELETE",
       path: `/departments/${id}`,
     });
+  },
+};
+
+export type Employee = {
+  id: string;
+  tab_number: string;
+  full_name: string;
+  position: string | null;
+  section_id: string | null;
+  location_id: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+type EmployeeListParams = ListParams & { section_id?: string };
+type EmployeeCreate = Pick<Employee, "tab_number" | "full_name"> &
+  Partial<Pick<Employee, "position" | "section_id" | "location_id" | "is_active">>;
+type EmployeeUpdate = Partial<EmployeeCreate>;
+
+const employees = {
+  async list(params: EmployeeListParams = {}): Promise<Paginated<Employee>> {
+    return request<Paginated<Employee>>({ method: "GET", path: "/employees", params });
+  },
+  async get(id: string): Promise<Employee> {
+    return request<Employee>({ method: "GET", path: `/employees/${id}` });
+  },
+  async create(data: EmployeeCreate): Promise<Employee> {
+    return request<Employee>({ method: "POST", path: "/employees", body: data });
+  },
+  async update(id: string, data: EmployeeUpdate): Promise<Employee> {
+    return request<Employee>({ method: "PATCH", path: `/employees/${id}`, body: data });
+  },
+  async remove(id: string): Promise<void> {
+    await request<null>({ method: "DELETE", path: `/employees/${id}` });
   },
 };
 
@@ -516,20 +551,158 @@ const nomenclatureNorms = {
 };
 
 // --- Work Type Templates Module ---
-type WorkTypeTemplate = {
+export type WorkTypeTemplate = {
   id: string;
+  work_type_id: string;
   work_type: string;
-  default_quantity: number;
+  department_id: string | null;
+  nomenclature_id: string | null;
+  name: string | null;
+  inv_no: string | null;
+  unit: string | null;
+  default_quantity: number | string;
+  is_required: boolean;
+  note: string | null;
   nomenclature?: {
     id: string;
     name: string;
-    code: string;
+    code: string | null;
     unit: string;
-  };
+  } | null;
 };
+
+type WorkTypeTemplateCreate = Omit<WorkTypeTemplate, "id" | "work_type" | "nomenclature">;
+type WorkTypeTemplateUpdate = Partial<Omit<WorkTypeTemplateCreate, "work_type_id">>;
+type WorkTypeTemplateListParams = ListParams & {
+  work_type?: string;
+  work_type_id?: string;
+  department_id?: string;
+};
+
 const workTypeTemplates = {
-  async list(params: { work_type: string; department_id: string }): Promise<Paginated<WorkTypeTemplate>> {
+  async list(params: WorkTypeTemplateListParams = {}): Promise<Paginated<WorkTypeTemplate>> {
     return request<Paginated<WorkTypeTemplate>>({ method: "GET", path: "/work-type-templates", params });
+  },
+  async create(data: WorkTypeTemplateCreate): Promise<WorkTypeTemplate> {
+    return request<WorkTypeTemplate>({ method: "POST", path: "/work-type-templates", body: data });
+  },
+  async update(id: string, data: WorkTypeTemplateUpdate): Promise<WorkTypeTemplate> {
+    return request<WorkTypeTemplate>({ method: "PATCH", path: `/work-type-templates/${id}`, body: data });
+  },
+  async remove(id: string): Promise<void> {
+    await request<null>({ method: "DELETE", path: `/work-type-templates/${id}` });
+  },
+};
+
+export type WorkSubtask = {
+  id: string;
+  work_type_id: string;
+  name: string;
+  sort_order: number;
+};
+
+export type WorkType = {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  unit_type: "locomotive" | "wagon";
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+  subtasks: WorkSubtask[];
+};
+
+type WorkTypeListParams = ListParams & { unit_type?: WorkType["unit_type"] };
+type WorkTypeCreate = Pick<WorkType, "code" | "name" | "unit_type"> &
+  Partial<Pick<WorkType, "description" | "sort_order">>;
+type WorkTypeUpdate = Partial<WorkTypeCreate>;
+type WorkSubtaskCreate = Pick<WorkSubtask, "name"> & Partial<Pick<WorkSubtask, "sort_order">>;
+type WorkSubtaskUpdate = Partial<WorkSubtaskCreate>;
+
+const workTypes = {
+  async list(params: WorkTypeListParams = {}): Promise<Paginated<WorkType>> {
+    return request<Paginated<WorkType>>({ method: "GET", path: "/work-types", params });
+  },
+  async get(id: string): Promise<WorkType> {
+    return request<WorkType>({ method: "GET", path: `/work-types/${id}` });
+  },
+  async create(data: WorkTypeCreate): Promise<WorkType> {
+    return request<WorkType>({ method: "POST", path: "/work-types", body: data });
+  },
+  async update(id: string, data: WorkTypeUpdate): Promise<WorkType> {
+    return request<WorkType>({ method: "PATCH", path: `/work-types/${id}`, body: data });
+  },
+  async remove(id: string): Promise<void> {
+    await request<null>({ method: "DELETE", path: `/work-types/${id}` });
+  },
+  async createSubtask(workTypeId: string, data: WorkSubtaskCreate): Promise<WorkSubtask> {
+    return request<WorkSubtask>({
+      method: "POST",
+      path: `/work-types/${workTypeId}/subtasks`,
+      body: data,
+    });
+  },
+  async updateSubtask(
+    workTypeId: string,
+    subtaskId: string,
+    data: WorkSubtaskUpdate
+  ): Promise<WorkSubtask> {
+    return request<WorkSubtask>({
+      method: "PATCH",
+      path: `/work-types/${workTypeId}/subtasks/${subtaskId}`,
+      body: data,
+    });
+  },
+  async removeSubtask(workTypeId: string, subtaskId: string): Promise<void> {
+    await request<null>({
+      method: "DELETE",
+      path: `/work-types/${workTypeId}/subtasks/${subtaskId}`,
+    });
+  },
+};
+
+export type MaintenanceInterval = {
+  id: string;
+  work_type_id: string | null;
+  code: string;
+  name: string;
+  interval_km: number | string | null;
+  interval_days: number | null;
+  asset_types: string[];
+  warn_percent: number | string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+type MaintenanceIntervalCreate = Omit<MaintenanceInterval, "id" | "created_at" | "updated_at">;
+type MaintenanceIntervalUpdate = Partial<MaintenanceIntervalCreate>;
+type MaintenanceIntervalListParams = ListParams & { is_active?: boolean };
+
+const maintenanceIntervals = {
+  async list(params: MaintenanceIntervalListParams = {}): Promise<Paginated<MaintenanceInterval>> {
+    return request<Paginated<MaintenanceInterval>>({
+      method: "GET",
+      path: "/maintenance-intervals",
+      params,
+    });
+  },
+  async get(id: string): Promise<MaintenanceInterval> {
+    return request<MaintenanceInterval>({ method: "GET", path: `/maintenance-intervals/${id}` });
+  },
+  async create(data: MaintenanceIntervalCreate): Promise<MaintenanceInterval> {
+    return request<MaintenanceInterval>({ method: "POST", path: "/maintenance-intervals", body: data });
+  },
+  async update(id: string, data: MaintenanceIntervalUpdate): Promise<MaintenanceInterval> {
+    return request<MaintenanceInterval>({
+      method: "PATCH",
+      path: `/maintenance-intervals/${id}`,
+      body: data,
+    });
+  },
+  async remove(id: string): Promise<void> {
+    await request<null>({ method: "DELETE", path: `/maintenance-intervals/${id}` });
   },
 };
 
@@ -597,19 +770,6 @@ type DashboardSummary = {
 const dashboard = {
   async getSummary(params: { section?: string }): Promise<DashboardSummary> {
     return request<DashboardSummary>({ method: "GET", path: "/dashboard/summary", params });
-  },
-};
-
-// Re-exporting directory APIs for clarity, though they already exist
-const employees = {
-  async list(params: ListParams): Promise<Paginated<any>> {
-    return request<Paginated<any>>({ method: "GET", path: "/employees", params });
-  },
-};
-
-const workTypes = {
-  async list(params: ListParams): Promise<Paginated<any>> {
-    return request<Paginated<any>>({ method: "GET", path: "/work-types", params });
   },
 };
 
@@ -744,5 +904,6 @@ export const api = {
   dashboard,
   employees,
   workTypes,
+  maintenanceIntervals,
   fetchAllPaginated,
 };
