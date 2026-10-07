@@ -33,7 +33,7 @@ services:
       API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
       WIALON_INGEST_TOKEN: ${WIALON_INGEST_TOKEN:-}
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
     networks: [internal]
     depends_on:
       postgres:

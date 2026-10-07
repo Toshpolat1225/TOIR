@@ -113,10 +113,12 @@ serve(async (req) => {
     return new Response(JSON.stringify({ status: 'skipped' }), { status: 200 })
   }
   
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-  )
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in the Edge Function environment')
+  }
+  const supabase = createClient(supabaseUrl, serviceRoleKey)
   
   // Здесь можно добавить ML-логику или вызвать внешний сервис
   // ...
@@ -127,7 +129,7 @@ serve(async (req) => {
 
 ### Шаг 3: Настройте Database Webhook на Edge Function
 
-URL: `https://<project-ref>.supabase.co/functions/v1/ml-processor`
+URL: `${SUPABASE_URL}/functions/v1/ml-processor` (set SUPABASE_URL to your project URL)
 
 ## Способ 4: Ручной запуск (для тестирования)
 
@@ -186,8 +188,12 @@ GROUP BY insight_type, severity;
 3. **Валидация payload**: Проверяйте структуру входящих данных
 
 ```python
+import os
+
 # В ml_engine.py добавьте проверку токена
-WEBHOOK_SECRET = os.environ.get('WEBHOOK_SECRET', 'your-secret-token')
+WEBHOOK_SECRET = os.environ.get('WEBHOOK_SECRET')
+if not WEBHOOK_SECRET:
+    raise RuntimeError("Set the WEBHOOK_SECRET environment variable before starting the webhook")
 
 @app.route("/webhook/work-order-completed", methods=["POST"])
 def handle_webhook():

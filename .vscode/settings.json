@@ -1,5 +1,4 @@
 {
-    "claudeCodeChat.permissions.yoloMode": true,
     "python.testing.unittestArgs": [
         "-v",
         "-s",

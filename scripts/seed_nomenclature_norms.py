@@ -9,6 +9,7 @@
     python scripts/seed_nomenclature_norms.py
 """
 
+import os
 import uuid
 from supabase import create_client, Client
 
@@ -16,8 +17,10 @@ from supabase import create_client, Client
 # КОНФИГУРАЦИЯ
 # ═══════════════════════════════════════════════════════════════════════════════
 
-SUPABASE_URL = "https://qowgaahijzamnprtfyko.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFvd2dhYWhpanphbW5wcnRmeWtvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0Njc2MTQsImV4cCI6MjA4NzA0MzYxNH0.zo-bAha0qyNw37yRkitt6f-nF1Gt2hYnanZ5zah-eaA"
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("Set SUPABASE_URL and SUPABASE_KEY environment variables before running this script.")
 
 # Виды работ
 WORK_TYPES = ["ТО-1", "ТО-2", "ТО-3", "ТР-1", "ТР-2", "КР"]

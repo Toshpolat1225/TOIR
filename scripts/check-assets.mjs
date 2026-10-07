@@ -1,9 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  'https://qowgaahijzamnprtfyko.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFvd2dhYWhpanphbW5wcnRmeWtvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0Njc2MTQsImV4cCI6MjA4NzA0MzYxNH0.zo-bAha0qyNw37yRkitt6f-nF1Gt2hYnanZ5zah-eaA'
-)
+const supabaseUrl = process.env.SUPABASE_URL
+const supabaseKey = process.env.SUPABASE_KEY
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Set SUPABASE_URL and SUPABASE_KEY environment variables before running this script.')
+}
+const supabase = createClient(supabaseUrl, supabaseKey)
 
 // Общий счёт
 const { count: total } = await supabase.from('fixed_assets').select('*', { count: 'exact', head: true })
