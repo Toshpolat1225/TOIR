@@ -4,7 +4,7 @@ from urllib.parse import parse_qsl
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.types import RequestResponseEndpoint
+from starlette.middleware.base import RequestResponseEndpoint
 
 from app.core.config import settings
 from app.core.database import engine

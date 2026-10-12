@@ -6,6 +6,7 @@ Run only after deploying the backend changes and configuring the API tunnel.
 from __future__ import annotations
 
 import getpass
+import os
 import secrets
 import sys
 import uuid
@@ -77,7 +78,7 @@ def main() -> int:
 
     admin_email = getpass.getpass("Admin email: ").strip()
     admin_password = getpass.getpass("Admin password: ")
-    ingest_token = getpass.getpass("Wialon ingest token: ")
+    ingest_token = os.environ.get("WIALON_INGEST_TOKEN") or getpass.getpass("Wialon ingest token: ")
     if not admin_email or not admin_password or not ingest_token:
         print("Admin credentials and the Wialon ingest token are required.")
         return 2
