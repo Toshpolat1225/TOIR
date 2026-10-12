@@ -10,6 +10,7 @@ import os
 import secrets
 import sys
 import uuid
+from decimal import Decimal
 from typing import Any
 from urllib.parse import urlencode
 
@@ -50,7 +51,7 @@ def _check_history(
             and isinstance(items, list)
             and any(
                 item.get("source") == source
-                and str(item.get("mileage")) == expected_mileage
+                and Decimal(str(item.get("mileage"))) == Decimal(expected_mileage)
                 for item in items
                 if isinstance(item, dict)
             )

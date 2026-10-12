@@ -15,6 +15,7 @@ from app.routers.nomenclature import router as nomenclature_router
 from app.routers.references import router as references_router
 from app.routers.users import router as users_router
 from app.routers.wialon import router as wialon_router
+from app.routers.work_orders import router as work_orders_router
 
 
 @asynccontextmanager
@@ -67,3 +68,4 @@ app.include_router(references_router, prefix="/api/v1")
 app.include_router(nomenclature_router, prefix="/api/v1")
 app.include_router(assets_router, prefix="/api/v1")
 app.include_router(wialon_router, prefix="/api/v1")
+app.include_router(work_orders_router, prefix="/api/v1")

@@ -33,8 +33,7 @@ def _items(response: Any) -> list[dict[str, Any]]:
 
 def main() -> int:
     checks: list[Check] = []
-    deferred_checks: list[str] = []
-    users: list[str] = []
+    users: list[tuple[str, bool]] = []
     resources: list[tuple[str, str]] = []
     admin_token: str | None = None
     operator_token: str | None = None
@@ -79,7 +78,7 @@ def main() -> int:
             operator_response,
             "/api/v1/users",
         )
-        users.append(operator_id)
+        users.append((operator_id, False))
         operator_login = request(
             "POST",
             "/api/v1/auth/login",
@@ -170,7 +169,7 @@ def main() -> int:
         master_id = _record_created(
             checks, [], "Create temporary master", master_response, "/api/v1/users"
         )
-        users.append(master_id)
+        users.append((master_id, True))
         master_login = request(
             "POST",
             "/api/v1/auth/login",
@@ -433,12 +432,86 @@ def main() -> int:
             403,
         )
 
-        # Work-order routes are intentionally outside this T2b change. This
-        # conflict is checked after T4 exposes a public way to attach test items.
-        deferred_checks.append(
-            "Delete a nomenclature linked to work_order_items returns 409 "
-            "(deferred until the T4 work-order API can create the fixture)"
+        asset_response = request(
+            "POST",
+            "/api/v1/fixed-assets",
+            bearer=operator_token,
+            payload={
+                "inv_number": f"NOM-WO-{suffix[:10]}",
+                "name": f"Nomenclature work-order asset {suffix[:8]}",
+                "asset_type": "locomotive",
+                "section_id": section_id,
+                "mileage": "10",
+            },
         )
+        asset_id = _record_created(
+            checks, resources, "Create work-order asset", asset_response,
+            "/api/v1/fixed-assets",
+        )
+        employee_response = request(
+            "POST",
+            "/api/v1/employees",
+            bearer=operator_token,
+            payload={
+                "tab_number": f"NOMWO-{suffix[:12]}",
+                "full_name": "Nomenclature work-order test executor",
+                "section_id": section_id,
+            },
+        )
+        employee_id = _record_created(
+            checks, resources, "Create work-order executor", employee_response,
+            "/api/v1/employees",
+        )
+        order_response = request(
+            "POST",
+            "/api/v1/work-orders",
+            bearer=operator_token,
+            payload={
+                "fixed_asset_id": asset_id,
+                "section_id": section_id,
+                "department_id": department_id,
+                "order_kind": "repair",
+                "executor_id": employee_id,
+                "description": f"Nomenclature reference test {suffix}",
+                "repairs": [
+                    {
+                        "work_type_id": work_type_id,
+                        "items": [
+                            {
+                                "nomenclature_id": nomenclature_id,
+                                "name": f"Used nomenclature {suffix}",
+                                "qty": "1",
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+        order_id = _record_created(
+            checks, resources, "Create work order referencing nomenclature",
+            order_response, "/api/v1/work-orders",
+        )
+        check_status(
+            checks,
+            "Cannot delete nomenclature referenced by a work order",
+            request(
+                "DELETE",
+                f"/api/v1/nomenclature/{nomenclature_id}",
+                bearer=operator_token,
+            ),
+            409,
+        )
+        check_status(
+            checks,
+            "Delete work-order fixture",
+            request(
+                "DELETE",
+                f"/api/v1/work-orders/{order_id}",
+                bearer=operator_token,
+            ),
+            204,
+        )
+        resources.remove(("/api/v1/work-orders", order_id))
 
         check_status(
             checks,
@@ -489,12 +562,15 @@ def main() -> int:
         stopped_reason = str(exc)
     finally:
         if admin_token is not None:
-            for index, user_id in enumerate(users, start=1):
+            for index, (user_id, is_master) in enumerate(users, start=1):
+                user_payload: dict[str, Any] = {"is_active": False}
+                if is_master:
+                    user_payload.update({"role": "operator", "section_id": None})
                 response = request(
                     "PATCH",
                     f"/api/v1/users/{user_id}",
                     bearer=admin_token,
-                    payload={"is_active": False},
+                    payload=user_payload,
                 )
                 check_status(checks, f"Cleanup: deactivate test user {index}", response, 200)
             for endpoint, record_id in reversed(resources):
@@ -513,10 +589,6 @@ def main() -> int:
     if stopped_reason:
         print(f"\nNomenclature test stopped: {stopped_reason}")
     print_results(checks)
-    if deferred_checks:
-        print("\nKechiktirilgan tekshiruvlar (bajarilmadi)")
-        for item in deferred_checks:
-            print(f"- {item}")
     return 1 if stopped_reason or any(not item.passed for item in checks) else 0
 
 

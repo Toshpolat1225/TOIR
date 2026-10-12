@@ -54,6 +54,7 @@ Avvalgi agent sessiyasi logidan olingan. **"Tasdiqlangan" = real ishga tushirib 
 | `require_role(*roles)` (ko'p rolli), `is_active` tekshiruvi | Yozilgan | Xotira-DB bilan |
 | CLI: `python -m app.cli create-admin` (interaktiv) | Yozilgan | **Admin hali yaratilmagan** |
 | Users API (faqat admin): ro'yxat (limit/offset, `sort_by` whitelist), yaratish, tahrirlash, parol reset (refresh'lar revoke) | Yozilgan | Faqat kod. O'chirish endpointi ataylab yo'q |
+| Work-orders API: list/get/create/PATCH, repairs/items, status oqimi, master scope, norm-check va template-items | Yozilgan (`T4a`), `DELETE` esa test fixture tozalash uchun admin/operator ruxsati bilan qo'shilgan | Faqat kod; `backend/scripts/e2e_workorders.py` yozilgan, real API/DB test hali bajarilmagan |
 | CORS faqat `CORS_ORIGINS` env'dan, compose'da majburiy | Yozilgan | Faqat kod |
 | Testlar (`backend/tests`) | Logdan mavjudligi ko'rinmaydi | — |
 
@@ -148,7 +149,8 @@ Har bir vazifaning "tayyor" mezoni — **real ishga tushirilgan** tekshiruv. Pro
 | **T1** | **Frontend auth ko'prigi:** Supabase auth → FastAPI; `lib/auth-context.tsx` ↔ `lib/api.ts`; Next `/api/v1/auth/*` route'larini o'chirish | Brauzerda login/refresh/logout; Supabase'ga hech so'rov ketmaydi |
 | **T2** | **Spravochniklar CRUD:** sections, departments, employees, work-types (+subtasks, templates), maintenance-intervals, nomenclature, norms | Har bir resurs uchun list/get/create/update/delete, rol tekshiruvi, pytest |
 | **T3** | **Fixed assets + mileage + Wialon ingest** (`WIALON_INGEST_TOKEN`) | ОС CRUD; `POST /wialon/input` tokensiz 401; mileage_history yoziladi |
-| **T4** | **Work-orders** (repairs/items, `number` generatsiyasi, status o'tishlari, master server filtri, norma >20% tekshiruvi) + **tmc-documents** | Master boshqa uchastka nariyadini ololmaydi (403/404); statuslar to'g'ri |
+| **T4a** | **Work-orders backend** (repairs/items, `number` generatsiyasi, status o'tishlari, master server filtri, norma >20% tekshiruvi) | Kod va E2E skript yozilgan; deploy/PostgreSQL orqali real test kutilmoqda |
+| **T4b** | Work-orders frontend va **tmc-documents** API | Hali bajarilmagan |
 | **T5** | **ТО-reja xizmati** (`maintenance_intervals` asosida) + `maintenance-schedule` | Pробег o'zgarganda reja yaratiladi; qattiq chegaralar yo'q |
 | **T6** | **Analytics view'lari** + `dashboard/summary` + reports | Analytics va dashboard sahifalari backend'dan ma'lumot oladi |
 | **T7** | **WebSocket `/ws`** (LISTEN/NOTIFY, JWT bilan autentifikatsiya) | Nariyad o'zgarsa klientga event keladi |
