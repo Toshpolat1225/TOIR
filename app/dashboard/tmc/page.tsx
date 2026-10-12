@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRealtime } from "@/lib/use-realtime"
 import { useSectionView } from "@/lib/section-view-context"
 import { api } from "@/lib/api"
@@ -56,16 +56,18 @@ function AddNomenclatureModal({
   open,
   onClose,
   sections,
+  departments,
   effectiveSection,
   onSaved,
 }: {
   open: boolean
   onClose: () => void
-  sections: { id: string; name: string }[]
+  sections: { id: string; name: string; department_id: string | null }[]
+  departments: { id: string; name: string }[]
   effectiveSection: string | null
   onSaved: () => void
 }) {
-  const [sectionId, setSectionId] = useState("")
+  const [departmentId, setDepartmentId] = useState("")
   const [name, setName] = useState("")
   const [code, setCode] = useState("")
   const [unit, setUnit] = useState("шт.")
@@ -73,7 +75,7 @@ function AddNomenclatureModal({
   const [error, setError] = useState("")
 
   const reset = () => {
-    setSectionId("")
+    setDepartmentId("")
     setName("")
     setCode("")
     setUnit("шт.")
@@ -82,10 +84,17 @@ function AddNomenclatureModal({
 
   useEffect(() => {
     if (open && sections.length) {
-      const defaultId = effectiveSection ? sections.find((s) => s.name === effectiveSection)?.id ?? "" : ""
-      setSectionId(defaultId)
+      const defaultDepartmentId = effectiveSection
+        ? sections.find((section) => section.name === effectiveSection)?.department_id ?? ""
+        : ""
+      const selectedDepartmentId = departments.some(
+        (department) => department.id === defaultDepartmentId
+      )
+        ? defaultDepartmentId
+        : ""
+      setDepartmentId(selectedDepartmentId)
     }
-  }, [open, effectiveSection, sections])
+  }, [open, effectiveSection, sections, departments])
 
   const handleClose = () => {
     reset()
@@ -100,17 +109,14 @@ function AddNomenclatureModal({
       setError("Укажите наименование")
       return
     }
-    const sectionName = sections.find((s) => s.id === sectionId)?.name
-    if (!sectionId || !sectionName) {
-      setError("Выберите участок (разделение)")
+    if (!departments.some((department) => department.id === departmentId)) {
+      setError("Выберите подразделение")
       return
     }
     setSaving(true)
     try {
-      // The backend handles department creation if it doesn't exist.
-      // We just need to provide the department ID from the selected section.
       const newNomenclature = await api.nomenclature.create({
-        department_id: sectionId,
+        department_id: departmentId,
         name: trimName,
         code: code.trim() || undefined,
         unit: unit.trim() || "шт.",
@@ -125,7 +131,7 @@ function AddNomenclatureModal({
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "An unknown error occurred";
       if (errorMessage.includes("already exists")) {
-        setError("Номенклатура с таким названием уже существует в этом участке.");
+        setError("Номенклатура с таким названием уже существует в этом подразделении.");
       } else {
         setError(errorMessage);
       }
@@ -149,17 +155,17 @@ function AddNomenclatureModal({
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Участок (разделение) *</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Подразделение *</label>
             <select
-              value={sectionId}
-              onChange={(e) => setSectionId(e.target.value)}
+              value={departmentId}
+              onChange={(e) => setDepartmentId(e.target.value)}
               className="w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
               required
-              disabled={sections.length === 0}
+              disabled={departments.length === 0}
             >
-              <option value="">{sections.length === 0 ? "Нет участков — добавьте в Администрирование → Участки" : "— Выберите участок —"}</option>
-              {sections.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
+              <option value="">{departments.length === 0 ? "Нет подразделений" : "— Выберите подразделение —"}</option>
+              {departments.map((department) => (
+                <option key={department.id} value={department.id}>{department.name}</option>
               ))}
             </select>
           </div>
@@ -483,11 +489,12 @@ export default function TmcPage() {
   const [nomenclatureLoading, setNomenclatureLoading] = useState(true)
   const [nomenclatureSearch, setNomenclatureSearch] = useState("")
   const [addNomenclatureOpen, setAddNomenclatureOpen] = useState(false)
-  const [sections, setSections] = useState<{ id: string; name: string }[]>([])
+  const [sections, setSections] = useState<{ id: string; name: string; department_id: string | null }[]>([])
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
   const [filterDepartmentId, setFilterDepartmentId] = useState<string | null>(null)
   const [editNomenclatureRow, setEditNomenclatureRow] = useState<NomenclatureRow | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [nomenclatureActionError, setNomenclatureActionError] = useState("")
 
   const fetchDocs = useCallback(async () => {
     setLoading(true)
@@ -505,23 +512,25 @@ export default function TmcPage() {
   const fetchNomenclature = useCallback(async () => {
     setNomenclatureLoading(true)
     try {
-      const params: Parameters<typeof api.nomenclature.list>[0] = { limit: 1000, sort_by: 'name', sort_order: 'asc' };
+      const params: Parameters<typeof api.nomenclature.list>[0] = {
+        limit: 1000,
+        sort_by: "name",
+        sort_order: "asc",
+        q: nomenclatureSearch.trim() || undefined,
+      }
       if (filterDepartmentId) {
-        params.department_id = filterDepartmentId;
+        params.department_id = filterDepartmentId
       } else if (effectiveSection) {
-        // Find department ID for the effective section name
-        const allDepts = (await api.departments.list({ limit: 1000 })).items;
-        const sectionDept = allDepts.find(d => d.name === effectiveSection);
-        if (sectionDept) {
-          params.department_id = sectionDept.id;
+        const section = sections.find((item) => item.name === effectiveSection)
+        if (!section?.department_id) {
+          setNomenclature([])
+          return
         }
+        params.department_id = section.department_id
       }
 
       const response = await api.nomenclature.list(params);
-      setNomenclature(response.items.map(item => ({
-        ...item,
-        department_name: item.department_name || '—'
-      })));
+      setNomenclature(response.items)
 
     } catch (error) {
       console.error("Failed to fetch nomenclature:", error)
@@ -529,7 +538,7 @@ export default function TmcPage() {
     } finally {
       setNomenclatureLoading(false)
     }
-  }, [effectiveSection, filterDepartmentId])
+  }, [effectiveSection, filterDepartmentId, nomenclatureSearch, sections])
 
   const fetchDepartments = useCallback(async () => {
     try {
@@ -543,8 +552,8 @@ export default function TmcPage() {
 
   const fetchSections = useCallback(async () => {
     try {
-      const response = await api.sections.list({ limit: 1000, sort_by: 'name' });
-      setSections(response.items);
+      const response = await api.sections.list({ limit: 1000, sort_by: "name" })
+      setSections(response.items)
     } catch (error) {
       console.error("Failed to fetch sections:", error);
       setSections([]);
@@ -556,16 +565,8 @@ export default function TmcPage() {
   useEffect(() => { fetchSections() }, [fetchSections])
   useEffect(() => { fetchDepartments() }, [fetchDepartments])
 
-  const filteredNomenclature = useMemo(() => {
-    if (!nomenclatureSearch.trim()) return nomenclature
-    const q = nomenclatureSearch.trim().toLowerCase()
-    return nomenclature.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        (r.code && r.code.toLowerCase().includes(q)) ||
-        r.department_name.toLowerCase().includes(q)
-    )
-  }, [nomenclature, nomenclatureSearch])
+  const filteredNomenclature = nomenclature
+  const availableDepartments = departments
 
   if (loading) return (
     <div className="flex items-center justify-center h-96 text-gray-400 text-sm gap-3">
@@ -581,6 +582,7 @@ export default function TmcPage() {
         open={addNomenclatureOpen}
         onClose={() => setAddNomenclatureOpen(false)}
         sections={sections}
+        departments={availableDepartments}
         effectiveSection={effectiveSection}
         onSaved={fetchNomenclature}
       />
@@ -588,7 +590,7 @@ export default function TmcPage() {
         open={!!editNomenclatureRow}
         onClose={() => setEditNomenclatureRow(null)}
         row={editNomenclatureRow}
-        departments={departments}
+        departments={availableDepartments}
         onSaved={fetchNomenclature}
       />
 
@@ -704,8 +706,8 @@ export default function TmcPage() {
               onChange={(e) => setFilterDepartmentId(e.target.value || null)}
               className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
             >
-              <option value="">Все участки</option>
-              {departments.map((d) => (
+              <option value="">Все подразделения</option>
+              {availableDepartments.map((d) => (
                 <option key={d.id} value={d.id}>{d.name}</option>
               ))}
             </select>
@@ -717,13 +719,18 @@ export default function TmcPage() {
           <div className="relative w-64 sm:w-72">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
-              placeholder="Поиск по наименованию, коду, участку..."
+              placeholder="Поиск по наименованию или коду..."
               value={nomenclatureSearch}
               onChange={(e) => setNomenclatureSearch(e.target.value)}
               className="pl-9 h-9 text-sm bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
             />
           </div>
         </div>
+        {nomenclatureActionError && (
+          <p className="px-5 py-3 text-sm text-red-600 dark:text-red-400">
+            {nomenclatureActionError}
+          </p>
+        )}
         <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
           {nomenclatureLoading ? (
             <div className="flex items-center justify-center py-16 text-gray-400 text-sm gap-2">
@@ -740,7 +747,7 @@ export default function TmcPage() {
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-gray-800/50 sticky top-0 z-10">
                 <tr>
-                  {["Наименование", "Код", "Ед. изм.", "Участок", "Действия"].map((h) => (
+                  {["Наименование", "Код", "Ед. изм.", "Подразделение", "Действия"].map((h) => (
                     <th
                       key={h}
                       className="text-left px-5 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider"
@@ -775,9 +782,16 @@ export default function TmcPage() {
                               type="button"
                               className="text-red-600 font-medium"
                               onClick={async () => {
-                                await api.nomenclature.remove(r.id);
-                                await fetchNomenclature()
-                                setDeleteConfirmId(null)
+                                setNomenclatureActionError("")
+                                try {
+                                  await api.nomenclature.remove(r.id)
+                                  await fetchNomenclature()
+                                  setDeleteConfirmId(null)
+                                } catch (error) {
+                                  setNomenclatureActionError(
+                                    error instanceof Error ? error.message : "Не удалось удалить номенклатуру"
+                                  )
+                                }
                               }}
                             >
                               Да

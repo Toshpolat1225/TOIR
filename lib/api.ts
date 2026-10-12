@@ -368,22 +368,25 @@ const employees = {
 
 // --- Nomenclature Module ---
 
-type Nomenclature = {
+export type Nomenclature = {
   id: string;
+  department_id: string;
+  department_name: string;
   name: string;
   code: string | null;
   unit: string;
-  department_id: string;
-  department_name?: string; // Joined in backend
+  extra: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
 };
 
-type NomenclatureListParams = ListParams & {
-  name?: string;
+export type NomenclatureListParams = ListParams & {
+  q?: string;
   department_id?: string;
 };
 
 const nomenclature = {
-  async list(params: NomenclatureListParams = { limit: 100, offset: 0 }): Promise<Paginated<Nomenclature>> {
+  async list(params: NomenclatureListParams = { limit: 50, offset: 0 }): Promise<Paginated<Nomenclature>> {
     return request<Paginated<Nomenclature>>({
       method: "GET",
       path: "/nomenclature",
@@ -391,7 +394,17 @@ const nomenclature = {
     });
   },
 
-  async create(data: { name: string; code?: string; unit?: string; department_id: string }): Promise<Nomenclature> {
+  async get(id: string): Promise<Nomenclature> {
+    return request<Nomenclature>({ method: "GET", path: `/nomenclature/${id}` });
+  },
+
+  async create(data: {
+    department_id: string;
+    name: string;
+    code?: string | null;
+    unit?: string;
+    extra?: Record<string, unknown>;
+  }): Promise<Nomenclature> {
     return request<Nomenclature>({
       method: "POST",
       path: "/nomenclature",
@@ -399,7 +412,16 @@ const nomenclature = {
     });
   },
 
-  async update(id: string, data: Partial<{ name: string; code: string; unit: string; department_id: string }>): Promise<Nomenclature> {
+  async update(
+    id: string,
+    data: Partial<{
+      department_id: string;
+      name: string;
+      code: string | null;
+      unit: string;
+      extra: Record<string, unknown>;
+    }>
+  ): Promise<Nomenclature> {
     return request<Nomenclature>({
       method: "PATCH",
       path: `/nomenclature/${id}`,
@@ -586,23 +608,64 @@ const maintenanceSchedule = {
 };
 
 // --- Nomenclature Norms Module ---
-type NomenclatureNorm = {
+export type NomenclatureNorm = {
   id: string;
   nomenclature_id: string;
   department_id: string;
-  work_type: string;
-  standard_quantity: number;
-  avg_price: number;
-  nomenclature?: {
-    id: string;
-    name: string;
-    code: string;
-    unit: string;
-  };
+  work_type_id: string;
+  standard_quantity: number | string;
+  avg_price: number | string;
+  min_quantity: number | string | null;
+  max_quantity: number | string | null;
+  nomenclature_name: string;
+  nomenclature_code: string | null;
+  nomenclature_unit: string;
+  work_type_code: string;
+  created_at: string;
+  updated_at: string;
 };
+
+export type NomenclatureNormListParams = ListParams & {
+  department_id?: string;
+  work_type_id?: string;
+  nomenclature_id?: string;
+};
+
+export type NomenclatureNormCreate = {
+  nomenclature_id: string;
+  department_id: string;
+  work_type_id: string;
+  standard_quantity: number | string;
+  avg_price?: number | string;
+  min_quantity?: number | string | null;
+  max_quantity?: number | string | null;
+};
+
+export type NomenclatureNormUpdate = Partial<NomenclatureNormCreate>;
+
 const nomenclatureNorms = {
-  async list(params: { department_id: string }): Promise<Paginated<NomenclatureNorm>> {
+  async list(params: NomenclatureNormListParams = { limit: 50, offset: 0 }): Promise<Paginated<NomenclatureNorm>> {
     return request<Paginated<NomenclatureNorm>>({ method: "GET", path: "/nomenclature-norms", params });
+  },
+
+  async get(id: string): Promise<NomenclatureNorm> {
+    return request<NomenclatureNorm>({ method: "GET", path: `/nomenclature-norms/${id}` });
+  },
+
+  async create(data: NomenclatureNormCreate): Promise<NomenclatureNorm> {
+    return request<NomenclatureNorm>({ method: "POST", path: "/nomenclature-norms", body: data });
+  },
+
+  async update(id: string, data: NomenclatureNormUpdate): Promise<NomenclatureNorm> {
+    return request<NomenclatureNorm>({
+      method: "PATCH",
+      path: `/nomenclature-norms/${id}`,
+      body: data,
+    });
+  },
+
+  async remove(id: string): Promise<void> {
+    await request<null>({ method: "DELETE", path: `/nomenclature-norms/${id}` });
   },
 };
 

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, createContext, useContext, useCallback, Suspense } from "react"
 import { useRealtime } from "@/lib/use-realtime"
 import { useSearchParams, useRouter } from "next/navigation"
-import { api } from "@/lib/api"
+import { api, type NomenclatureNorm } from "@/lib/api"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/lib/auth-context"
 import { useSectionView } from "@/lib/section-view-context"
@@ -291,21 +291,6 @@ type TmcRow = {
 }
 type RepairItem = { id:number; kind:string; rows:TmcRow[] }
 
-// Тип для нормативов из БД
-type NomenclatureNorm = {
-  id: string
-  nomenclature_id: string
-  department_id: string
-  work_type: string
-  standard_quantity: number
-  avg_price: number
-  nomenclature?: {
-    id: string
-    name: string
-    code: string
-    unit: string
-  }
-}
 type UnitType  = "locomotive" | "wagon" | "diesel"
 type WorkOrder = {
   id:string; unitType:UnitType; unit:string; desc:string; type:string; repairKind:string
@@ -511,19 +496,18 @@ function TmcModal({ repairKind, rows, onSave, onClose, zClass = "z-[60]", depart
       
       try {
         const response = await api.nomenclatureNorms.list({ department_id: departmentId });
-        const normsData = response.items as NomenclatureNorm[];
+        const normsData = response.items;
         setNorms(normsData);
         
         // Фильтруем справочник ТМЦ по нормативам участка
         const filtered = normsData
-          .filter(n => n.nomenclature)
           .map(n => ({
-            name: n.nomenclature!.name,
-            invNo: n.nomenclature!.code,
-            unit: n.nomenclature!.unit,
+            name: n.nomenclature_name,
+            invNo: n.nomenclature_code ?? "",
+            unit: n.nomenclature_unit,
             category: "Нормативы участка",
-            standardQty: n.standard_quantity,
-            avgPrice: n.avg_price,
+            standardQty: Number(n.standard_quantity),
+            avgPrice: Number(n.avg_price),
             nomenclatureId: n.nomenclature_id,
           }))
         setFilteredNomenclature(filtered as unknown as CatalogItem[]);
@@ -576,8 +560,8 @@ function TmcModal({ repairKind, rows, onSave, onClose, zClass = "z-[60]", depart
   const validateAndCalculate = useCallback((row: TmcRow): TmcRow => {
     const qty = parseFloat(row.qty) || 0
     const norm = norms.find(n => 
-      n.nomenclature?.name === row.name || 
-      n.nomenclature?.code === row.invNo ||
+      n.nomenclature_name === row.name ||
+      n.nomenclature_code === row.invNo ||
       n.nomenclature_id === row.nomenclatureId
     )
     
@@ -587,8 +571,8 @@ function TmcModal({ repairKind, rows, onSave, onClose, zClass = "z-[60]", depart
     let avgPrice = row.avgPrice
     
     if (norm) {
-      standardQty = norm.standard_quantity
-      avgPrice = norm.avg_price
+      standardQty = Number(norm.standard_quantity)
+      avgPrice = Number(norm.avg_price)
       
       // Проверка превышения норматива на 20%
       const threshold = standardQty * 1.2

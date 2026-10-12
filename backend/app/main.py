@@ -11,6 +11,7 @@ from app.core.database import engine
 from app.routers.auth import router as auth_router
 from app.routers.assets import router as assets_router
 from app.routers.health import router as health_router
+from app.routers.nomenclature import router as nomenclature_router
 from app.routers.references import router as references_router
 from app.routers.users import router as users_router
 from app.routers.wialon import router as wialon_router
@@ -63,5 +64,6 @@ app.include_router(health_router)
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(references_router, prefix="/api/v1")
+app.include_router(nomenclature_router, prefix="/api/v1")
 app.include_router(assets_router, prefix="/api/v1")
 app.include_router(wialon_router, prefix="/api/v1")
