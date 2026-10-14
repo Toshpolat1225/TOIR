@@ -309,6 +309,28 @@ def main() -> int:
             primary_response, "/api/v1/work-orders",
         )
         primary = parse_object(primary_response)
+        consecutive_response = request(
+            "POST",
+            "/api/v1/work-orders",
+            bearer=operator_token,
+            payload=order_payload(f"Consecutive work-order {suffix}"),
+        )
+        _record_created(
+            checks,
+            resources,
+            "Create second consecutive work order",
+            consecutive_response,
+            "/api/v1/work-orders",
+        )
+        consecutive = parse_object(consecutive_response)
+        check_condition(
+            checks,
+            "Consecutive work orders receive distinct numbers",
+            primary.get("number") != consecutive.get("number"),
+            f"First and second HTTP 201 work orders have distinct numbers"
+            if primary.get("number") != consecutive.get("number")
+            else "Both work orders received the same number",
+        )
         check_condition(
             checks,
             "Generated work-order number format",

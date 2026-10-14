@@ -54,7 +54,7 @@ Avvalgi agent sessiyasi logidan olingan. **"Tasdiqlangan" = real ishga tushirib 
 | `require_role(*roles)` (ko'p rolli), `is_active` tekshiruvi | Yozilgan | Xotira-DB bilan |
 | CLI: `python -m app.cli create-admin` (interaktiv) | Yozilgan | **Admin hali yaratilmagan** |
 | Users API (faqat admin): ro'yxat (limit/offset, `sort_by` whitelist), yaratish, tahrirlash, parol reset (refresh'lar revoke) | Yozilgan | Faqat kod. O'chirish endpointi ataylab yo'q |
-| Work-orders API: list/get/create/PATCH, repairs/items, status oqimi, master scope, norm-check va template-items | Yozilgan (`T4a`), `DELETE` esa test fixture tozalash uchun admin/operator ruxsati bilan qo'shilgan | Faqat kod; `backend/scripts/e2e_workorders.py` yozilgan, real API/DB test hali bajarilmagan |
+| Work-orders API: list/get/create/PATCH, repairs/items, status oqimi, master scope, norm-check va template-items | Yozilgan (`T4a`), `DELETE` esa test fixture tozalash uchun admin/operator ruxsati bilan qo'shilgan; raqam unique to'qnashuvi savepoint ichida cheklangan retry bilan qayta urinadi | Faqat kod; `backend/scripts/e2e_workorders.py` raqam collision va atomic rollback regressiya ssenariylarini qamrab oladi, real API/DB test hali bajarilmagan |
 | CORS faqat `CORS_ORIGINS` env'dan, compose'da majburiy | Yozilgan | Faqat kod |
 | Testlar (`backend/tests`) | Logdan mavjudligi ko'rinmaydi | — |
 

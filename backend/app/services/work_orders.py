@@ -1,9 +1,11 @@
+import asyncio
+import random
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +27,27 @@ def _not_found() -> HTTPException:
 
 def _conflict(detail: str) -> HTTPException:
     return HTTPException(status_code=409, detail=detail)
+
+
+def _is_work_order_number_conflict(exc: IntegrityError) -> bool:
+    current: BaseException | None = exc.orig
+    visited: set[int] = set()
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        diagnostic = getattr(current, "diag", None)
+        constraint_name = getattr(current, "constraint_name", None) or getattr(
+            diagnostic, "constraint_name", None
+        )
+        sqlstate = getattr(current, "sqlstate", None) or getattr(
+            current, "pgcode", None
+        )
+        if (
+            constraint_name == "work_orders_number_key"
+            and sqlstate in {None, "23505"}
+        ):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def _read(row: dict[str, Any]) -> WorkOrderRead:
@@ -140,36 +163,51 @@ async def create_order(
     db: AsyncSession, user: User, payload: WorkOrderCreate
 ) -> WorkOrderRead:
     section_id, department_id, mileage = await _resolve_create_scope(db, user, payload)
+    user_id = user.id
     base_time = datetime.now(timezone.utc).replace(microsecond=0)
     for attempt in range(5):
         number = f"НЗ-{(base_time + timedelta(seconds=attempt)).strftime('%Y%m%d-%H%M%S')}"
-        order = WorkOrder(
-            number=number,
-            fixed_asset_id=payload.fixed_asset_id,
-            section_id=section_id,
-            department_id=department_id,
-            order_kind=payload.order_kind,
-            status="pending",
-            priority=payload.priority,
-            executor_id=payload.executor_id,
-            chief_id=payload.chief_id,
-            description=payload.description,
-            note=payload.note,
-            date_start=payload.date_start,
-            date_end=payload.date_end,
-            mileage_at_creation=mileage,
-            created_by=user.id,
-        )
-        db.add(order)
         try:
-            await db.flush()
-            await repository.add_repair_rows(db, order.id, payload.repairs)
+            async with db.begin_nested():
+                order = WorkOrder(
+                    number=number,
+                    fixed_asset_id=payload.fixed_asset_id,
+                    section_id=section_id,
+                    department_id=department_id,
+                    order_kind=payload.order_kind,
+                    status="pending",
+                    priority=payload.priority,
+                    executor_id=payload.executor_id,
+                    chief_id=payload.chief_id,
+                    description=payload.description,
+                    note=payload.note,
+                    date_start=payload.date_start,
+                    date_end=payload.date_end,
+                    mileage_at_creation=mileage,
+                    created_by=user_id,
+                )
+                db.add(order)
+                await db.flush()
+                order_id = order.id
+                await repository.add_repair_rows(db, order_id, payload.repairs)
             await db.commit()
-            return await get_order(db, user, order.id)
+            result = await repository.get_order_row(db, order_id)
+            if result is None:
+                raise RuntimeError("Created work order could not be reloaded")
+            return _read(result)
         except IntegrityError as exc:
+            number_conflict = _is_work_order_number_conflict(exc)
             await db.rollback()
+            if not number_conflict:
+                raise _conflict(
+                    "Work order references an invalid asset, section, employee, "
+                    "work type, or nomenclature item"
+                ) from exc
             if attempt == 4:
-                raise _conflict("Work order could not be created because a referenced record is invalid or its number conflicts") from exc
+                raise _conflict(
+                    "Could not generate a unique work order number after several attempts"
+                ) from exc
+            await asyncio.sleep(random.uniform(0.01, 0.05))
         except Exception:
             await db.rollback()
             raise
