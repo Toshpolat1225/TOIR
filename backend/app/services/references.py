@@ -222,6 +222,7 @@ async def list_employees(
     db: AsyncSession,
     *,
     section_id: UUID | None,
+    master_section_id: UUID | None,
     limit: int,
     offset: int,
     sort_by: str,
@@ -231,6 +232,7 @@ async def list_employees(
         return await repository.list_employees(
             db,
             section_id=section_id,
+            master_section_id=master_section_id,
             limit=limit,
             offset=offset,
             sort_by=sort_by,
@@ -240,8 +242,15 @@ async def list_employees(
         raise _unsupported_sort() from exc
 
 
-async def get_employee(db: AsyncSession, employee_id: UUID) -> Employee:
-    employee = await repository.get_record(db, Employee, employee_id)
+async def get_employee(
+    db: AsyncSession,
+    employee_id: UUID,
+    *,
+    master_section_id: UUID | None = None,
+) -> Employee:
+    employee = await repository.get_employee(
+        db, employee_id, master_section_id=master_section_id
+    )
     if employee is None:
         raise _http_not_found("Employee")
     return employee

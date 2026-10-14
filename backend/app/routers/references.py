@@ -1,7 +1,7 @@
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -38,6 +38,15 @@ DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
 AuthenticatedUser = Annotated[User, Depends(get_current_user)]
 ReferenceWriter = Annotated[User, Depends(require_role("admin", "operator"))]
 SortOrder = Literal["asc", "desc"]
+
+
+def _master_section_id(user: User) -> UUID | None:
+    if user.role == "master" and user.section_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Master user must be assigned to a section",
+        )
+    return user.section_id if user.role == "master" else None
 
 
 @router.get("/departments", response_model=PaginatedResponse[DepartmentRead])
@@ -167,7 +176,7 @@ async def remove_section(
 
 @router.get("/employees", response_model=PaginatedResponse[EmployeeRead])
 async def get_employees(
-    _: AuthenticatedUser,
+    current_user: AuthenticatedUser,
     db: DatabaseSession,
     section_id: UUID | None = None,
     limit: int = Query(default=50, ge=1, le=1000),
@@ -178,6 +187,7 @@ async def get_employees(
     items, total = await service.list_employees(
         db,
         section_id=section_id,
+        master_section_id=_master_section_id(current_user),
         limit=limit,
         offset=offset,
         sort_by=sort_by,
@@ -190,9 +200,11 @@ async def get_employees(
 
 @router.get("/employees/{employee_id}", response_model=EmployeeRead)
 async def get_employee(
-    employee_id: UUID, _: AuthenticatedUser, db: DatabaseSession
+    employee_id: UUID, current_user: AuthenticatedUser, db: DatabaseSession
 ) -> EmployeeRead:
-    return await service.get_employee(db, employee_id)
+    return await service.get_employee(
+        db, employee_id, master_section_id=_master_section_id(current_user)
+    )
 
 
 @router.post(

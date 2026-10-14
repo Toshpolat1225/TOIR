@@ -28,7 +28,7 @@ WorkOrderCreator = Annotated[
 WorkOrderWriter = Annotated[
     User, Depends(require_role("admin", "management", "operator", "master"))
 ]
-WorkOrderDeleter = Annotated[User, Depends(require_role("admin", "operator"))]
+WorkOrderDeleter = Annotated[User, Depends(require_role("admin", "management"))]
 SortOrder = Literal["asc", "desc"]
 
 

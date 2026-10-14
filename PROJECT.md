@@ -138,7 +138,7 @@ Rollar: `admin`, `operator`, `master` (frontend), `management` (faqat backend/`a
 
 - Menyu `ALL_NAV` massivi (`app/dashboard/layout.tsx`) orqali rol bo'yicha filtrlanadi. **Faqat UI darajasida**: `middleware.ts` hech narsa tekshirmaydi (`NextResponse.next()`), master URL'ni qo'lda yozib boshqa sahifaga kira oladi.
 - **Uchastka konteksti** (`lib/section-view-context.tsx`): master uchun `effectiveSection = profile.section`; admin sidebar'dagi ro'yxatdan "Barcha uchastkalar" yoki bitta uchastkani tanlaydi. Dashboard va TMC shu qiymat bilan filtrlanadi.
-- Backend routerlari `require_role(UserRole.admin, UserRole.management, …)` bilan ruxsat beradi: ro'yxatni hamma 4 rol ko'radi; nariyad yaratish — `admin, management`; yangilash — `admin, management, master`.
+- Backend work-order ruxsatlari: ro'yxatni barcha autentifikatsiyalangan rollar ko'radi (master faqat o'z uchastkasini); yaratish — `admin, management, operator, master` (master faqat o'z uchastkasida); yangilash — `admin, management, operator, master` (master faqat o'z uchastkasida); o'chirish — faqat `admin, management` (operator va master uchun taqiqlangan).
 
 ---
 

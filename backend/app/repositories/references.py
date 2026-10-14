@@ -118,12 +118,20 @@ async def list_employees(
     db: AsyncSession,
     *,
     section_id: UUID | None,
+    master_section_id: UUID | None,
     limit: int,
     offset: int,
     sort_by: str,
     sort_order: str,
 ) -> tuple[list[Employee], int]:
-    filters = [Employee.section_id == section_id] if section_id is not None else []
+    scoped_section_id = (
+        master_section_id if master_section_id is not None else section_id
+    )
+    filters = (
+        [Employee.section_id == scoped_section_id]
+        if scoped_section_id is not None
+        else []
+    )
     return await list_page(
         db,
         Employee,
@@ -133,6 +141,19 @@ async def list_employees(
         sort_by=sort_by,
         sort_order=sort_order,
     )
+
+
+async def get_employee(
+    db: AsyncSession,
+    employee_id: UUID,
+    *,
+    master_section_id: UUID | None,
+) -> Employee | None:
+    filters = [Employee.id == employee_id]
+    if master_section_id is not None:
+        filters.append(Employee.section_id == master_section_id)
+    result = await db.execute(select(Employee).where(*filters))
+    return result.scalar_one_or_none()
 
 
 async def list_work_types(

@@ -77,11 +77,6 @@ def _read(row: dict[str, Any]) -> WorkOrderRead:
     )
 
 
-def _ensure_visible(user: User, section_id: UUID) -> None:
-    if user.role == "master" and user.section_id != section_id:
-        raise _not_found()
-
-
 async def list_orders(
     db: AsyncSession,
     user: User,
@@ -99,6 +94,9 @@ async def list_orders(
     sort_by: str,
     sort_order: str,
 ) -> tuple[list[WorkOrderRead], int]:
+    if user.role == "master" and user.section_id is None:
+        raise _not_found()
+
     statuses: list[str] | None = None
     if open_only:
         statuses = ["pending", "in_progress"]
@@ -129,10 +127,15 @@ async def list_orders(
 
 
 async def get_order(db: AsyncSession, user: User, order_id: UUID) -> WorkOrderRead:
-    row = await repository.get_order_row(db, order_id)
+    if user.role == "master" and user.section_id is None:
+        raise _not_found()
+    row = await repository.get_order_row(
+        db,
+        order_id,
+        master_section_id=user.section_id if user.role == "master" else None,
+    )
     if row is None:
         raise _not_found()
-    _ensure_visible(user, row["order"].section_id)
     return _read(row)
 
 
@@ -217,10 +220,16 @@ async def create_order(
 async def update_order(
     db: AsyncSession, user: User, order_id: UUID, payload: WorkOrderUpdate
 ) -> WorkOrderRead:
-    order = await repository.get_order(db, order_id, lock=True)
+    if user.role == "master" and user.section_id is None:
+        raise _not_found()
+    order = await repository.get_order(
+        db,
+        order_id,
+        master_section_id=user.section_id if user.role == "master" else None,
+        lock=True,
+    )
     if order is None:
         raise _not_found()
-    _ensure_visible(user, order.section_id)
     if order.status in {"completed", "cancelled"}:
         raise _conflict("Completed or cancelled work orders cannot be modified")
     values = payload.model_dump(exclude_unset=True, exclude={"repairs"})

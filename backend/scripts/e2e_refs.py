@@ -73,6 +73,7 @@ def main() -> int:
     section_id: str | None = None
     foreign_section_id: str | None = None
     employee_id: str | None = None
+    foreign_employee_id: str | None = None
     work_type_id: str | None = None
     subtask_id: str | None = None
     template_id: str | None = None
@@ -298,6 +299,25 @@ def main() -> int:
         employee_id = _record_created(
             checks, resources, "Create employee", employee_response, "/api/v1/employees"
         )
+        foreign_employee_response = request(
+            "POST",
+            "/api/v1/employees",
+            bearer=operator_token,
+            payload={
+                "tab_number": f"REF-OTHER-{suffix}",
+                "full_name": "Reference Foreign Employee",
+                "position": None,
+                "section_id": foreign_section_id,
+                "location_id": None,
+            },
+        )
+        foreign_employee_id = _record_created(
+            checks,
+            resources,
+            "Create employee in foreign section",
+            foreign_employee_response,
+            "/api/v1/employees",
+        )
         employee_list = request(
             "GET",
             f"/api/v1/employees?section_id={section_id}",
@@ -314,6 +334,38 @@ def main() -> int:
             f"HTTP {employee_get.status}; returned expected record"
             if employee_get.status == 200 and _check_item(employee_get, employee_id)
             else f"HTTP {employee_get.status}; expected created record",
+        )
+        master_employee_list = request(
+            "GET",
+            f"/api/v1/employees?section_id={foreign_section_id}&limit=1000",
+            bearer=master_token,
+        )
+        master_employee_items = (
+            parse_object(master_employee_list).get("items", [])
+            if master_employee_list.status == 200
+            else None
+        )
+        check_condition(
+            checks,
+            "Master employee list stays in own section with foreign section filter",
+            isinstance(master_employee_items, list)
+            and all(item.get("section_id") == section_id for item in master_employee_items)
+            and all(item.get("id") != foreign_employee_id for item in master_employee_items),
+            "Only employees from the master's own section are returned"
+            if isinstance(master_employee_items, list)
+            and all(item.get("section_id") == section_id for item in master_employee_items)
+            and all(item.get("id") != foreign_employee_id for item in master_employee_items)
+            else f"HTTP {master_employee_list.status}; employee scope was not enforced",
+        )
+        check_status(
+            checks,
+            "Master cannot read employee from another section",
+            request(
+                "GET",
+                f"/api/v1/employees/{foreign_employee_id}",
+                bearer=master_token,
+            ),
+            404,
         )
         check_status(
             checks,

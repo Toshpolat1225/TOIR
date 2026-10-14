@@ -208,7 +208,7 @@ def main() -> int:
             payload={
                 "inv_number": f"WO-FOREIGN-{suffix}",
                 "name": f"Foreign work order unit {suffix[:8]}",
-                "asset_type": "diesel",
+                "asset_type": "locomotive",
                 "section_id": foreign_section_id,
             },
         )
@@ -269,13 +269,14 @@ def main() -> int:
             *,
             target_asset: str = asset_id or "",
             target_section: str = own_section_id or "",
+            target_department: str = own_department_id or "",
             item_nomenclature: str = nomenclature_id or "",
             date_end: str | None = None,
         ) -> dict[str, Any]:
             return {
                 "fixed_asset_id": target_asset,
                 "section_id": target_section,
-                "department_id": own_department_id,
+                "department_id": target_department,
                 "order_kind": "repair",
                 "executor_id": employee_id,
                 "description": description,
@@ -308,6 +309,57 @@ def main() -> int:
             checks, resources, "Create work order with nested repairs/items",
             primary_response, "/api/v1/work-orders",
         )
+        foreign_pending_description = f"master-isolation-pending-{suffix}"
+        foreign_pending_response = request(
+            "POST",
+            "/api/v1/work-orders",
+            bearer=operator_token,
+            payload=order_payload(
+                foreign_pending_description,
+                target_asset=foreign_asset_id or "",
+                target_section=foreign_section_id or "",
+                target_department=foreign_department_id,
+            ),
+        )
+        foreign_pending_id = _record_created(
+            checks,
+            resources,
+            "Create foreign pending work order",
+            foreign_pending_response,
+            "/api/v1/work-orders",
+        )
+        foreign_completed_description = f"master-isolation-completed-{suffix}"
+        foreign_completed_response = request(
+            "POST",
+            "/api/v1/work-orders",
+            bearer=operator_token,
+            payload=order_payload(
+                foreign_completed_description,
+                target_asset=foreign_asset_id or "",
+                target_section=foreign_section_id or "",
+                target_department=foreign_department_id,
+            ),
+        )
+        foreign_completed_id = _record_created(
+            checks,
+            resources,
+            "Create foreign work order for completion test",
+            foreign_completed_response,
+            "/api/v1/work-orders",
+        )
+        for transition in ("in_progress", "completed"):
+            transition_response = request(
+                "PATCH",
+                f"/api/v1/work-orders/{foreign_completed_id}",
+                bearer=operator_token,
+                payload={"status": transition},
+            )
+            require_status(
+                checks,
+                f"Prepare foreign {transition} work order",
+                transition_response,
+                200,
+            )
         primary = parse_object(primary_response)
         consecutive_response = request(
             "POST",
@@ -573,16 +625,75 @@ def main() -> int:
             ),
             403,
         )
+        for label, foreign_id, foreign_description, invalid_status in (
+            (
+                "pending",
+                foreign_pending_id,
+                foreign_pending_description,
+                "completed",
+            ),
+            (
+                "completed",
+                foreign_completed_id,
+                foreign_completed_description,
+                "in_progress",
+            ),
+        ):
+            check_status(
+                checks,
+                f"Master cannot GET foreign {label} work order",
+                request(
+                    "GET",
+                    f"/api/v1/work-orders/{foreign_id}",
+                    bearer=master_token,
+                ),
+                404,
+            )
+            check_status(
+                checks,
+                f"Master cannot PATCH foreign {label} work order",
+                request(
+                    "PATCH",
+                    f"/api/v1/work-orders/{foreign_id}",
+                    bearer=master_token,
+                    payload={"note": "should not be visible"},
+                ),
+                404,
+            )
+            check_status(
+                checks,
+                f"Master cannot change foreign {label} work-order status",
+                request(
+                    "PATCH",
+                    f"/api/v1/work-orders/{foreign_id}",
+                    bearer=master_token,
+                    payload={"status": invalid_status},
+                ),
+                404,
+            )
+            delete_response = request(
+                "DELETE",
+                f"/api/v1/work-orders/{foreign_id}",
+                bearer=master_token,
+            )
+            check_condition(
+                checks,
+                f"Master cannot DELETE foreign {label} work order",
+                delete_response.status in {403, 404},
+                f"HTTP {delete_response.status} (expected 403 or 404)",
+            )
+
         check_status(
             checks,
-            "Master cannot read another section order",
+            "Operator cannot DELETE work orders",
             request(
-                "GET",
-                f"/api/v1/work-orders/{overdue_id}",
-                bearer=master_token,
+                "DELETE",
+                f"/api/v1/work-orders/{foreign_pending_id}",
+                bearer=operator_token,
             ),
-            404,
+            403,
         )
+
         master_list = request(
             "GET",
             "/api/v1/work-orders?limit=1000",
@@ -602,6 +713,36 @@ def main() -> int:
             if own_only
             else "A work order outside the master section was returned",
         )
+        for label, description, foreign_id in (
+            ("pending", foreign_pending_description, foreign_pending_id),
+            ("completed", foreign_completed_description, foreign_completed_id),
+        ):
+            query_response = request(
+                "GET",
+                f"/api/v1/work-orders?{urlencode({'q': description})}",
+                bearer=master_token,
+            )
+            query_items = (
+                parse_object(query_response).get("items", [])
+                if query_response.status == 200
+                else None
+            )
+            hidden_from_query = (
+                isinstance(query_items, list)
+                and all(
+                    item.get("id") != foreign_id
+                    and item.get("description") != description
+                    for item in query_items
+                )
+            )
+            check_condition(
+                checks,
+                f"Master q filter hides foreign {label} work order",
+                hidden_from_query,
+                "No matching foreign work order returned"
+                if hidden_from_query
+                else f"HTTP {query_response.status}; foreign work order was visible",
+            )
         check_status(
             checks,
             "Master can update own work order",
@@ -613,18 +754,6 @@ def main() -> int:
             ),
             200,
         )
-        check_status(
-            checks,
-            "Master cannot update another section order",
-            request(
-                "PATCH",
-                f"/api/v1/work-orders/{overdue_id}",
-                bearer=master_token,
-                payload={"note": "foreign update"},
-            ),
-            404,
-        )
-
         norm_check = request(
             "POST",
             "/api/v1/work-orders/norm-check",

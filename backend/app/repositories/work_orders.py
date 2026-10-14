@@ -29,8 +29,16 @@ async def get_section(db: AsyncSession, section_id: UUID) -> Section | None:
     return (await db.execute(select(Section).where(Section.id == section_id))).scalar_one_or_none()
 
 
-async def get_order(db: AsyncSession, order_id: UUID, *, lock: bool = False) -> WorkOrder | None:
+async def get_order(
+    db: AsyncSession,
+    order_id: UUID,
+    *,
+    master_section_id: UUID | None = None,
+    lock: bool = False,
+) -> WorkOrder | None:
     statement = select(WorkOrder).where(WorkOrder.id == order_id)
+    if master_section_id is not None:
+        statement = statement.where(WorkOrder.section_id == master_section_id)
     if lock:
         statement = statement.with_for_update()
     return (await db.execute(statement)).scalar_one_or_none()
@@ -124,10 +132,16 @@ async def list_orders(
     return packed, total
 
 
-async def get_order_row(db: AsyncSession, order_id: UUID) -> dict[str, Any] | None:
-    row = (
-        await db.execute(_order_rows_statement().where(WorkOrder.id == order_id))
-    ).one_or_none()
+async def get_order_row(
+    db: AsyncSession,
+    order_id: UUID,
+    *,
+    master_section_id: UUID | None = None,
+) -> dict[str, Any] | None:
+    statement = _order_rows_statement().where(WorkOrder.id == order_id)
+    if master_section_id is not None:
+        statement = statement.where(WorkOrder.section_id == master_section_id)
+    row = (await db.execute(statement)).one_or_none()
     if row is None:
         return None
     packed = {
