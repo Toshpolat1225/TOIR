@@ -537,33 +537,108 @@ const fixedAssets = {
 
 // --- Work Orders Module Types ---
 
-type WorkOrderListItem = {
-  id: string;
-  unit_type: "locomotive" | "wagon" | "diesel";
-  unit: string;
-  description: string;
-  work_type: string;
-  repair_kind: string;
-  priority: string;
-  status: string;
-  tech: string;
-  created: string;
-  closed: string;
-  section: string;
-  equipment: string;
-  note?: string;
-  repair_items?: any[];
-  date_start?: string;
-  date_end?: string;
-  depot?: string;
-  chief?: string;
+export type WorkOrderItemInput = {
+  nomenclature_id?: string | null;
+  name: string;
+  inv_no?: string | null;
+  unit?: string | null;
+  qty: number | string;
+  note?: string | null;
 };
 
-type WorkOrderCreatePayload = Omit<WorkOrderListItem, "id" | "created" | "closed">;
-type WorkOrderUpdatePayload = Partial<Omit<WorkOrderListItem, "id" | "created">>;
+export type WorkOrderRepairInput = {
+  work_type_id: string;
+  items: WorkOrderItemInput[];
+};
 
-type WorkOrderListParams = ListParams & {
-  status?: string;
+export type WorkOrderItem = WorkOrderItemInput & {
+  id: string;
+  repair_id: string;
+  nomenclature_id: string | null;
+  inv_no: string | null;
+  unit: string | null;
+  note: string | null;
+  qty: number | string;
+  sort_order: number;
+};
+
+export type WorkOrderRepair = {
+  id: string;
+  work_order_id: string;
+  work_type_id: string;
+  work_type_code: string;
+  work_type_name: string;
+  sort_order: number;
+  items: WorkOrderItem[];
+};
+
+export type WorkOrderStatus = "pending" | "in_progress" | "completed" | "cancelled";
+export type WorkOrderKind = "planned" | "unplanned" | "repair" | "emergency";
+export type WorkOrderPriority = "critical" | "high" | "normal" | "low";
+
+export type WorkOrder = {
+  id: string;
+  number: string;
+  fixed_asset_id: string;
+  asset_name: string;
+  asset_inv_number: string;
+  section_id: string;
+  section_name: string;
+  department_id: string | null;
+  order_kind: WorkOrderKind;
+  status: WorkOrderStatus;
+  priority: WorkOrderPriority;
+  executor_id: string | null;
+  executor_name: string | null;
+  chief_id: string | null;
+  description: string;
+  note: string | null;
+  date_start: string | null;
+  date_end: string | null;
+  closed_at: string | null;
+  mileage_at_creation: number | string | null;
+  mileage_threshold: number | string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  is_overdue: boolean;
+  repairs: WorkOrderRepair[];
+};
+
+export type WorkOrderCreatePayload = {
+  fixed_asset_id: string;
+  section_id?: string | null;
+  department_id?: string | null;
+  order_kind: WorkOrderKind;
+  priority?: WorkOrderPriority;
+  executor_id: string;
+  chief_id?: string | null;
+  description: string;
+  note?: string | null;
+  date_start?: string | null;
+  date_end?: string | null;
+  repairs: WorkOrderRepairInput[];
+};
+
+export type WorkOrderUpdatePayload = Partial<{
+  fixed_asset_id: string;
+  section_id: string;
+  department_id: string | null;
+  order_kind: WorkOrderKind;
+  status: WorkOrderStatus;
+  priority: WorkOrderPriority;
+  executor_id: string;
+  chief_id: string | null;
+  description: string;
+  note: string | null;
+  date_start: string | null;
+  date_end: string | null;
+  repairs: WorkOrderRepairInput[];
+}>;
+
+export type WorkOrderListParams = ListParams & {
+  status?: WorkOrderStatus | string;
+  open?: boolean;
   section_id?: string;
   department_id?: string;
   fixed_asset_id?: string;
@@ -572,26 +647,83 @@ type WorkOrderListParams = ListParams & {
   q?: string;
 };
 
+export type WorkOrderNormCheckItem = {
+  nomenclature_id: string;
+  work_type_id: string;
+  qty: number | string;
+};
+
+export type WorkOrderNormCheckResult = {
+  nomenclature_id: string;
+  work_type_id: string;
+  qty: number | string;
+  standard_quantity: number | string | null;
+  deviation_percent: number | string | null;
+  warning: boolean;
+  estimated_cost: number | string | null;
+};
+
+export type WorkOrderTemplateItem = {
+  id: string;
+  work_type_id: string;
+  work_type: string;
+  department_id: string | null;
+  nomenclature_id: string | null;
+  nomenclature_name: string | null;
+  name: string | null;
+  inv_no: string | null;
+  unit: string | null;
+  default_quantity: number | string;
+  is_required: boolean;
+  note: string | null;
+};
+
 const workOrders = {
-  async list(params: WorkOrderListParams): Promise<Paginated<WorkOrderListItem>> {
-    return request<Paginated<WorkOrderListItem>>({
+  async list(params: WorkOrderListParams = {}): Promise<Paginated<WorkOrder>> {
+    return request<Paginated<WorkOrder>>({
       method: "GET",
       path: "/work-orders",
       params,
     });
   },
-  async create(data: WorkOrderCreatePayload): Promise<WorkOrderListItem> {
-    return request<WorkOrderListItem>({
+  async get(id: string): Promise<WorkOrder> {
+    return request<WorkOrder>({ method: "GET", path: `/work-orders/${id}` });
+  },
+  async create(data: WorkOrderCreatePayload): Promise<WorkOrder> {
+    return request<WorkOrder>({
       method: "POST",
       path: "/work-orders",
       body: data,
     });
   },
-  async update(id: string, data: WorkOrderUpdatePayload): Promise<WorkOrderListItem> {
-    return request<WorkOrderListItem>({
+  async update(id: string, data: WorkOrderUpdatePayload): Promise<WorkOrder> {
+    return request<WorkOrder>({
       method: "PATCH",
       path: `/work-orders/${id}`,
       body: data,
+    });
+  },
+  async remove(id: string): Promise<void> {
+    await request<null>({ method: "DELETE", path: `/work-orders/${id}` });
+  },
+  async normCheck(data: {
+    department_id: string;
+    items: WorkOrderNormCheckItem[];
+  }): Promise<WorkOrderNormCheckResult[]> {
+    return request<WorkOrderNormCheckResult[]>({
+      method: "POST",
+      path: "/work-orders/norm-check",
+      body: data,
+    });
+  },
+  async templateItems(params: {
+    work_type_id: string;
+    department_id: string;
+  }): Promise<WorkOrderTemplateItem[]> {
+    return request<WorkOrderTemplateItem[]>({
+      method: "GET",
+      path: "/work-orders/template-items",
+      params,
     });
   },
 };
@@ -920,29 +1052,6 @@ async function fetchAllPaginated<T>(
 
   return allItems;
 }
-
-
-// --- Main API Export ---
-
-type WorkOrder = {
-  id?: string;
-  type: string;
-  repairKind: string;
-  priority: string;
-  status: string;
-  tech: string;
-  created: string;
-  closed: string;
-  section: string;
-  equipment: string;
-  note?: string;
-  repairItems?: any[];
-  dateStart?: string;
-  dateEnd?: string;
-  depot?: string;
-  chief?: string;
-};
-
 
 
 // type WorkOrderListParams = ListParams & {
