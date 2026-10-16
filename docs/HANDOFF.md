@@ -241,3 +241,17 @@ dependency/DB bo'lmasa o'tdi deb yozma. TMC documents routeri, npm audit advisor
 dashboard GET snapshot yozuvi va P-T10 Docker/DB/deploy tekshiruvlari hamon ochiq.
 Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN holatlarni yoz.
 ```
+
+## Latest task status (2026-10-16)
+
+### Verified
+
+- `backend/scripts/seed_demo.py` uses authenticated HTTP API calls to create or remove sample records.
+- Admin credentials are prompted with `getpass`; the script contains no file writes for credentials.
+- Python syntax was checked with `ast.parse`; the seed script was not executed.
+- No server, deployment, or database connection was attempted.
+
+### Next task
+
+- Review the demo payloads, then run `seed_demo.py` only against the intended API environment. Use `--remove` to remove its DEMO-prefixed records.
+- Production API and database behavior remain unverified.
