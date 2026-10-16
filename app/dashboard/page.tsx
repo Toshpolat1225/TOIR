@@ -74,14 +74,9 @@ const prioLabel: Record<string,string> = {
 }
 
 const EMPTY_SUMMARY = {
-  kpi: [],
-  fleetStatus: [],
-  seriesStats: [],
-  workOrdersTrend: [],
   availability: [],
-  repairKindStats: [],
-  upcomingOrders: [],
-  recentWorkOrders: [],
+  assets: [],
+  orders: [],
 }
 
 /* ════════════════════════════════════════
@@ -122,14 +117,9 @@ export default function DashboardPage() {
   const assets = summary.assets ?? []
 
   /* Фильтрация по участку: для мастера и при выборе участка админом */
-  const filteredOrders = useMemo(() => {
-    if (!effectiveSection) return orders
-    return orders.filter((o: { section?: string }) => (o.section ?? "") === effectiveSection)
-  }, [orders, effectiveSection])
-  const filteredAssets = useMemo(() => {
-    if (!effectiveSection) return assets
-    return assets.filter((a: { depot?: string }) => (a.depot ?? "") === effectiveSection)
-  }, [assets, effectiveSection])
+  // Section scoping is applied by the API, including the master user's mandatory scope.
+  const filteredOrders = orders
+  const filteredAssets = assets
 
   /* Единицы с открытыми нарядами (ожидание или в работе) — считаем их «на ТО» */
   const unitsWithOpenOrder = useMemo(() => {
@@ -238,13 +228,18 @@ export default function DashboardPage() {
     }
   })
 
-  /* ── Готовность по месяцам (симуляция тренда на основе текущих данных) ── */
-  const availability = months6.map(({ label }, idx) => {
-    // Небольшая вариация для визуализации тренда
-    const variation = Math.sin(idx * 0.5) * 5
-    const pct = Math.max(0, Math.min(100, Math.round(availPct + variation)))
-    return { month: label, pct }
-  })
+  /* ── Историческая готовность из ежедневных снимков API ── */
+  const readinessByMonth = new Map(
+    (summary.availability ?? []).map((point: { month: string; pct: number | null }) => [
+      point.month,
+      point.pct,
+    ])
+  )
+  const availability = months6.map(({ key, label }) => ({
+    month: label,
+    pct: readinessByMonth.get(key) ?? null,
+  }))
+  const hasReadinessHistory = availability.some((point) => point.pct !== null)
 
   /* ── Виды ремонта ── */
   const rkMap: Record<string,number> = {}
@@ -421,8 +416,8 @@ export default function DashboardPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {[
-              { label:"Тяговые агрегаты", value: summary.kpi[0]?.subValue || 0,  total: summary.kpi[0]?.value || 0, color:"bg-blue-500",   icon: Train,      iconCls:"text-blue-500" },
-              { label:"Вагоны-самосвалы", value: summary.kpi[0]?.subValue2 || 0, total: summary.kpi[0]?.value || 0, color:"bg-violet-500", icon: Container,  iconCls:"text-violet-500" },
+              { label:"Тяговые агрегаты", value: locoCount, total: totalAssets, color:"bg-blue-500", icon: Train, iconCls:"text-blue-500" },
+              { label:"Вагоны-самосвалы", value: wagonCount, total: totalAssets, color:"bg-violet-500", icon: Container, iconCls:"text-violet-500" },
             ].map(item => (
               <div key={item.label} className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
@@ -438,7 +433,7 @@ export default function DashboardPage() {
                       style={{ width: item.total ? `${Math.round(item.value / item.total * 100)}%` : "0%" }}/>
                   </div>
                   <p className="text-[10px] text-gray-400 mt-1">
-                    {item.total ? Math.round(item.value / item.total * 100) : 0}% от общего парка ({summary.kpi[0]?.value || 0} ед.)
+                    {item.total ? Math.round(item.value / item.total * 100) : 0}% от общего парка ({totalAssets} ед.)
                   </p>
                 </div>
               </div>
@@ -508,7 +503,7 @@ export default function DashboardPage() {
                 ))}
                 <div className="pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
                   <span className="text-xs text-gray-400">Итого</span>
-                  <span className="text-xs font-bold text-gray-900 dark:text-white">{summary.kpi[0]?.value || 0}</span>
+                  <span className="text-xs font-bold text-gray-900 dark:text-white">{totalAssets}</span>
                 </div>
               </div>
             </div>
@@ -605,12 +600,17 @@ export default function DashboardPage() {
               </div>
             </div>
             <div className="text-right">
-              <p className="text-xl font-bold text-gray-900 dark:text-white">{summary.kpi[1]?.pct || 0}%</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white">{availPct}%</p>
               <p className="text-[10px] text-gray-400">от {totalAssets} ед.</p>
             </div>
           </div>
-          {summary.kpi[0]?.value === 0 ? (
+          {totalAssets === 0 ? (
             <div className="flex items-center justify-center h-40 text-gray-400 text-xs">Нет данных</div>
+          ) : !hasReadinessHistory ? (
+            <div className="flex flex-col items-center justify-center h-40 text-center text-xs text-gray-400">
+              <span>Исторических снимков пока нет</span>
+              <span className="mt-1">Данные начнут накапливаться после первого сохранения снимка</span>
+            </div>
           ) : (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={availability}>
@@ -719,7 +719,7 @@ export default function DashboardPage() {
             <div>
               <p className="text-sm font-semibold text-gray-900 dark:text-white">Последние наряды</p>
               <p className="text-xs text-gray-400">
-                {summary.kpi[3]?.subValue || 0} выполнено · {summary.kpi[3]?.value || 0} открыто
+                {completedOrders} выполнено · {openOrders} открыто
               </p>
             </div>
           </div>

@@ -1,4 +1,5 @@
 from app.models.assets import FixedAsset, MileageHistory, WialonSettings
+from app.models.analytics import DailyReadinessSnapshot
 from app.models.base import Base
 from app.models.identity import RefreshToken, User
 from app.models.inventory import Nomenclature, NomenclatureNorm, WorkTypeTemplate
@@ -18,6 +19,7 @@ __all__ = [
     "AiInsight",
     "Base",
     "Department",
+    "DailyReadinessSnapshot",
     "Employee",
     "FixedAsset",
     "MaintenanceInterval",

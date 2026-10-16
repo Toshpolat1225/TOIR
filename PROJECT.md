@@ -170,8 +170,8 @@ Rollar: `admin`, `operator`, `master` (frontend), `management` (faqat backend/`a
 | Dashboard | ✅ FastAPI (`api.dashboard.getSummary`) |
 | ТО grafigi (Gantt) | ✅ FastAPI (`api.maintenanceSchedule`) |
 | Nariyad-buyurtmalar | ❌ **Supabase** (`work_orders`, `fixed_assets`, `employees`, `work_types`) + FastAPI (normativlar, shablonlar) |
-| Analytics | ❌ Supabase (view'lar: `executive_summary`, `section_efficiency`, … `ai_insights`, `fleet_health`) |
-| Reports | ❌ Supabase (`work_orders`, `tmc_documents`, `fixed_assets`) |
+| Analytics | ✅ FastAPI (`/analytics/{block}`; Alembic view'lari) |
+| Reports | ✅ FastAPI (`/reports/{work-orders|fixed-assets|tmc-documents}`; JSON/CSV) |
 | Admin/users | ❌ Supabase (`auth`, `profiles`) |
 | Employees, Work-types, Maintenance-intervals | ❌ Supabase |
 | Wialon receiver, ML engine, import skriptlari | ❌ Supabase |
@@ -249,7 +249,7 @@ Email + parol, "ko'rsatish/yashirish" tugmasi, xato xabari, mavzu almashtirgich.
 ### 9.2 Dashboard — `/dashboard`
 `api.dashboard.getSummary({ section })`; `work_orders` va `fixed_assets` hodisalarida Realtime orqali qayta yuklanadi. Kartochkalar: jami ОС, ekspluatatsiyada, ТО/ta'mirda, ochiq nariyadlar (pending+in_progress). Donut (park holati), 6 oylik nariyad trendi, ta'mir turlari (top-7), seriyalar bo'yicha taqsimot (top-8), yaqinlashayotgan ТО (pending + `date_start`), oxirgi 5 nariyad.
 Qoida: ochiq nariyadi bor `operational` ОС "на ТО" hisoblanadi.
-> ⚠ "Готовность по месяцам" grafigi **simulyatsiya**: joriy foizga `sin()` bilan sun'iy tebranish qo'shiladi, haqiqiy tarix emas.
+> "Готовность по месяцам" grafigi `/api/v1/dashboard/summary` yaratadigan kunlik snapshotlardan oyma-oy hisoblanadi. Tarix migratsiyadan keyin dashboard birinchi marta so'ralgandan boshlanadi; avvalgi oylar sun'iy to'ldirilmaydi.
 
 ### 9.3 Asosiy vositalar — `/dashboard/os`
 Ro'yxat (sahifa o'lchami 50, server tomonda filtr/qidiruv: nom, tur, depo, status), 6 ta sanagich, qo'shish/ko'rish-tahrirlash/o'chirish modallari, Wialon holati (online/sinxron vaqti). `api.fixedAssets.*` + Realtime.
@@ -275,7 +275,7 @@ Ikki qism: (1) **Требования-накладные** ro'yxati (draft/issue
 Uch turi: Наряд-заказы, Основные средства, ТМЦ документы. Filtrlar, jadval, **CSV eksport** (UTF-8 BOM bilan, Excel'da kirill ochilishi uchun).
 
 ### 9.8 Tahlil — `/dashboard/analytics`
-KPI: jami nariyadlar, haqiqiy va normativ xarajat, o'rtacha og'ish, >20% oshishlar soni. Grafiklar: uchastkalar bo'yicha xarajat, tejash ulushi (pie), og'ishlar, oylik trend, ish turlari bo'yicha xarajat/pробег. **AI bloklari**: park salomatligi (`fleet_health`), AI-prognozlar (risk >0.3 bo'lgan top-5 ОС), AI-bildirishnomalar (`ai_insights` so'nggi 10). Barcha so'rovlar `Promise.all` bilan parallel; ma'lumot Supabase view'laridan.
+KPI: jami nariyadlar, haqiqiy va normativ xarajat, o'rtacha og'ish, >20% oshishlar soni. Grafiklar: uchastkalar bo'yicha xarajat, tejash ulushi (pie), og'ishlar, oylik trend, ish turlari bo'yicha xarajat/probeg. **AI bloklari**: park salomatligi (`fleet_health`), risk >0.3 bo'lgan top-5 ОС va `ai_insights_summary`. Ma'lumot `/api/v1/analytics/{block}` va fixed-assets API'dan olinadi; master doirasi backend'da cheklanadi.
 
 ### 9.9 Foydalanuvchilar — `/dashboard/admin/users`
 Faqat admin (boshqalar uchun "ruxsat yo'q" ekrani). Qidiruv, rol sanagichlari, yaratish (parol ≥6 belgi), tahrirlash (ism, rol, uchastka), Realtime yangilanish.
@@ -445,14 +445,14 @@ Supabase uchun SQL'larni tartib bilan bajaring: `supabase_schema.sql` → `secti
 - `DashboardSummary` tipi (`kpi, fleetStatus…`) bilan sahifa o'qiydigan `summary.orders/assets` mos emas.
 - Uchta ТО-chegara tizimi (10-bo'lim).
 - ML: `diesel` e'tiborga olinmaydi; `--listen` yo'q.
-- Dashboard "Готовность" grafigi — sun'iy (9.2).
+- Dashboard "Готовность по месяцам" endi `/api/v1/dashboard/summary` yaratadigan kunlik snapshotlardan hisoblanadi; deploydan keyingi ilk so'rovdan boshlab tarix to'planadi, oldingi davrlar sun'iy backfill qilinmaydi.
 - Yo'qolgan `express` bog'liqligi va `wialon` skripti (12-bo'lim); `package.json` nomi `my-v0-project` (v0.dev shablonidan).
 - Ikki lock-fayl (`pnpm` + `npm`); `tsconfig.tsbuildinfo` kabi build artefaktlari arxivda.
 - `README.md` aralash: bir qismi frontend/Docker, boshqasi `backend/` bo'yicha ingliz tilida; `docker-compose.yml` `./backend` va `./postgres/schema.sql` ga tayanadi (arxivda yo'q).
 
 ### 🟡 Sifat
-- Katta fayllar: `work-orders/page.tsx` (2 114), `maintenance/page.tsx` (1 588), `analytics/page.tsx` (1 051) — komponentlarga bo'lish tavsiya.
-- Testlar yo'q (`test-auth.js` qo'lda skript); CI/CD yo'q.
+- Katta fayllar: `work-orders/page.tsx` (2 114), `maintenance/page.tsx` (1 588); Analytics sahifasining API/data va ko'rinish elementlari alohida modullarga ajratilgan.
+- Backend testlari mavjud, ammo CI/CD yo'q; Analytics SQL va endpointlari PostgreSQL/Alembic deployidan keyin real tekshirilishi kerak.
 - `lib/api.ts`da izohga olingan eski kod bloklari.
 - "Master faqat o'z uchastkasi" filtri klient tomonida (`orders.filter`) — serverda ham majburlanishi kerak.
 

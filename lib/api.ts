@@ -20,10 +20,11 @@ type ApiRequestOptions = {
   body?: unknown;
   params?: Record<string, string | number | boolean>;
   isPublic?: boolean;
+  responseType?: "json" | "blob";
 };
 
 async function request<T>(options: ApiRequestOptions): Promise<T> {
-  const { method, path, body, params, isPublic = false } = options;
+  const { method, path, body, params, isPublic = false, responseType = "json" } = options;
 
   const url = new URL(`${API_BASE_URL}${path}`);
   if (params) {
@@ -74,7 +75,8 @@ async function request<T>(options: ApiRequestOptions): Promise<T> {
             body: body === undefined ? undefined : JSON.stringify(body),
           });
           if (!retryResponse.ok) throw new Error(errorData.detail || `HTTP error! status: ${retryResponse.status}`);
-          return retryResponse.status === 204 ? (null as T) : await retryResponse.json();
+          if (retryResponse.status === 204) return null as T;
+          return (responseType === "blob" ? await retryResponse.blob() : await retryResponse.json()) as T;
         } catch (refreshError) {
           throw refreshError; // If refresh fails, propagate the error
         }
@@ -87,7 +89,7 @@ async function request<T>(options: ApiRequestOptions): Promise<T> {
       return null as T;
     }
 
-    return await response.json();
+    return (responseType === "blob" ? await response.blob() : await response.json()) as T;
   } catch (error) {
     console.error(`API request failed: ${method} ${path}`, error);
     // Re-throw the error so it can be caught by the caller
@@ -1102,18 +1104,95 @@ const tmcDocuments = {
 
 // --- Dashboard Module ---
 type DashboardSummary = {
-  kpi: any;
-  fleetStatus: any[];
-  seriesStats: any[];
-  workOrdersTrend: any[];
-  availability: any[];
-  repairKindStats: any[];
-  upcomingOrders: any[];
-  recentWorkOrders: any[];
+  assets: Array<{
+    id: string;
+    name: string;
+    asset_type: string;
+    series: string | null;
+    status: string;
+    section: string | null;
+    depot: string | null;
+    mileage: number | string;
+  }>;
+  orders: Array<{
+    id: string;
+    number: string;
+    unit: string;
+    section: string;
+    section_id: string;
+    status: string;
+    priority: string;
+    description: string;
+    created_at: string;
+    date_start: string | null;
+    tech: string | null;
+    repair_kind: string | null;
+  }>;
+  availability: Array<{
+    month: string;
+    label: string;
+    pct: number | null;
+    days_recorded: number;
+  }>;
+  availability_history_starts_at: string;
 };
 const dashboard = {
-  async getSummary(params: { section?: string }): Promise<DashboardSummary> {
+  async getSummary(params: { section?: string; section_id?: string }): Promise<DashboardSummary> {
     return request<DashboardSummary>({ method: "GET", path: "/dashboard/summary", params });
+  },
+};
+
+export type AnalyticsBlock =
+  | "executive-summary"
+  | "section-efficiency"
+  | "work-type-efficiency"
+  | "monthly-efficiency"
+  | "ai-insights-summary"
+  | "fleet-health"
+  | "work-order-tmc-details"
+  | "maintenance-schedule";
+
+const analytics = {
+  async list(
+    block: AnalyticsBlock,
+    params: ListParams & { section_id?: string } = {}
+  ): Promise<Paginated<Record<string, unknown>>> {
+    return request({
+      method: "GET",
+      path: `/analytics/${block}`,
+      params,
+    });
+  },
+};
+
+export type ReportName = "work-orders" | "fixed-assets" | "tmc-documents";
+export type ReportParams = ListParams & {
+  section_id?: string;
+  date_from?: string;
+  date_to?: string;
+  status?: string;
+  asset_type?: string;
+  q?: string;
+};
+
+const reports = {
+  async list(
+    report: ReportName,
+    params: ReportParams = {}
+  ): Promise<Paginated<Record<string, unknown>>> {
+    return request({
+      method: "GET",
+      path: `/reports/${report}`,
+      params,
+    });
+  },
+  async downloadCsv(report: ReportName, params: ReportParams = {}): Promise<Blob> {
+    return request<Blob>({
+      method: "GET",
+      path: `/reports/${report}`,
+      params: { ...params, format: "csv" },
+      responseType: "blob",
+    });
   },
 };
 
@@ -1225,6 +1304,8 @@ export const api = {
   maintenancePlans,
   maintenanceSettings,
   dashboard,
+  analytics,
+  reports,
   employees,
   workTypes,
   maintenanceIntervals,

@@ -1,7 +1,16 @@
 "use client"
 
-import { useState, useEffect, useCallback, Suspense } from "react"
-import { supabase } from "@/lib/supabase"
+import { useState } from "react"
+import {
+  AiSectionSkeleton,
+  ChartSkeleton,
+  CustomTooltip,
+  KpiCard,
+  KpiSkeleton,
+  formatCurrency,
+  formatPercent,
+} from "./_components/AnalyticsElements"
+import { useAnalyticsData } from "./_components/useAnalyticsData"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   LineChart, Line, PieChart, Pie, Cell, AreaChart, Area,
@@ -16,64 +25,6 @@ import {
 } from "@/components/ui/icons"
 import { Button } from "@/components/ui/button"
 
-// Скелетон для карточек
-function KpiSkeleton() {
-  return (
-    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm animate-pulse">
-      <div className="flex items-start justify-between">
-        <div className="flex-1 space-y-3">
-          <div className="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded" />
-          <div className="h-7 w-24 bg-gray-200 dark:bg-gray-700 rounded" />
-          <div className="h-2 w-16 bg-gray-200 dark:bg-gray-700 rounded" />
-        </div>
-        <div className="w-11 h-11 bg-gray-200 dark:bg-gray-700 rounded-xl" />
-      </div>
-    </div>
-  )
-}
-
-// Скелетон для графиков
-function ChartSkeleton({ height = 300 }: { height?: number }) {
-  return (
-    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
-      <div className="animate-pulse">
-        <div className="flex items-center justify-between mb-6">
-          <div className="space-y-2">
-            <div className="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded" />
-            <div className="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded" />
-          </div>
-          <div className="w-5 h-5 bg-gray-200 dark:bg-gray-700 rounded" />
-        </div>
-        <div className="flex items-end gap-2" style={{ height }}>
-          {[40, 65, 45, 80, 55, 70, 50].map((h, i) => (
-            <div key={i} className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-t" style={{ height: `${h}%` }} />
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// Скелетон для AI секции
-function AiSectionSkeleton() {
-  return (
-    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm animate-pulse">
-      <div className="flex items-center gap-2 mb-4">
-        <div className="w-8 h-8 bg-gray-200 dark:bg-gray-700 rounded-lg" />
-        <div className="space-y-1">
-          <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded" />
-          <div className="h-2 w-32 bg-gray-200 dark:bg-gray-700 rounded" />
-        </div>
-      </div>
-      <div className="space-y-3">
-        {[1, 2, 3].map(i => (
-          <div key={i} className="h-16 bg-gray-200 dark:bg-gray-700 rounded-lg" />
-        ))}
-      </div>
-    </div>
-  )
-}
-
 // Цвета для графиков
 const COLORS = {
   primary: "#3b82f6",
@@ -86,316 +37,21 @@ const COLORS = {
   sections: ["#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"]
 }
 
-// Типы данных
-type SectionEfficiency = {
-  section: string
-  section_id: string
-  total_orders: number
-  completed_orders: number
-  total_tmc_items: number
-  total_actual_cost: number
-  total_norm_cost: number
-  total_savings: number
-  avg_savings_percent: number
-  avg_deviation_percent: number
-  total_overruns: number
-  avg_mileage_between: number
-  avg_days_between: number
-}
-
-type WorkTypeEfficiency = {
-  repair_kind: string
-  total_orders: number
-  total_actual_cost: number
-  total_norm_cost: number
-  total_savings: number
-  avg_savings_percent: number
-  avg_deviation_percent: number
-  avg_mileage_between: number
-}
-
-type MonthlyEfficiency = {
-  month: string
-  section: string
-  orders_count: number
-  actual_cost: number
-  norm_cost: number
-  savings: number
-  avg_savings_percent: number
-}
-
-type ExecutiveSummary = {
-  work_order_id: string
-  unit: string
-  section: string
-  repair_kind: string
-  status: string
-  total_cost: number
-  total_norm_cost: number
-  cost_savings: number
-  savings_percent: number
-  avg_deviation_percent: number
-  mileage_between_orders: number
-  created_at: string
-}
-
-// AI Insights типы
-type AiInsight = {
-  id: string
-  equipment_id: string
-  work_order_id: string
-  insight_type: "anomaly" | "prediction" | "efficiency"
-  probability: number
-  severity: "low" | "medium" | "high" | "critical"
-  message: string
-  suggested_action: string
-  details: Record<string, unknown>
-  is_resolved: boolean
-  created_at: string
-  equipment_name?: string
-}
-
-type FleetHealth = {
-  total_assets: number
-  healthy_count: number
-  warning_count: number
-  risk_count: number
-  critical_count: number
-  avg_health_score: number
-  reliability_percent: number
-}
-
-type EquipmentWithRisk = {
-  id: string
-  name: string
-  failure_probability: number
-  health_score: number
-  predicted_failure_km: number
-  last_ml_update: string
-}
-
-// Форматирование чисел
-const formatCurrency = (value: number | null | undefined) => {
-  if (value == null) return "0"
-  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`
-  if (value >= 1000) return `${(value / 1000).toFixed(0)}K`
-  return value.toFixed(0)
-}
-
-const formatPercent = (value: number | null | undefined) => {
-  if (value == null) return "0%"
-  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`
-}
-
-// KPI Card компонент
-function KpiCard({ title, value, subtitle, icon: Icon, trend, trendValue, color = "blue" }: {
-  title: string
-  value: string | number
-  subtitle?: string
-  icon: React.ElementType
-  trend?: "up" | "down" | "neutral"
-  trendValue?: string
-  color?: "blue" | "green" | "red" | "amber" | "purple"
-}) {
-  const colorClasses = {
-    blue: "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400",
-    green: "bg-green-50 dark:bg-green-950 text-green-600 dark:text-green-400",
-    red: "bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400",
-    amber: "bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400",
-    purple: "bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400",
-  }
-
-  return (
-    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{title}</p>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-          {subtitle && <p className="mt-1 text-xs text-gray-500">{subtitle}</p>}
-          {trend && trendValue && (
-            <div className={`mt-2 flex items-center gap-1 text-xs font-medium ${
-              trend === "up" ? "text-green-600" : trend === "down" ? "text-red-600" : "text-gray-500"
-            }`}>
-              {trend === "up" ? <TrendingUp className="w-3 h-3" /> : 
-               trend === "down" ? <TrendingDown className="w-3 h-3" /> : null}
-              {trendValue}
-            </div>
-          )}
-        </div>
-        <div className={`p-3 rounded-xl ${colorClasses[color]}`}>
-          <Icon className="w-5 h-5" />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// Кастомный Tooltip для графиков
-const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) => {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3">
-      <p className="text-xs font-semibold text-gray-900 dark:text-white mb-2">{label}</p>
-      {payload.map((entry, i) => (
-        <p key={i} className="text-xs" style={{ color: entry.color }}>
-          {entry.name}: {typeof entry.value === "number" ? formatCurrency(entry.value) : entry.value}
-        </p>
-      ))}
-    </div>
-  )
-}
-
 export default function AnalyticsDashboard() {
-  const [loading, setLoading] = useState(true)
-  const [sectionData, setSectionData] = useState<SectionEfficiency[]>([])
-  const [workTypeData, setWorkTypeData] = useState<WorkTypeEfficiency[]>([])
-  const [monthlyData, setMonthlyData] = useState<MonthlyEfficiency[]>([])
-  const [summaryData, setSummaryData] = useState<ExecutiveSummary[]>([])
+  const {
+    sectionData,
+    workTypeData,
+    monthlyData,
+    aiInsights,
+    fleetHealth,
+    riskEquipment,
+    loading,
+    loadingMain,
+    loadingAi,
+    error: loadError,
+    reload: fetchData,
+  } = useAnalyticsData()
   const [selectedPeriod, setSelectedPeriod] = useState<"month" | "quarter" | "year">("month")
-  
-  // AI Insights состояния
-  const [aiInsights, setAiInsights] = useState<AiInsight[]>([])
-  const [fleetHealth, setFleetHealth] = useState<FleetHealth | null>(null)
-  const [riskEquipment, setRiskEquipment] = useState<EquipmentWithRisk[]>([])
-
-  // Состояния загрузки для разных секций (для Suspense-like поведения)
-  const [loadingMain, setLoadingMain] = useState(true)
-  const [loadingAi, setLoadingAi] = useState(true)
-
-  // Загрузка AI данных - ОПТИМИЗИРОВАНО: все запросы параллельно
-  const fetchAiData = useCallback(async () => {
-    setLoadingAi(true)
-    try {
-      const safeQuery = async <T,>(query: PromiseLike<T>) => {
-        try {
-          return await query
-        } catch {
-          return { data: null, error: true } as { data: null; error: true }
-        }
-      }
-
-      // Все AI запросы параллельно
-      const [insightsRes, healthRes, equipmentRes] = await Promise.all([
-        safeQuery(
-          supabase.from("ai_insights")
-            .select("*")
-            .order("created_at", { ascending: false })
-            .limit(10)
-        ),
-        safeQuery(
-          supabase.from("fleet_health")
-            .select("*")
-            .limit(1)
-            .maybeSingle()
-        ),
-        safeQuery(
-          supabase.from("fixed_assets")
-            .select("id, name, failure_probability, health_score, predicted_failure_km, last_ml_update")
-            .in("asset_type", ["locomotive", "wagon", "diesel"])
-            .gt("failure_probability", 0.3)
-            .order("failure_probability", { ascending: false })
-            .limit(5)
-        )
-      ])
-
-      // Загружаем названия оборудования параллельно с основными данными
-      if (insightsRes.data && insightsRes.data.length > 0) {
-        const equipmentIds = [...new Set(insightsRes.data.map((i: { equipment_id?: string }) => i.equipment_id).filter(Boolean))]
-        if (equipmentIds.length > 0) {
-          // Этот запрос выполняется только если есть equipment_ids
-          const { data: equipmentNames } = await supabase
-            .from("fixed_assets")
-            .select("id, name")
-            .in("id", equipmentIds)
-          
-          const nameMap = new Map(equipmentNames?.map((e: { id: string; name: string }) => [e.id, e.name]) || [])
-          const insightsWithNames = insightsRes.data.map((insight: AiInsight) => ({
-            ...insight,
-            equipment_name: nameMap.get(insight.equipment_id) || undefined
-          }))
-          setAiInsights(insightsWithNames)
-        } else {
-          setAiInsights(insightsRes.data as AiInsight[])
-        }
-      }
-      
-      if (healthRes.data) setFleetHealth(healthRes.data as FleetHealth)
-      if (equipmentRes.data) setRiskEquipment(equipmentRes.data as EquipmentWithRisk[])
-      
-    } catch (error) {
-      console.error("Error fetching AI data:", error)
-    }
-    setLoadingAi(false)
-  }, [])
-
-  // Загрузка основных данных - ОПТИМИЗИРОВАНО
-  const fetchMainData = useCallback(async () => {
-    setLoadingMain(true)
-    
-    try {
-      const safeQuery = async <T,>(query: PromiseLike<T>) => {
-        try {
-          return await query
-        } catch {
-          return { data: null, error: true } as { data: null; error: true }
-        }
-      }
-
-      // ВСЕ запросы параллельно через Promise.all
-      const [sectionRes, workTypeRes, monthlyRes, summaryRes] = await Promise.all([
-        safeQuery(
-          supabase.from("section_efficiency")
-            .select("*")
-            .limit(20)
-        ),
-        safeQuery(
-          supabase.from("work_type_efficiency")
-            .select("*")
-            .limit(20)
-        ),
-        safeQuery(
-          supabase.from("monthly_efficiency")
-            .select("*")
-            .order("month", { ascending: false })
-            .limit(12) // Только последние 12 месяцев
-        ),
-        safeQuery(
-          supabase.from("executive_summary")
-            .select("*")
-            .order("created_at", { ascending: false })
-            .limit(50) // Уменьшено с 100 до 50
-        )
-      ])
-
-      // Устанавливаем данные если они есть
-      if (sectionRes.data) setSectionData(sectionRes.data)
-      if (workTypeRes.data) setWorkTypeData(workTypeRes.data)
-      if (monthlyRes.data) setMonthlyData(monthlyRes.data)
-      if (summaryRes.data) setSummaryData(summaryRes.data)
-      
-    } catch (error) {
-      console.error("Error fetching analytics:", error)
-    }
-    
-    setLoadingMain(false)
-  }, [])
-
-  // Загрузка всех данных ПАРАЛЛЕЛЬНО
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    try {
-      await Promise.all([
-        fetchMainData(),
-        fetchAiData()
-      ])
-    } catch (e) {
-      console.error("Ошибка загрузки аналитики:", e)
-    } finally {
-      setLoading(false)
-    }
-  }, [fetchMainData, fetchAiData])
-
-  useEffect(() => { fetchData() }, [fetchData])
 
   // Расчёт KPI
   const totalOrders = sectionData.reduce((sum, s) => sum + s.total_orders, 0)
@@ -479,12 +135,18 @@ export default function AnalyticsDashboard() {
             <option value="quarter">За квартал</option>
             <option value="year">За год</option>
           </select>
-          <Button onClick={fetchData} variant="outline" className="gap-2" disabled={loading}>
+          <Button onClick={() => void fetchData()} variant="outline" className="gap-2" disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             Обновить
           </Button>
         </div>
       </div>
+
+      {loadError && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+          {loadError}
+        </div>
+      )}
 
       {/* KPI Cards - скелетоны при загрузке */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4">

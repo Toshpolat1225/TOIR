@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
-import { supabase } from "@/lib/supabase"
+import { useState, useEffect, useCallback } from "react"
+import { api, type ReportName } from "@/lib/api"
 import { useSectionView } from "@/lib/section-view-context"
 import {
   FileText, ClipboardList, Landmark, Package,
@@ -13,12 +13,12 @@ import {
 } from "recharts"
 
 const REPORT_TYPES = [
-  { id: "work_orders", label: "Наряд-заказы", icon: ClipboardList },
-  { id: "fixed_assets", label: "Основные средства", icon: Landmark },
-  { id: "tmc", label: "ТМЦ документы", icon: Package },
+  { id: "work-orders", label: "Наряд-заказы", icon: ClipboardList },
+  { id: "fixed-assets", label: "Основные средства", icon: Landmark },
+  { id: "tmc-documents", label: "ТМЦ документы", icon: Package },
 ] as const
 
-type ReportId = (typeof REPORT_TYPES)[number]["id"]
+type ReportId = ReportName
 
 const WO_STATUS_LABEL: Record<string, string> = {
   pending: "Запланировано",
@@ -49,78 +49,59 @@ function formatDate(d: Date) {
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" })
 }
 
+function toIsoDate(value: string): string | undefined {
+  const parsed = parseDateStr(value)
+  if (!parsed) return undefined
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`
+}
+
+async function resolveSectionId(sectionName: string | null): Promise<string | undefined> {
+  if (!sectionName) return undefined
+  const sections = await api.sections.list({ limit: 1000, offset: 0 })
+  const section = sections.items.find((item) => item.name === sectionName)
+    ?? sections.items.find((item) => item.id === sectionName)
+  if (!section) throw new Error(`Участок «${sectionName}» не найден`)
+  return section.id
+}
+
 export default function ReportsPage() {
   const { effectiveSection } = useSectionView()
-  const [reportType, setReportType] = useState<ReportId>("work_orders")
+  const [reportType, setReportType] = useState<ReportId>("work-orders")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [reportTotal, setReportTotal] = useState(0)
   const [woData, setWoData] = useState<Record<string, unknown>[]>([])
   const [assetsData, setAssetsData] = useState<Record<string, unknown>[]>([])
   const [tmcData, setTmcData] = useState<Record<string, unknown>[]>([])
 
-  const filteredWoData = useMemo(() => {
-    if (!effectiveSection) return woData
-    return woData.filter((r: Record<string, unknown>) => (r.section as string) === effectiveSection)
-  }, [woData, effectiveSection])
-  const filteredAssetsData = useMemo(() => {
-    if (!effectiveSection) return assetsData
-    return assetsData.filter((r: Record<string, unknown>) => (r.depot as string) === effectiveSection)
-  }, [assetsData, effectiveSection])
-
-  const loadWorkOrders = useCallback(async () => {
+  const loadReport = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
-      const { data } = await supabase
-        .from("work_orders")
-        .select("id,unit,section,work_type,repair_kind,status,created,created_at,priority,tech")
-        .order("created_at", { ascending: false })
-        .limit(1000)
-      setWoData((data ?? []) as Record<string, unknown>[])
-    } catch (e) {
-      console.error("Ошибка загрузки нарядов:", e)
+      const sectionId = await resolveSectionId(effectiveSection)
+      const response = await api.reports.list(reportType, {
+        limit: 1000,
+        offset: 0,
+        section_id: sectionId,
+        date_from: toIsoDate(dateFrom),
+        date_to: toIsoDate(dateTo),
+      })
+      setReportTotal(response.total)
+      if (reportType === "work-orders") setWoData(response.items)
+      else if (reportType === "fixed-assets") setAssetsData(response.items)
+      else setTmcData(response.items)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось загрузить отчёт")
     } finally {
       setLoading(false)
     }
-  }, [])
-
-  const loadAssets = useCallback(async () => {
-    setLoading(true)
-    try {
-      const { data } = await supabase
-        .from("fixed_assets")
-        .select("id,name,asset_type,series,depot,status,comm_date,inv_number")
-        .order("name", { ascending: true })
-        .limit(2000)
-      setAssetsData((data ?? []) as Record<string, unknown>[])
-    } catch (e) {
-      console.error("Ошибка загрузки ОС:", e)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  const loadTmc = useCallback(async () => {
-    setLoading(true)
-    try {
-      const { data } = await supabase
-        .from("tmc_documents")
-        .select("id,doc_no,date,work_order_id,depot,status")
-        .order("created_at", { ascending: false })
-        .limit(500)
-      setTmcData((data ?? []) as Record<string, unknown>[])
-    } catch (e) {
-      console.error("Ошибка загрузки ТМЦ:", e)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  }, [dateFrom, dateTo, effectiveSection, reportType])
 
   useEffect(() => {
-    if (reportType === "work_orders") loadWorkOrders()
-    else if (reportType === "fixed_assets") loadAssets()
-    else loadTmc()
-  }, [reportType, loadWorkOrders, loadAssets, loadTmc])
+    void loadReport()
+  }, [loadReport])
 
   const setDefaultDates = () => {
     const now = new Date()
@@ -129,16 +110,27 @@ export default function ReportsPage() {
     setDateTo(formatDate(now))
   }
 
-  let filteredWo = filteredWoData
-  if (dateFrom || dateTo) {
-    filteredWo = filteredWoData.filter(row => {
-      const created = (row.created as string) || (row.created_at as string) || ""
-      const d = parseDateStr(created.slice(0, 10)) ?? parseDateStr(created)
-      if (!d) return true
-      if (dateFrom && d < parseDateStr(dateFrom)!) return false
-      if (dateTo && d > parseDateStr(dateTo)!) return false
-      return true
-    })
+  const filteredWo = woData
+  const filteredAssetsData = assetsData
+
+  const downloadReport = async (report: ReportId, filename: string) => {
+    setError(null)
+    try {
+      const sectionId = await resolveSectionId(effectiveSection)
+      const blob = await api.reports.downloadCsv(report, {
+        section_id: sectionId,
+        date_from: toIsoDate(dateFrom),
+        date_to: toIsoDate(dateTo),
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = filename
+      link.click()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось скачать CSV")
+    }
   }
 
   const woByStatus = filteredWo.reduce<Record<string, number>>((acc, row) => {
@@ -181,25 +173,6 @@ export default function ReportsPage() {
   ]
   const PIE_COLORS = ["#10b981", "#f59e0b", "#f97316", "#ef4444", "#6366f1"]
 
-  function exportCsv(rows: Record<string, unknown>[], filename: string) {
-    if (rows.length === 0) return
-    const headers = Object.keys(rows[0] as object)
-    const line = (r: Record<string, unknown>) =>
-      headers.map(h => {
-        const v = r[h]
-        if (v == null) return ""
-        const s = String(v)
-        return s.includes(",") || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s
-      }).join(",")
-    const csv = [headers.join(","), ...rows.map(r => line(r))].join("\r\n")
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" })
-    const a = document.createElement("a")
-    a.href = URL.createObjectURL(blob)
-    a.download = filename
-    a.click()
-    URL.revokeObjectURL(a.href)
-  }
-
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -213,6 +186,12 @@ export default function ReportsPage() {
           </p>
         </div>
       </div>
+
+      {error && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+          {error}
+        </div>
+      )}
 
       {/* Выбор типа отчёта */}
       <div className="flex flex-wrap gap-2">
@@ -240,7 +219,7 @@ export default function ReportsPage() {
       ) : (
         <>
           {/* Отчёт: Наряд-заказы */}
-          {reportType === "work_orders" && (
+          {reportType === "work-orders" && (
             <div className="space-y-6">
               <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
                 <div className="flex flex-wrap items-end gap-4">
@@ -272,7 +251,7 @@ export default function ReportsPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => exportCsv(filteredWo, `naryad-zakazy_${new Date().toISOString().slice(0,10)}.csv`)}
+                    onClick={() => void downloadReport("work-orders", `naryad-zakazy_${new Date().toISOString().slice(0,10)}.csv`)}
                     className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium"
                   >
                     <Download className="w-4 h-4"/> Скачать CSV
@@ -324,7 +303,7 @@ export default function ReportsPage() {
               <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
                 <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Список наряд-заказов</h3>
-                  <span className="text-xs text-gray-500">Всего: {filteredWo.length}</span>
+                  <span className="text-xs text-gray-500">Всего: {reportTotal}</span>
                 </div>
                 <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                   <table className="w-full text-sm">
@@ -341,20 +320,20 @@ export default function ReportsPage() {
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                       {filteredWo.slice(0, 100).map((row, i) => (
                         <tr key={(row.id as string) || i} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                          <td className="px-4 py-2.5 font-mono text-gray-600 dark:text-gray-300">{row.id as string}</td>
-                          <td className="px-4 py-2.5">{row.unit as string}</td>
+                          <td className="px-4 py-2.5 font-mono text-gray-600 dark:text-gray-300">{(row.number as string) || (row.id as string)}</td>
+                          <td className="px-4 py-2.5">{(row.unit as string) || "—"}</td>
                           <td className="px-4 py-2.5">{row.section as string}</td>
                           <td className="px-4 py-2.5">{(row.work_type as string) || "—"}</td>
                           <td className="px-4 py-2.5">{WO_STATUS_LABEL[row.status as string] || (row.status as string)}</td>
-                          <td className="px-4 py-2.5">{(row.created as string) || "—"}</td>
+                          <td className="px-4 py-2.5">{(row.created_at as string) || "—"}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-                {filteredWo.length > 100 && (
+                {reportTotal > 100 && (
                   <p className="px-4 py-2 text-xs text-gray-500 border-t border-gray-100 dark:border-gray-800">
-                    Показаны первые 100 из {filteredWo.length}. Скачайте CSV для полного списка.
+                    Показаны первые 100 из {reportTotal}. Скачайте CSV для полного списка.
                   </p>
                 )}
               </div>
@@ -362,12 +341,12 @@ export default function ReportsPage() {
           )}
 
           {/* Отчёт: Основные средства */}
-          {reportType === "fixed_assets" && (
+          {reportType === "fixed-assets" && (
             <div className="space-y-6">
               <div className="flex justify-end">
                 <button
                   type="button"
-                  onClick={() => exportCsv(filteredAssetsData, `os_${new Date().toISOString().slice(0,10)}.csv`)}
+                  onClick={() => void downloadReport("fixed-assets", `os_${new Date().toISOString().slice(0,10)}.csv`)}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium"
                 >
                   <Download className="w-4 h-4"/> Скачать CSV
@@ -407,7 +386,7 @@ export default function ReportsPage() {
               <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
                 <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Реестр ОС</h3>
-                  <span className="text-xs text-gray-500">Всего: {filteredAssetsData.length}</span>
+                  <span className="text-xs text-gray-500">Всего: {reportTotal}</span>
                 </div>
                 <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                   <table className="w-full text-sm">
@@ -435,9 +414,9 @@ export default function ReportsPage() {
                     </tbody>
                   </table>
                 </div>
-                {filteredAssetsData.length > 100 && (
+                {reportTotal > 100 && (
                   <p className="px-4 py-2 text-xs text-gray-500 border-t border-gray-100 dark:border-gray-800">
-                    Показаны первые 100 из {filteredAssetsData.length}. Скачайте CSV для полного списка.
+                    Показаны первые 100 из {reportTotal}. Скачайте CSV для полного списка.
                   </p>
                 )}
               </div>
@@ -445,12 +424,12 @@ export default function ReportsPage() {
           )}
 
           {/* Отчёт: ТМЦ */}
-          {reportType === "tmc" && (
+          {reportType === "tmc-documents" && (
             <div className="space-y-6">
               <div className="flex justify-end">
                 <button
                   type="button"
-                  onClick={() => exportCsv(tmcData, `tmc_${new Date().toISOString().slice(0,10)}.csv`)}
+                  onClick={() => void downloadReport("tmc-documents", `tmc_${new Date().toISOString().slice(0,10)}.csv`)}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium"
                 >
                   <Download className="w-4 h-4"/> Скачать CSV
@@ -459,7 +438,7 @@ export default function ReportsPage() {
               <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
                 <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Документы ТМЦ</h3>
-                  <span className="text-xs text-gray-500">Всего: {tmcData.length}</span>
+                  <span className="text-xs text-gray-500">Всего: {reportTotal}</span>
                 </div>
                 <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                   <table className="w-full text-sm">
@@ -476,9 +455,9 @@ export default function ReportsPage() {
                       {tmcData.slice(0, 100).map((row, i) => (
                         <tr key={(row.id as string) || i} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
                           <td className="px-4 py-2.5 font-mono">{row.doc_no as string}</td>
-                          <td className="px-4 py-2.5">{row.date as string}</td>
-                          <td className="px-4 py-2.5">{row.work_order_id as string}</td>
-                          <td className="px-4 py-2.5">{row.depot as string}</td>
+                          <td className="px-4 py-2.5">{row.doc_date as string}</td>
+                          <td className="px-4 py-2.5">{(row.work_order_number as string) || (row.work_order_id as string)}</td>
+                          <td className="px-4 py-2.5">{(row.section as string) || (row.warehouse as string)}</td>
                           <td className="px-4 py-2.5">{row.status as string}</td>
                         </tr>
                       ))}
@@ -488,9 +467,9 @@ export default function ReportsPage() {
                 {tmcData.length === 0 && (
                   <p className="px-5 py-12 text-center text-gray-400 text-sm">Нет документов ТМЦ</p>
                 )}
-                {tmcData.length > 100 && (
+                {reportTotal > 100 && (
                   <p className="px-4 py-2 text-xs text-gray-500 border-t border-gray-100 dark:border-gray-800">
-                    Показаны первые 100 из {tmcData.length}. Скачайте CSV для полного списка.
+                    Показаны первые 100 из {reportTotal}. Скачайте CSV для полного списка.
                   </p>
                 )}
               </div>

@@ -374,6 +374,19 @@ CREATE TABLE ai_insights (
 CREATE INDEX ix_insights_created ON ai_insights(created_at DESC);
 CREATE INDEX ix_insights_asset   ON ai_insights(asset_id);
 
+-- Daily fleet readiness, captured once on the first dashboard request per day.
+CREATE TABLE daily_readiness_snapshots (
+    snapshot_date          date NOT NULL,
+    scope_key              varchar(40) NOT NULL,
+    section_id             uuid,
+    asset_count            integer NOT NULL CHECK (asset_count >= 0),
+    ready_count            integer NOT NULL CHECK (ready_count >= 0 AND ready_count <= asset_count),
+    availability_percent   numeric(5,2) NOT NULL CHECK (availability_percent BETWEEN 0 AND 100),
+    created_at             timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (snapshot_date, scope_key)
+);
+CREATE INDEX ix_readiness_section_date ON daily_readiness_snapshots(section_id, snapshot_date);
+
 -- =====================================================================
 -- 9. updated_at triggerlari
 -- =====================================================================

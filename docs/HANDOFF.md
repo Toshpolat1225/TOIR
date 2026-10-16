@@ -153,7 +153,7 @@ Har bir vazifaning "tayyor" mezoni — **real ishga tushirilgan** tekshiruv. Pro
 | **T4a** | **Work-orders backend** (repairs/items, `number` generatsiyasi, status o'tishlari, master server filtri, norma >20% tekshiruvi) | Kod va E2E skript yozilgan; deploy/PostgreSQL orqali real test kutilmoqda |
 | **T4b** | Work-orders frontend va **tmc-documents** API | Hali bajarilmagan |
 | **T5** | **ТО-reja xizmati** (`maintenance_intervals` asosida) + `maintenance-schedule` | Kod yozilgan; `daily_average_km` interfeysdan sozlanadi, mileage-hook va interval forecast mavjud. Alembic/PostgreSQL, API va brauzer deploydan keyin tekshiriladi |
-| **T6** | **Analytics view'lari** + `dashboard/summary` + reports | Analytics va dashboard sahifalari backend'dan ma'lumot oladi |
+| **T6** | **Analytics view'lari** + `dashboard/summary` + reports | Kod yozilgan: 8 ta view, FastAPI analytics/report API, frontend analytics/reports/dashboard FastAPI'dan foydalanadi. `Готовность по месяцам` kunlik snapshotlardan yig'iladi; migratsiya qo'llangandan va dashboard ilk bor ochilgandan boshlab tarix yig'iladi, oldingi tarix sun'iy to'ldirilmaydi. PostgreSQL/Alembic va brauzer deploydan keyin tekshiriladi |
 | **T7** | **WebSocket `/ws`** (LISTEN/NOTIFY, JWT bilan autentifikatsiya) | Nariyad o'zgarsa klientga event keladi |
 | **T8** | **Frontend'ni to'liq Supabase'dan tozalash**, ildizdagi dublikat fayllarni o'chirish, `package.json`dan `@supabase/*` | `grep -ri supabase` natijasi bo'sh; build toza |
 | **T9** | **ML worker** (anomaliya, RUL, health score) backend ichida | Nariyad `completed` bo'lganda `ai_insights` yoziladi |
