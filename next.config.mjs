@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   // Оптимизация пакетов - уменьшает размер бандла
   experimental: {
     optimizePackageImports: [

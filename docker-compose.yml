@@ -32,14 +32,46 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
       CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS in .env}
-      API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
+      API_DOCS_ENABLED: ${API_DOCS_ENABLED:-false}
       WIALON_INGEST_TOKEN: ${WIALON_INGEST_TOKEN:-}
-    ports:
-      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
     networks: [internal]
     depends_on:
       postgres:
         condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://${DOMAIN:?Set DOMAIN}/api/v1
+    mem_limit: 512m
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    networks: [internal]
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  proxy:
+    image: caddy:2-alpine
+    mem_limit: 128m
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [internal]
+    depends_on:
+      - frontend
+      - backend
     restart: unless-stopped
 
 networks:
@@ -47,3 +79,5 @@ networks:
 
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:

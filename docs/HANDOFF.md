@@ -30,6 +30,7 @@
 | Realtime `/ws` | Backend listener, token tekshiruvi, obuna va master section-scope kodi yozilgan |
 | P-T8 tozalash | Eski client, route, server/SQL skript, ML prototype va arxiv nusxalar olib tashlandi; Python utilitalari `DATABASE_URL` ishlatadi |
 | ML worker | Servis, endpointlar va completed nariyad background tahlili yozildi; sintetik testlar qo'shildi |
+| P-T10 production qotirish | Frontend standalone/non-root image, Caddy proxy, PostgreSQL login limiter migratsiyasi, backup/restore hujjati va CI workflow qo'shildi; deploy bajarilmadi |
 
 ## Tekshiruvlar
 
@@ -38,7 +39,11 @@
 - Repository source scan'da eski platform nomiga mos keluvchi fayl topilmadi (node_modules, `.next`, lock fayllari chiqarilgan).
 - Importerlarning DB amali, PostgreSQL/Alembic, server HTTP/WebSocket va brauzer oqimi ishga tushirilmadi.
 - ML sintetik unit testlari lokal Python muhiti bilan tekshirilishi kerak; PostgreSQL, endpoint va background DB oqimi deployment muhitiga bog'liq.
+- P-T10 `npx tsc --noEmit`, `npm run lint` va `npm run build` Next.js 15.5.28 bilan lokalda muvaffaqiyatli; lint/build 2 ta React Hook dependency warning chiqardi. Compose/CI YAML parse qilindi.
+- `npm audit` topgan kritik Next.js zaifligi 15.5.28 patchiga yangilash bilan bartaraf etildi. Production dependency auditi 2 ta (1 moderate, 1 high) qolgan advisoriyni ko'rsatmoqda; force-fix Next.js 16 major yangilanishini talab qiladi, shuning uchun qo'llanmadi. To'liq auditda jami 8 ta (1 moderate, 7 high) advisory bor; jumladan `xlsx` uchun hozir fix yo'q.
+- Backend testlari Python 3.12 mavjud emasligi (lokal interpreter 3.14.7, backend paketlari o'rnatilmagan) sabab bajarilmadi. Docker CLI yo'q, shuning uchun Docker image va Compose runtime tekshiruvlari bajarilmadi.
+- Production TLS, PostgreSQL migration/login limiter, backup rotation va tiklash amalda bajarilmadi; deploy va DB tekshiruvi foydalanuvchi ruxsatiga bog'liq.
 
 ## Keyingi ish
 
-P-T9: `docs/PROMPTS.md` dagi ML worker vazifasini bajarish. Avval Python 3.12 va backend dependency muhitini aniqlab, testlarni o'sha muhitda ishga tushir.
+Production domen/DNS'ni `.env` ga kiritib, deploy ruxsati olingach TLS va backup-restore tekshiruvlarini bajarish.

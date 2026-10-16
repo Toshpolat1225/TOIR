@@ -349,7 +349,6 @@ function WorkTypeCard({
   subtasks,
   tmcItems,
   onDelete,
-  onUpdate,
   onSubtasksChange,
   onTmcChange,
   nomenclature,
@@ -358,7 +357,6 @@ function WorkTypeCard({
   subtasks: WorkSubtask[]
   tmcItems: WorkTypeTmc[]
   onDelete: () => void
-  onUpdate: (wt: WorkType) => void
   onSubtasksChange: (subtasks: WorkSubtask[]) => void
   onTmcChange: (tmc: WorkTypeTmc[]) => void
   nomenclature: NomenclatureItem[]
@@ -901,7 +899,6 @@ export default function WorkTypesPage() {
               subtasks={subtasksMap[wt.id] ?? []}
               tmcItems={tmcMap[wt.id] ?? []}
               onDelete={() => handleDelete(wt.id)}
-              onUpdate={(updated) => setWorkTypes(workTypes.map(w => w.id === updated.id ? updated : w))}
               onSubtasksChange={(subtasks) => setSubtasksMap({ ...subtasksMap, [wt.id]: subtasks })}
               onTmcChange={(tmc) => setTmcMap({ ...tmcMap, [wt.id]: tmc })}
               nomenclature={nomenclature}

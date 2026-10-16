@@ -15,6 +15,6 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     await request.text(); // consume body
-  } catch (_) {}
+  } catch {}
   return NextResponse.json({ ok: true, message: HELP }, { status: 200 });
 }

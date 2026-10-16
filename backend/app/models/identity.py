@@ -1,7 +1,16 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Text, UniqueConstraint, text
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    BigInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import CITEXT, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -64,3 +73,17 @@ class RefreshToken(Base):
     created_at: Mapped[datetime] = mapped_column(
         nullable=False, server_default=text("now()")
     )
+
+
+class LoginAttempt(Base):
+    __tablename__ = "login_attempts"
+    __table_args__ = (
+        Index("ix_login_attempts_key_failed", "key_hash", "failed_at"),
+        Index("ix_login_attempts_failed_at", "failed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, autoincrement=True
+    )
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    failed_at: Mapped[datetime] = mapped_column(nullable=False)

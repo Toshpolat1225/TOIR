@@ -13,13 +13,13 @@ import {
 import { useAnalyticsData } from "./_components/useAnalyticsData"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  LineChart, Line, PieChart, Pie, Cell, AreaChart, Area,
-  ComposedChart, Scatter
+  Line, PieChart, Pie, Cell, AreaChart, Area,
+  ComposedChart
 } from "recharts"
 import {
   TrendingUp, TrendingDown, DollarSign, AlertTriangle,
-  Activity, Gauge, Package, Wrench, Calendar, RefreshCw,
-  ChevronDown, BarChart3, PieChartIcon, LineChartIcon,
+  Activity, Gauge, Wrench, RefreshCw,
+  BarChart3, PieChartIcon, LineChartIcon,
   Brain, Shield, Bell, Cpu, Zap, HeartPulse, CheckCircle, XCircle,
   Loader2
 } from "@/components/ui/icons"
@@ -517,7 +517,7 @@ export default function AnalyticsDashboard() {
               <Tooltip content={<CustomTooltip />} />
             </PieChart>
             <div className="flex-1 space-y-2">
-              {sectionData.map((s, i) => (
+              {sectionData.map((s) => (
                 <div key={s.section} className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
                     <div 

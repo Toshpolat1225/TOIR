@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useRealtime } from "@/lib/use-realtime"
 import { useSectionView } from "@/lib/section-view-context"
 import { api } from "@/lib/api"
 import { Package, Plus, Printer, Eye, CheckCircle, Clock, FileText, List, Search, X, Save, Pencil, Trash2 } from "@/components/ui/icons"

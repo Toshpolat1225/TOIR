@@ -1,7 +1,7 @@
 from app.models.assets import FixedAsset, MileageHistory, WialonSettings
 from app.models.analytics import DailyReadinessSnapshot
 from app.models.base import Base
-from app.models.identity import RefreshToken, User
+from app.models.identity import LoginAttempt, RefreshToken, User
 from app.models.inventory import Nomenclature, NomenclatureNorm, WorkTypeTemplate
 from app.models.maintenance import (
     MaintenanceInterval,
@@ -22,6 +22,7 @@ __all__ = [
     "DailyReadinessSnapshot",
     "Employee",
     "FixedAsset",
+    "LoginAttempt",
     "MaintenanceInterval",
     "MaintenanceLog",
     "MaintenancePlan",

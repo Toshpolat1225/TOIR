@@ -5,8 +5,9 @@ import Link from "next/link"
 import { useRealtime } from "@/lib/use-realtime"
 import { api } from "@/lib/api"
 import { useSectionView } from "@/lib/section-view-context"
+import type { DashboardSummary } from "@/lib/api"
 import {
-  Train, Wrench, AlertTriangle, CheckCircle,
+  Train, Wrench, CheckCircle,
   TrendingUp, ArrowUpRight, BarChart3,
   Activity, Target, CalendarDays, ClipboardList, Container, RefreshCw,
 } from "@/components/ui/icons"
@@ -73,10 +74,11 @@ const prioLabel: Record<string,string> = {
   critical:"Критичный", high:"Высокий", normal:"Обычный", low:"Низкий"
 }
 
-const EMPTY_SUMMARY = {
+const EMPTY_SUMMARY: DashboardSummary = {
   availability: [],
   assets: [],
   orders: [],
+  availability_history_starts_at: "",
 }
 
 /* ════════════════════════════════════════
@@ -84,7 +86,7 @@ const EMPTY_SUMMARY = {
 ════════════════════════════════════════ */
 export default function DashboardPage() {
   const { effectiveSection } = useSectionView()
-  const [summary, setSummary] = useState<any>(EMPTY_SUMMARY)
+  const [summary, setSummary] = useState<DashboardSummary>(EMPTY_SUMMARY)
   const [loading, setLoading] = useState(true)
 
   const loadData = useCallback(async () => {
@@ -253,7 +255,7 @@ export default function DashboardPage() {
 
   /* ── Предстоящее ТО (pending наряды с датой) ── */
   const upcomingOrders = filteredOrders
-    .filter((o: { status?: string; date_start?: string }) => o.status === "pending" && o.date_start)
+    .filter((o) => o.status === "pending" && o.date_start)
     .slice(0, 5)
 
   /* ── Последние наряды ── */
@@ -686,7 +688,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-center h-24 text-gray-400 text-xs">Нет запланированных нарядов</div>
           ) : (
             <div className="space-y-2">
-              {upcomingOrders.map((item: { id?: string; unit?: string; date_start?: string; type?: string; repair_kind?: string; priority?: string }) => (
+              {upcomingOrders.map((item) => (
                 <div key={item.id}
                   className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60">
                   <div className="flex items-center gap-2.5">
@@ -727,7 +729,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-center h-24 text-gray-400 text-xs">Нет нарядов</div>
           ) : (
             <div className="space-y-2">
-              {recentWO.map((wo: { id?: string; status?: string; unit?: string; description?: string; tech?: string }) => (
+              {recentWO.map((wo) => (
                 <div key={wo.id}
                   className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60">
                   <div className="flex items-center justify-between mb-1">

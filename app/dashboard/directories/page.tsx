@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Users, Package, ChevronRight, FolderOpen, Building2, Wrench, Gauge, Settings } from "@/components/ui/icons"
+import { Users, Package, ChevronRight, FolderOpen, Building2, Wrench, Gauge } from "@/components/ui/icons"
 
 const DIRECTORIES = [
   {

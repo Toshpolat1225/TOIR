@@ -103,7 +103,6 @@ function createIcon(name: string) {
     className,
     color,
     size,
-    strokeWidth: _strokeWidth,
     style,
     role,
     title,

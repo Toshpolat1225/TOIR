@@ -268,7 +268,7 @@ export default function ReportsPage() {
                     <ResponsiveContainer width="100%" height={220}>
                       <RechartsPie>
                         <Pie data={woChartData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                          {woChartData.map((e, i) => (
+                          {woChartData.map((e) => (
                             <Cell key={e.name} fill={e.fill}/>
                           ))}
                         </Pie>

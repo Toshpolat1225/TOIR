@@ -1117,7 +1117,7 @@ const tmcDocuments = {
 };
 
 // --- Dashboard Module ---
-type DashboardSummary = {
+export type DashboardSummary = {
   assets: Array<{
     id: string;
     name: string;
@@ -1214,8 +1214,8 @@ const reports = {
  * Helper function to fetch all items from a paginated API endpoint.
  */
 async function fetchAllPaginated<T>(
-  listFunc: (params: any) => Promise<Paginated<T>>,
-  baseParams: Record<string, any> = {},
+  listFunc: (params: ListParams & { section_id?: string }) => Promise<Paginated<T>>,
+  baseParams: ListParams & { section_id?: string } = {},
   pageSize = 500
 ): Promise<T[]> {
   const firstPage = await listFunc({ ...baseParams, limit: pageSize, offset: 0 });

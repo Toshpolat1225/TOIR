@@ -268,9 +268,6 @@ function parseDate(d: string): Date {
   const [day, month, year] = d.split(".").map(Number)
   return new Date(year, month - 1, day)
 }
-function formatDateShort(d: Date): string {
-  return d.getDate().toString().padStart(2,"0") + "." + (d.getMonth()+1).toString().padStart(2,"0")
-}
 function addDays(d: Date, n: number): Date {
   const r = new Date(d); r.setDate(r.getDate() + n); return r
 }
@@ -914,7 +911,6 @@ export default function MaintenancePage() {
   const [quickItem, setQuickItem] = useState<ScheduleItem|null>(null)
   const [notifications, setNotifications] = useState<ToastNotification[]>([])
   const [allNotifications, setAllNotifications] = useState<ToastNotification[]>([])
-  const [initialLoadDone, setInitialLoadDone] = useState(false)
   const [sections, setSections] = useState<Section[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [workTypes, setWorkTypes] = useState<WorkType[]>([])
@@ -994,7 +990,6 @@ export default function MaintenancePage() {
       const response = await api.maintenanceSchedule.get({ month: queryMonth });
       setSchedule(response.schedule)
       setScheduleError(null)
-      setInitialLoadDone(true)
     } catch (e) {
       console.error("Ошибка загрузки ТО и ремонтов:", e)
       setSchedule([])
@@ -1074,7 +1069,6 @@ export default function MaintenancePage() {
 
   // Диапазон: текущий месяц
   const now         = new Date()
-  const today       = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const rangeStart  = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1)
   const rangeEnd    = new Date(now.getFullYear(), now.getMonth() + monthOffset + 1, 0)
   const rangeDays   = diffDays(rangeStart, rangeEnd) + 1
@@ -1091,9 +1085,6 @@ export default function MaintenancePage() {
   // Уникальные типы ТО для фильтра
   const uniqueTypes = [...new Set(allSchedule.map(s => s.type))].sort()
   
-  // Уникальные названия оборудования для фильтра
-  const uniqueUnits = [...new Set(allSchedule.map(s => s.unit))].sort()
-
   // Фильтрация — показываем элементы, пересекающиеся с диапазоном
   const visible = allSchedule.filter(item => {
     if (!item.startDate) return false

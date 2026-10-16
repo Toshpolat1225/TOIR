@@ -13,3 +13,6 @@ backend/venv
 **/*.py[cod]
 .venv
 venv
+backups
+coverage
+*.log

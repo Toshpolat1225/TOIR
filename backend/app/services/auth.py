@@ -1,11 +1,10 @@
-import asyncio
-from collections import deque
+import hashlib
+import hmac
 from datetime import datetime, timedelta, timezone
-from typing import Deque
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -19,7 +18,7 @@ from app.core.security import (
     verify_password,
     verify_unknown_user_password,
 )
-from app.models.identity import RefreshToken, User
+from app.models.identity import LoginAttempt, RefreshToken, User
 from app.schemas.auth import LoginRequest, TokenResponse
 from app.schemas.users import validate_email
 
@@ -27,53 +26,25 @@ LOGIN_FAILURE_LIMIT = 5
 LOGIN_FAILURE_WINDOW = timedelta(minutes=15)
 
 
-class LoginAttemptLimiter:
-    def __init__(self) -> None:
-        self._failures: dict[tuple[str, str], Deque[datetime]] = {}
-        self._lock = asyncio.Lock()
-
-    async def check(self, key: tuple[str, str]) -> None:
-        now = datetime.now(timezone.utc)
-        cutoff = now - LOGIN_FAILURE_WINDOW
-        async with self._lock:
-            attempts = self._failures.get(key)
-            if attempts is None:
-                return
-            while attempts and attempts[0] <= cutoff:
-                attempts.popleft()
-            if not attempts:
-                self._failures.pop(key, None)
-                return
-            if len(attempts) >= LOGIN_FAILURE_LIMIT:
-                retry_after = max(
-                    1, int((attempts[0] + LOGIN_FAILURE_WINDOW - now).total_seconds())
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail="Too many failed login attempts; try again later",
-                    headers={"Retry-After": str(retry_after)},
-                )
-
-    async def record_failure(self, key: tuple[str, str]) -> None:
-        now = datetime.now(timezone.utc)
-        cutoff = now - LOGIN_FAILURE_WINDOW
-        async with self._lock:
-            stale_keys: list[tuple[str, str]] = []
-            for attempt_key, attempts in self._failures.items():
-                while attempts and attempts[0] <= cutoff:
-                    attempts.popleft()
-                if not attempts:
-                    stale_keys.append(attempt_key)
-            for stale_key in stale_keys:
-                self._failures.pop(stale_key, None)
-            self._failures.setdefault(key, deque()).append(now)
-
-    async def clear(self, key: tuple[str, str]) -> None:
-        async with self._lock:
-            self._failures.pop(key, None)
+def login_attempt_key_hash(client_ip: str, email: str) -> str:
+    normalized_email = email.strip().casefold()
+    return hmac.new(
+        settings.jwt_secret.get_secret_value().encode("utf-8"),
+        f"{client_ip}\0{normalized_email}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
 
 
-login_attempt_limiter = LoginAttemptLimiter()
+def _raise_login_rate_limit(now: datetime, window_started_at: datetime) -> None:
+    retry_after = max(
+        1,
+        int((window_started_at + LOGIN_FAILURE_WINDOW - now).total_seconds()),
+    )
+    raise HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail="Too many failed login attempts; try again later",
+        headers={"Retry-After": str(retry_after)},
+    )
 
 
 async def authenticate(
@@ -81,8 +52,22 @@ async def authenticate(
     request: LoginRequest,
     client_ip: str,
 ) -> TokenResponse:
-    key = (client_ip, request.email.strip().casefold())
-    await login_attempt_limiter.check(key)
+    key_hash = login_attempt_key_hash(client_ip, request.email)
+    now = datetime.now(timezone.utc)
+    cutoff = now - LOGIN_FAILURE_WINDOW
+    await db.execute(delete(LoginAttempt).where(LoginAttempt.failed_at <= cutoff))
+    await db.execute(
+        select(func.pg_advisory_xact_lock(func.hashtextextended(key_hash, 0)))
+    )
+    attempt_result = await db.execute(
+        select(LoginAttempt)
+        .where(LoginAttempt.key_hash == key_hash)
+        .order_by(LoginAttempt.failed_at.asc(), LoginAttempt.id.asc())
+        .with_for_update()
+    )
+    attempts = list(attempt_result.scalars())
+    if len(attempts) >= LOGIN_FAILURE_LIMIT:
+        _raise_login_rate_limit(now, attempts[0].failed_at)
 
     result = await db.execute(select(User).where(User.email == request.email.strip()))
     user = result.scalar_one_or_none()
@@ -95,11 +80,11 @@ async def authenticate(
     if user is None:
         await run_in_threadpool(verify_unknown_user_password, request.password)
     if user is None or not password_is_valid or not user.is_active:
-        await login_attempt_limiter.record_failure(key)
+        db.add(LoginAttempt(key_hash=key_hash, failed_at=now))
+        await db.commit()
         raise unauthorized_exception()
 
-    await login_attempt_limiter.clear(key)
-    now = datetime.now(timezone.utc)
+    await db.execute(delete(LoginAttempt).where(LoginAttempt.key_hash == key_hash))
     refresh_token = create_refresh_token()
     db.add(
         RefreshToken(
