@@ -23,6 +23,7 @@ type ApiRequestOptions = {
   isPublic?: boolean;
   responseType?: "json" | "blob";
   suppress404Log?: boolean;
+  suppressNetworkLog?: boolean;
 };
 
 export class ApiHttpError extends Error {
@@ -33,7 +34,7 @@ export class ApiHttpError extends Error {
 }
 
 async function request<T>(options: ApiRequestOptions): Promise<T> {
-  const { method, path, body, params, isPublic = false, responseType = "json", suppress404Log = false } = options;
+  const { method, path, body, params, isPublic = false, responseType = "json", suppress404Log = false, suppressNetworkLog = false } = options;
 
   const url = new URL(`${API_BASE_URL}${path}`);
   if (params) {
@@ -100,7 +101,9 @@ async function request<T>(options: ApiRequestOptions): Promise<T> {
 
     return (responseType === "blob" ? await response.blob() : await response.json()) as T;
   } catch (error) {
-    if (!(suppress404Log && error instanceof ApiHttpError && error.status === 404)) {
+    const isSuppressed404 = suppress404Log && error instanceof ApiHttpError && error.status === 404;
+    const isSuppressedNetworkError = suppressNetworkLog && error instanceof TypeError;
+    if (!isSuppressed404 && !isSuppressedNetworkError) {
       console.error(`API request failed: ${method} ${path}`, error);
     }
     // Re-throw the error so it can be caught by the caller
@@ -815,7 +818,7 @@ export type MaintenancePlanUpdate = Partial<{
 
 const maintenanceSchedule = {
   async get(params: { month: string }): Promise<MaintenanceScheduleResponse> {
-    return request<MaintenanceScheduleResponse>({ method: "GET", path: "/maintenance-schedule", params });
+    return request<MaintenanceScheduleResponse>({ method: "GET", path: "/maintenance-schedule", params, suppressNetworkLog: true });
   },
 };
 
@@ -1079,13 +1082,15 @@ const maintenanceIntervals = {
 // --- TMC Documents Module ---
 
 type TmcItem = {
-  no: number;
+  id: string;
+  nomenclature_id: string | null;
   name: string;
-  invNo: string;
-  unit: string;
-  qty: number;
-  price: number;
-  note: string;
+  inv_no: string | null;
+  unit: string | null;
+  qty: number | string;
+  price: number | string | null;
+  note: string | null;
+  sort_order: number;
 };
 
 type TmcDocument = {
@@ -1093,7 +1098,10 @@ type TmcDocument = {
   doc_no: string;
   doc_date: string;
   work_order_id: string | null;
-  department_id: string | null;
+  work_order_number: string | null;
+  section_id: string | null;
+  work_type_id: string | null;
+  created_at: string;
   status: "draft" | "issued" | "closed";
   items: TmcItem[] | null;
   // Joined fields from backend, matching the `TmcDoc` type in the component
@@ -1113,7 +1121,7 @@ type TmcDocumentListParams = ListParams & {
 
 const tmcDocuments = {
   async list(params: TmcDocumentListParams): Promise<Paginated<TmcDocument>> {
-    return request<Paginated<TmcDocument>>({ method: "GET", path: "/tmc-documents", params });
+    return request<Paginated<TmcDocument>>({ method: "GET", path: "/tmc-documents", params, suppress404Log: true });
   },
   async create(data: Partial<TmcDocument>): Promise<TmcDocument> {
     return request<TmcDocument>({ method: "POST", path: "/tmc-documents", body: data });

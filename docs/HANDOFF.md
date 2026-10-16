@@ -53,10 +53,9 @@ chiqarma.
   `/ws` sifatida ulanadi. Backend qatlamlari routers/services/repositories/schemas/models.
 - [CONFIRMED] Frontend sahifalari `app/`, umumiy API so'rovlari `lib/api.ts`; E2E skriptlar
   `backend/scripts/e2e_*.py` ichida.
-- [CONFIRMED] `lib/api.ts` TMC hujjatlari uchun `/tmc-documents` API chaqiruvlariga ega va
-  `tmc_documents`/`tmc_document_items` ORM modeli mavjud. Ammo bu CRUD routeri yo'q va
-  `backend/app/main.py` ga ulanmagan; `/api/v1/tmc-documents` chaqiruvlari 404 bo'ladi.
-  Analytics ichidagi TMC report route'i alohida mavjud.
+- [UPDATED] TMC hujjatlari uchun GET ro'yxat route'i `backend/app/routers/tmc_documents.py`
+  orqali ulandi; mahalliy manba kodi bu route'ni taqdim etadi. Backend runtime/deployment
+  tekshirilmagan. TMC create/update/delete route'lari hanuz yo'q.
 - [REPORTED] Oldingi sessiyada `npx tsc --noEmit`, `npm run lint`, `npm run build` muvaffaqiyatli
   bo'lgani xabar qilingan; lint/build'da 2 ta React Hook dependency warning bo'lgan. Bu auditda
   build qayta bajarilmadi.
@@ -143,8 +142,8 @@ chiqarma.
 
 ### Medium
 
-- [MEDIUM][CONFIRMED] TMC hujjatlari API client chaqiruvlari uchun backend CRUD routeri yo'q;
-  chaqiruvlar 404 beradi (3-bo'lim).
+- [MEDIUM][UPDATED] TMC ro'yxat GET route'i qo'shildi; production'da mavjudligi tekshirilmagan.
+  TMC create/update/delete route'lari yo'q.
 - [MEDIUM][CONFIRMED] `scripts/backup_postgres.sh` `./backups` ichiga DB dump yozadi, ammo root
   `.gitignore` `backups/` ni ignore qilmaydi. `.dockerignore` uni chiqaradi; Git'ga tasodifan
   qo'shib yuborish xavfi qolgan. Hozir backup borligi yoki track qilingani noma'lum.
@@ -195,8 +194,8 @@ production tayyorligi degani emas.
 1. Git CLI bor muhitda `git status`, `git diff`, `.env.local` va backup tracking holatini aniqlash;
    Git history secret scan'ni maxfiy qiymatlarni chiqarmasdan o'tkazish.
 2. Master maintenance GET schedule va GET plan uchun server-side section scope qo'shish.
-3. TMC documents CRUD qachon amalga oshirilishini aniqlash; API client yoki backend routerini
-   moslab, 404 holatini yopish.
+3. TMC create/update/delete route'larini amalga oshirish; GET list route'ini API muhitida
+   tasdiqlash.
 4. Amaldagi Next/PostCSS/xlsx audit holatini lockfile bilan qayta tekshirish; tasdiqsiz
    `--force` major upgrade qilmaslik.
 5. `PROJECT.md`ni production arxitekturasi bilan moslashtirish.
@@ -255,3 +254,16 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 
 - Review the demo payloads, then run `seed_demo.py` only against the intended API environment. Use `--remove` to remove its DEMO-prefixed records.
 - Production API and database behavior remain unverified.
+
+## Latest error follow-up (2026-10-16)
+
+### Verified
+
+- The local maintenance router defines `GET /maintenance-schedule`; the browser's `Failed to fetch` is not an HTTP status and needs the configured API origin/CORS/runtime to identify the cause.
+- No process was listening on local TCP port 8010 at check time. This matters only if the frontend uses the default API URL; `.env.local` was not read.
+- A read-only TMC documents GET router/schema/service/repository was added and mounted locally. Python syntax check and frontend `npx tsc --noEmit` completed successfully.
+- The active Next.js dev server was left running; build was not run.
+
+### Next task
+
+- Confirm the browser Network tab's request URL and CORS/HTTP result for the maintenance call; deploy the TMC GET route before expecting it on a remote API. TMC write routes are not implemented.

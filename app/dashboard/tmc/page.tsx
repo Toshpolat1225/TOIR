@@ -465,8 +465,8 @@ function fromRow(r: any): TmcDoc {
   return {
     id:          r.id,
     docNo:       r.doc_no,
-    date:        r.date,
-    workOrderId: r.work_order_id,
+    date:        r.doc_date,
+    workOrderId: r.work_order_number ?? r.work_order_id ?? "",
     loco:        r.loco,
     workType:    r.work_type,
     depot:       r.depot,
@@ -475,13 +475,22 @@ function fromRow(r: any): TmcDoc {
     acceptedBy:  r.accepted_by,
     chief:       r.chief,
     status:      r.status,
-    items:       r.items ?? [],
+    items:       (r.items ?? []).map((item: any, index: number) => ({
+      no: index + 1,
+      name: item.name,
+      invNo: item.inv_no ?? "",
+      unit: item.unit ?? "",
+      qty: Number(item.qty ?? 0),
+      price: Number(item.price ?? 0),
+      note: item.note ?? "",
+    })),
   }
 }
 
 export default function TmcPage() {
   const { effectiveSection } = useSectionView()
   const [docs,     setDocs]     = useState<TmcDoc[]>([])
+  const [docsError, setDocsError] = useState<string | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [selected, setSelected] = useState<TmcDoc | null>(null)
   const [nomenclature, setNomenclature] = useState<NomenclatureRow[]>([])
@@ -500,8 +509,9 @@ export default function TmcPage() {
     try {
       const response = await api.tmcDocuments.list({ limit: 200, sort_by: "created_at", sort_order: "desc" });
       setDocs(response.items.map(fromRow));
+      setDocsError(null)
     } catch (error) {
-      console.error("Failed to fetch TMC documents:", error);
+      setDocsError(error instanceof Error ? error.message : "Не удалось загрузить документы ТМЦ")
       setDocs([])
     } finally {
       setLoading(false)
@@ -631,6 +641,11 @@ export default function TmcPage() {
       </div>
 
       {/* Documents list */}
+      {docsError && (
+        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          Не удалось загрузить документы ТМЦ: {docsError}
+        </div>
+      )}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
         <table className="w-full">
           <thead>

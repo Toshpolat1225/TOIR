@@ -991,7 +991,6 @@ export default function MaintenancePage() {
       setSchedule(response.schedule)
       setScheduleError(null)
     } catch (e) {
-      console.error("Ошибка загрузки ТО и ремонтов:", e)
       setSchedule([])
       setScheduleError(e instanceof Error ? e.message : "Не удалось загрузить график ТО")
     } finally {

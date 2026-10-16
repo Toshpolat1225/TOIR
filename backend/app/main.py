@@ -19,6 +19,7 @@ from app.routers.ml import router as ml_router
 from app.routers.nomenclature import router as nomenclature_router
 from app.routers.references import router as references_router
 from app.routers.realtime import router as realtime_router
+from app.routers.tmc_documents import router as tmc_documents_router
 from app.routers.users import router as users_router
 from app.routers.wialon import router as wialon_router
 from app.routers.work_orders import router as work_orders_router
@@ -86,5 +87,6 @@ app.include_router(work_orders_router, prefix="/api/v1")
 app.include_router(maintenance_router, prefix="/api/v1")
 app.include_router(ml_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
+app.include_router(tmc_documents_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
 app.include_router(realtime_router)
