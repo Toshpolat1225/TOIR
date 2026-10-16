@@ -1,10 +1,8 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { supabase } from "@/lib/supabase"
-import { useRealtime } from "@/lib/use-realtime"
-import { api } from "@/lib/api"
-import { useSections } from "@/lib/use-sections"
+import { api, type Employee, type MaintenanceScheduleItem, type Section, type WorkType } from "@/lib/api"
+import { useAuth } from "@/lib/auth-context"
 import {
   Calendar, Wrench, CheckCircle, Clock, AlertTriangle,
   BarChart3, List, ChevronLeft, ChevronRight, Info, Plus, X, ChevronDown,
@@ -15,50 +13,7 @@ import {
    ДАННЫЕ
 ═══════════════════════════════════════ */
 type Status = "upcoming" | "in_progress" | "completed" | "overdue"
-type ScheduleItem = {
-  id: string
-  unit: string
-  type: string
-  startDate: string
-  durationH: number
-  depot: string
-  tech: string
-  status: Status
-  note?: string
-  mileage?: number
-  remainingKm?: number
-  nextThreshold?: number
-}
-
-const normalizeScheduleItem = (item: any): ScheduleItem => {
-  const normalizedStatus: Status =
-    item?.status === "in_progress" || item?.status === "completed" || item?.status === "overdue"
-      ? item.status
-      : "upcoming"
-
-  return {
-    id: item?.id ?? "",
-    unit: item?.unit ?? "",
-    type: item?.type ?? "",
-    startDate: item?.startDate ?? "",
-    durationH: item?.durationH ?? 0,
-    depot: item?.depot ?? "",
-    tech: item?.tech ?? "",
-    status: normalizedStatus,
-    note: item?.note,
-    mileage: item?.mileage,
-    remainingKm: item?.remainingKm,
-    nextThreshold: item?.nextThreshold,
-  }
-}
-
-type MaintenanceInterval = {
-  id: string
-  code: string
-  name: string
-  interval_km: number
-  is_active: boolean
-}
+type ScheduleItem = MaintenanceScheduleItem
 
 type ToastNotification = {
   id: string
@@ -307,6 +262,9 @@ const statusConfig: Record<Status, { label: string; icon: React.ElementType; cls
    ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 ═══════════════════════════════════════ */
 function parseDate(d: string): Date {
+  if (/^\d{4}-\d{2}-\d{2}/.test(d)) {
+    return new Date(`${d.slice(0, 10)}T00:00:00`)
+  }
   const [day, month, year] = d.split(".").map(Number)
   return new Date(year, month - 1, day)
 }
@@ -330,7 +288,7 @@ function GanttChart({ items, rangeStart, rangeDays, onCreateOrder }: {
   items: ScheduleItem[]
   rangeStart: Date
   rangeDays: number
-  onCreateOrder?: (unit: string, section: string) => void
+  onCreateOrder?: (item: ScheduleItem) => void
 }) {
   const today = new Date()
   const todayOffset = diffDays(rangeStart, today)
@@ -476,24 +434,24 @@ function GanttChart({ items, rangeStart, rangeDays, onCreateOrder }: {
                           })}
                         </div>
                         
-                        {firstItem.mileage !== undefined && (
+                        {firstItem.mileage !== null && (
                           <div className="mt-2.5 flex items-center gap-2">
                             <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/50">
                               <Gauge className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                               <span className="text-base font-bold text-emerald-700 dark:text-emerald-300">
-                                {firstItem.mileage.toLocaleString()} км
+                                {Number(firstItem.mileage).toLocaleString()} км
                               </span>
                             </div>
-                            {firstItem.remainingKm !== undefined && (
+                            {firstItem.remainingKm !== null && (
                               <span className={`text-sm font-bold px-2.5 py-1.5 rounded-lg ${
-                                firstItem.remainingKm <= 0 
+                                Number(firstItem.remainingKm) <= 0 
                                   ? 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300'
-                                  : firstItem.remainingKm < 10
+                                  : Number(firstItem.remainingKm) < 10
                                     ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
                                     : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
                               }`}>
-                                {firstItem.remainingKm <= 0 
-                                  ? `⚠️ −${Math.abs(firstItem.remainingKm)} км`
+                                {Number(firstItem.remainingKm) <= 0 
+                                  ? `⚠️ −${Math.abs(Number(firstItem.remainingKm))} км`
                                   : `↓ ${firstItem.remainingKm} км`
                                 }
                               </span>
@@ -510,10 +468,10 @@ function GanttChart({ items, rangeStart, rangeDays, onCreateOrder }: {
                       </div>
                       
                       {/* Кнопка создания наряда */}
-                      {onCreateOrder && (
+                      {onCreateOrder && firstItem.entity_type !== "work_order" && (
                         <button
                           title="Открыть наряд-задание"
-                          onClick={() => onCreateOrder(unitName, firstItem.depot)}
+                          onClick={() => onCreateOrder(firstItem)}
                           className="opacity-0 group-hover:opacity-100 transition-all flex-shrink-0 p-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-xl hover:scale-105"
                         >
                           <Plus className="w-5 h-5"/>
@@ -651,90 +609,64 @@ function GanttChart({ items, rangeStart, rangeDays, onCreateOrder }: {
 /* ═══════════════════════════════════════
    QUICK ORDER MODAL  (без выхода со страницы)
 ═══════════════════════════════════════ */
-
-function genOrderId(): string {
-  const now = new Date()
-  const y  = now.getFullYear()
-  const mo = String(now.getMonth() + 1).padStart(2, "0")
-  const d  = String(now.getDate()).padStart(2, "0")
-  const h  = String(now.getHours()).padStart(2, "0")
-  const mi = String(now.getMinutes()).padStart(2, "0")
-  const s  = String(now.getSeconds()).padStart(2, "0")
-  return `НЗ-${y}${mo}${d}-${h}${mi}${s}`
-}
-
-function QuickOrderModal({ item, onClose, sections, onOrderCreated, onNotify }: {
+function QuickOrderModal({ item, onClose, sections, employees, workTypes, onOrderCreated, onNotify }: {
   item: ScheduleItem
   onClose: () => void
-  sections: string[]
+  sections: Section[]
+  employees: Employee[]
+  workTypes: WorkType[]
   onOrderCreated?: () => void
   onNotify?: (n: { type: "warning" | "error" | "success" | "info"; title: string; message: string }, uniqueKey?: string, showToast?: boolean) => void
 }) {
-  const [section,   setSection]   = useState(item.depot || "")
-  const [priority,  setPriority]  = useState("normal")
+  const [section,   setSection]   = useState(item.section_id || "")
+  const [executorId, setExecutorId] = useState("")
+  const [workTypeId, setWorkTypeId] = useState(item.work_type_id || "")
+  const [priority,  setPriority]  = useState<"critical" | "high" | "normal" | "low">("normal")
   const [note,      setNote]      = useState("")
   const [saved,     setSaved]     = useState(false)
   const [orderId,   setOrderId]   = useState("")
   const [error,     setError]     = useState("")
-  const nextThresholdDisplay = typeof item.nextThreshold === "number" ? item.nextThreshold.toLocaleString() : null
+  const [saving, setSaving] = useState(false)
+  const nextThresholdDisplay = item.nextThreshold === null
+    ? null
+    : Number(item.nextThreshold).toLocaleString()
 
   const handleSend = async () => {
     if (!section) { setError("Выберите участок для отправки наряда"); return }
+    if (!executorId) { setError("Выберите исполнителя"); return }
+    if (!workTypeId) { setError("Выберите вид работ для ТО"); return }
     setError("")
-    const id = genOrderId()
-    
-    const mileageInfo = item.mileage !== undefined 
-      ? ` (пробег: ${item.mileage.toLocaleString()} км, до ТО: ${item.remainingKm} км)`
+    setSaving(true)
+    const mileageInfo = item.mileage !== null
+      ? ` (пробег: ${Number(item.mileage).toLocaleString()} км, до ТО: ${item.remainingKm ?? "—"} км)`
       : ""
-    
-    const row = {
-      id,
-      unit_type:    "locomotive",
-      unit:          item.unit,
-      depot:         section,
-      section:       section,
-      equipment:     item.unit.split(/[-\s]/)[0] ?? item.unit,
-      work_type:     "Плановое",
-      repair_kind:   item.type,
-      status:        "pending",
-      priority:      item.status === "overdue" ? "critical" : priority,
-      tech:          "",
-      chief:         "",
-      description:   `${item.type} — плановое техническое обслуживание${mileageInfo}`,
-      note:          note || "",
-      created:       new Date().toLocaleDateString("ru-RU"),
-      closed:        "—",
-      repair_items:  [],
-      date_start:    item.startDate,
-      date_end:      "",
-      // Сохраняем данные пробега для отслеживания цикла ТО
-      mileage_at_creation: item.mileage || null,
-      mileage_threshold: item.nextThreshold || null,
-    }
-    
-    const { error: insertError } = await supabase.from("work_orders").insert(row)
-    
-    if (insertError) {
-      console.error("Ошибка создания наряда:", insertError)
-      setError("Ошибка при создании наряда")
-      return
-    }
-    
-    setOrderId(id)
-    setSaved(true)
-    
-    // Уведомление об успешном создании — показываем toast
-    if (onNotify) {
-      onNotify({
+    try {
+      const order = await api.workOrders.create({
+        fixed_asset_id: item.asset_id,
+        maintenance_plan_id: item.plan_id,
+        maintenance_interval_id: item.interval_id,
+        maintenance_trigger_mileage: item.nextThreshold,
+        section_id: section,
+        order_kind: "planned",
+        priority: item.status === "overdue" ? "critical" : priority,
+        executor_id: executorId,
+        description: `${item.type} — плановое техническое обслуживание${mileageInfo}`,
+        note: note.trim() || null,
+        date_start: new Date(`${item.startDate}T00:00:00`).toISOString(),
+        repairs: [{ work_type_id: workTypeId, items: [] }],
+      })
+      setOrderId(order.number)
+      setSaved(true)
+      onNotify?.({
         type: "success",
-        title: `Наряд ${id} создан`,
-        message: `${item.type} для ${item.unit} отправлен на участок ${section}`
-      }, undefined, true) // showToast = true
-    }
-    
-    // Обновляем данные чтобы ТО исчезло из графика
-    if (onOrderCreated) {
-      onOrderCreated()
+        title: `Наряд ${order.number} создан`,
+        message: `${item.type} для ${item.unit} отправлен на участок ${sections.find((row) => row.id === section)?.name ?? ""}`,
+      }, undefined, true)
+      onOrderCreated?.()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Ошибка при создании наряда")
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -827,21 +759,21 @@ function QuickOrderModal({ item, onClose, sections, onOrderCreated, onNotify }: 
                     <span className="text-gray-400 text-xs block">Вид ремонта</span>
                     <p className="font-bold text-blue-600 dark:text-blue-400">{item.type}</p>
                   </div>
-                  {item.mileage !== undefined && (
+                  {item.mileage !== null && (
                     <>
                       <div>
                         <span className="text-gray-400 text-xs block">Текущий пробег</span>
-                        <p className="font-bold text-emerald-600 dark:text-emerald-400">{item.mileage.toLocaleString()} км</p>
+                        <p className="font-bold text-emerald-600 dark:text-emerald-400">{Number(item.mileage).toLocaleString()} км</p>
                       </div>
                       <div>
                         <span className="text-gray-400 text-xs block">До ТО осталось</span>
                         <p className={`font-bold ${
-                          (item.remainingKm || 0) <= 0 
+                          Number(item.remainingKm || 0) <= 0 
                             ? "text-red-600 dark:text-red-400" 
                             : "text-amber-600 dark:text-amber-400"
                         }`}>
-                          {(item.remainingKm || 0) <= 0 
-                            ? `Просрочено на ${Math.abs(item.remainingKm || 0)} км` 
+                          {Number(item.remainingKm || 0) <= 0 
+                            ? `Просрочено на ${Math.abs(Number(item.remainingKm || 0))} км` 
                             : `${item.remainingKm} км`
                           }
                         </p>
@@ -850,7 +782,7 @@ function QuickOrderModal({ item, onClose, sections, onOrderCreated, onNotify }: 
                   )}
                   <div>
                     <span className="text-gray-400 text-xs block">Дата начала</span>
-                    <p className="font-medium text-gray-700 dark:text-gray-300">{item.startDate}</p>
+                    <p className="font-medium text-gray-700 dark:text-gray-300">{dateToDdMmYyyy(item.startDate)}</p>
                   </div>
                   <div>
                     <span className="text-gray-400 text-xs block">Длительность</span>
@@ -877,12 +809,36 @@ function QuickOrderModal({ item, onClose, sections, onOrderCreated, onNotify }: 
                     className={`${selCls} ${error ? "border-red-400 focus:ring-red-400" : ""}`}>
                     <option value="">Выберите участок...</option>
                     {sections.map(s => (
-                      <option key={s} value={s}>{s}</option>
+                      <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                   </select>
                   <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"/>
                 </div>
                 {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                  Вид работ <span className="text-red-500">*</span>
+                </label>
+                <select value={workTypeId} onChange={e => { setWorkTypeId(e.target.value); setError("") }} className={selCls}>
+                  <option value="">Выберите вид работ...</option>
+                  {workTypes.map(workType => (
+                    <option key={workType.id} value={workType.id}>{workType.code} — {workType.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                  Исполнитель <span className="text-red-500">*</span>
+                </label>
+                <select value={executorId} onChange={e => { setExecutorId(e.target.value); setError("") }} className={selCls}>
+                  <option value="">Выберите сотрудника...</option>
+                  {employees.filter(employee => employee.is_active && (!section || employee.section_id === section)).map(employee => (
+                    <option key={employee.id} value={employee.id}>{employee.full_name}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Приоритет */}
@@ -894,7 +850,7 @@ function QuickOrderModal({ item, onClose, sections, onOrderCreated, onNotify }: 
                     ["normal",   "Обычный",    "text-blue-700 bg-blue-100 dark:bg-blue-950"],
                     ["high",     "Высокий",    "text-amber-700 bg-amber-100 dark:bg-amber-950"],
                     ["critical", "Критич.",    "text-red-700 bg-red-100 dark:bg-red-950"],
-                  ] as [string,string,string][]).map(([v,l,cls]) => (
+                  ] as [typeof priority,string,string][]).map(([v,l,cls]) => (
                     <button key={v} onClick={() => setPriority(v)}
                       className={`py-1.5 rounded-lg text-xs font-semibold transition-all border-2 ${
                         priority === v
@@ -926,9 +882,9 @@ function QuickOrderModal({ item, onClose, sections, onOrderCreated, onNotify }: 
                   className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
                   Отмена
                 </button>
-                <button onClick={handleSend}
-                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors shadow-sm">
-                  <Plus className="w-4 h-4"/> Открыть на участок
+                <button onClick={() => void handleSend()} disabled={saving}
+                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors shadow-sm disabled:opacity-50">
+                  <Plus className="w-4 h-4"/> {saving ? "Создание..." : "Открыть на участок"}
                 </button>
               </div>
             </div>
@@ -948,108 +904,8 @@ function dateToDdMmYyyy(isoDate: string): string {
   return [d, m, y].join(".")
 }
 
-// Конвертация строки work_orders → ScheduleItem (опционально обогащаем пробегом из ОС)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function woToSchedule(r: any, mileageByUnit?: Record<string, number>): ScheduleItem {
-  const woStatus: Record<string, Status> = {
-    pending:     "upcoming",
-    in_progress: "in_progress",
-    completed:   "completed",
-  }
-  const today = new Date()
-  const todayStr = [
-    String(today.getDate()).padStart(2,"0"),
-    String(today.getMonth()+1).padStart(2,"0"),
-    today.getFullYear(),
-  ].join(".")
-  const unit = r.unit || ""
-  const mileage = mileageByUnit?.[unit] ?? mileageByUnit?.[unit.trim()]
-  return {
-    id:        r.id,
-    unit,
-    type:      r.repair_kind || r.work_type || "ТО",
-    startDate: r.date_start || todayStr,
-    durationH: 8,
-    depot:     r.section || r.depot || "",
-    tech:      r.tech || "",
-    status:    woStatus[r.status] ?? "upcoming",
-    note:      r.note || undefined,
-    mileage:   mileage !== undefined ? mileage : undefined,
-  }
-}
-
-// Плановое ТО по пробегу (maintenance_plan + актуальный пробег из ОС)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function planToSchedule(mp: any, currentMileage: number): ScheduleItem {
-  const startDate = dateToDdMmYyyy(mp.scheduled_date)
-  const trigger = Number(mp.trigger_mileage) || 0
-  const remainingKm = trigger - currentMileage
-  const status: Status = mp.status === "InProgress" ? "in_progress" : "upcoming"
-  return {
-    id:            `plan-${mp.id}`,
-    unit:          mp.asset_name || "",
-    type:          mp.maintenance_type || "ТО",
-    startDate:     startDate || dateToDdMmYyyy(new Date().toISOString()),
-    durationH:     8,
-    depot:         "",
-    tech:          "",
-    status,
-    mileage:       currentMileage,
-    remainingKm:   remainingKm < 0 ? 0 : remainingKm,
-    nextThreshold: trigger,
-  }
-}
-
-// Следующий порог по интервалу (км): ближайшее следующее кратное interval_km
-function nextTriggerKm(currentMileage: number, intervalKm: number): number {
-  if (intervalKm <= 0) return currentMileage
-  return (Math.floor(currentMileage / intervalKm) + 1) * intervalKm
-}
-
-// Плановые ТО по справочнику интервалов (maintenance_intervals) + пробег из ОС
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function intervalsToSchedule(
-  assets: { id: string; name: string; mileage: string; depot: string; asset_type: string }[],
-  intervals: { code: string; name: string; interval_km: number; asset_types: string[] | null; is_active: boolean }[],
-  existingPlanKeys: Set<string>
-): ScheduleItem[] {
-  const today = new Date()
-  const todayStr = [
-    String(today.getDate()).padStart(2, "0"),
-    String(today.getMonth() + 1).padStart(2, "0"),
-    today.getFullYear(),
-  ].join(".")
-  const items: ScheduleItem[] = []
-  for (const a of assets) {
-    const mileage = parseInt(String(a.mileage || "0"), 10) || 0
-    const assetTypes = (a.asset_type && [a.asset_type]) || ["locomotive", "diesel"]
-    for (const iv of intervals) {
-      if (!iv.is_active || !iv.interval_km) continue
-      const types = iv.asset_types || ["locomotive", "diesel"]
-      if (!assetTypes.some((t: string) => types.includes(t))) continue
-      const nextTr = nextTriggerKm(mileage, iv.interval_km)
-      const key = `${a.id}-${iv.code}-${nextTr}`
-      if (existingPlanKeys.has(key)) continue
-      const remainingKm = nextTr - mileage
-      items.push({
-        id:            `interval-${key}`,
-        unit:          a.name || "",
-        type:          iv.code || iv.name,
-        startDate:     todayStr,
-        durationH:     8,
-        depot:         a.depot || "",
-        tech:          "",
-        status:        "upcoming",
-        mileage,
-        remainingKm:   remainingKm < 0 ? 0 : remainingKm,
-        nextThreshold: nextTr,
-      })
-    }
-  }
-  return items
-}
-
 export default function MaintenancePage() {
+  const { profile } = useAuth()
   const [schedule,  setSchedule]  = useState<ScheduleItem[]>([])
   const [loading,   setLoading]   = useState(true)
   const [view, setView]           = useState<"gantt"|"table">("gantt")
@@ -1059,6 +915,14 @@ export default function MaintenancePage() {
   const [notifications, setNotifications] = useState<ToastNotification[]>([])
   const [allNotifications, setAllNotifications] = useState<ToastNotification[]>([])
   const [initialLoadDone, setInitialLoadDone] = useState(false)
+  const [sections, setSections] = useState<Section[]>([])
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [workTypes, setWorkTypes] = useState<WorkType[]>([])
+  const [dailyAverageKm, setDailyAverageKm] = useState("")
+  const [settingsLoading, setSettingsLoading] = useState(true)
+  const [settingsSaving, setSettingsSaving] = useState(false)
+  const [settingsError, setSettingsError] = useState<string | null>(null)
+  const [scheduleError, setScheduleError] = useState<string | null>(null)
   const shownNotificationsRef = useRef<Set<string>>(new Set())
   
   // Дополнительные фильтры
@@ -1128,18 +992,85 @@ export default function MaintenancePage() {
       const queryMonth = `${y}-${String(m).padStart(2, "0")}`
 
       const response = await api.maintenanceSchedule.get({ month: queryMonth });
-      const nextSchedule = (response.schedule || []).map((item) => normalizeScheduleItem(item))
-      setSchedule(nextSchedule)
+      setSchedule(response.schedule)
+      setScheduleError(null)
       setInitialLoadDone(true)
     } catch (e) {
       console.error("Ошибка загрузки ТО и ремонтов:", e)
       setSchedule([])
+      setScheduleError(e instanceof Error ? e.message : "Не удалось загрузить график ТО")
     } finally {
       setLoading(false)
     }
   }, [monthOffset])
 
   useEffect(() => { fetchSchedule(monthOffset) }, [fetchSchedule, monthOffset])
+
+  useEffect(() => {
+    let active = true
+    async function loadReferencesAndSettings() {
+      setSettingsLoading(true)
+      try {
+        const [sectionsResponse, employeesResponse, workTypesResponse, settingsResponse] =
+          await Promise.all([
+            api.sections.list({ limit: 1000, offset: 0 }),
+            api.employees.list({ limit: 1000, offset: 0 }),
+            api.workTypes.list({ limit: 1000, offset: 0 }),
+            api.maintenanceSettings.get(),
+          ])
+        if (!active) return
+        setSections(sectionsResponse.items)
+        setEmployees(employeesResponse.items)
+        setWorkTypes(workTypesResponse.items)
+        setDailyAverageKm(
+          settingsResponse.daily_average_km === null
+            ? ""
+            : String(settingsResponse.daily_average_km)
+        )
+        setSettingsError(null)
+      } catch (cause) {
+        if (active) {
+          setSettingsError(
+            cause instanceof Error
+              ? cause.message
+              : "Не удалось загрузить настройки ТО"
+          )
+        }
+      } finally {
+        if (active) setSettingsLoading(false)
+      }
+    }
+    void loadReferencesAndSettings()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const canConfigureMaintenance =
+    profile?.role === "admin" ||
+    profile?.role === "operator" ||
+    profile?.role === "management"
+
+  const saveDailyAverageKm = async () => {
+    const value = Number(dailyAverageKm)
+    if (!Number.isFinite(value) || value <= 0) {
+      setSettingsError("Введите положительный средний пробег в км за день")
+      return
+    }
+    setSettingsSaving(true)
+    setSettingsError(null)
+    try {
+      const result = await api.maintenanceSettings.update({ daily_average_km: value })
+      setDailyAverageKm(String(result.daily_average_km))
+      await fetchSchedule(monthOffset)
+    } catch (cause) {
+      setSettingsError(
+        cause instanceof Error ? cause.message : "Не удалось сохранить настройку"
+      )
+    } finally {
+      setSettingsSaving(false)
+    }
+  }
 
   // Диапазон: текущий месяц
   const now         = new Date()
@@ -1155,14 +1086,7 @@ export default function MaintenancePage() {
   // График приходит с сервера с уже рассчитанными датами
   const allSchedule = schedule
 
-  const handleCreateOrder = (unit: string, _section: string) => {
-    const found = allSchedule.find((s) => s.unit === unit)
-    if (found) setQuickItem(found)
-  }
-
-  // Участки из справочника (БД)
-  const { sections: sectionsFromDb } = useSections()
-  const qSections = sectionsFromDb.length > 0 ? sectionsFromDb : [...new Set(schedule.map(s => s.depot).filter(Boolean))].sort()
+  const handleCreateOrder = (item: ScheduleItem) => setQuickItem(item)
 
   // Уникальные типы ТО для фильтра
   const uniqueTypes = [...new Set(allSchedule.map(s => s.type))].sort()
@@ -1214,7 +1138,9 @@ export default function MaintenancePage() {
         <QuickOrderModal 
           item={quickItem} 
           onClose={() => setQuickItem(null)} 
-          sections={qSections}
+          sections={sections}
+          employees={employees}
+          workTypes={workTypes}
           onOrderCreated={fetchSchedule}
           onNotify={addNotification}
         />
@@ -1254,6 +1180,57 @@ export default function MaintenancePage() {
           </div>
         </div>
       </div>
+
+      <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Расчётная средняя суточная наработка</h2>
+            <p className="mt-1 text-xs text-gray-500">
+              Значение используется для прогноза дат ТО по пробегу. Настраивают администратор, оператор или инженер.
+            </p>
+          </div>
+          {canConfigureMaintenance ? (
+            <div className="flex w-full gap-2 md:max-w-sm">
+              <label className="flex-1 text-xs text-gray-500">
+                км в день
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={dailyAverageKm}
+                  onChange={(event) => setDailyAverageKm(event.target.value)}
+                  disabled={settingsLoading || settingsSaving}
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void saveDailyAverageKm()}
+                disabled={settingsLoading || settingsSaving}
+                className="self-end rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {settingsSaving ? "Сохранение..." : "Сохранить"}
+              </button>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-700 dark:text-gray-300">
+              {dailyAverageKm ? `${dailyAverageKm} км/день` : "Значение ещё не настроено"}
+            </p>
+          )}
+        </div>
+        {settingsError && <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">{settingsError}</p>}
+        {!settingsLoading && !dailyAverageKm && (
+          <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">
+            Суточный пробег не настроен: календарные прогнозы по километровым интервалам не рассчитываются.
+          </p>
+        )}
+      </section>
+
+      {scheduleError && (
+        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+          Не удалось загрузить график: {scheduleError}
+        </p>
+      )}
 
       {/* ═══ ПАНЕЛЬ ФИЛЬТРОВ ═══ */}
       <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
@@ -1530,9 +1507,9 @@ export default function MaintenancePage() {
                       </div>
                     </td>
                     <td className="px-5 py-3">
-                      {item.mileage !== undefined ? (
+                      {item.mileage !== null && item.mileage !== undefined ? (
                         <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                          {item.mileage.toLocaleString()} км
+                          {Number(item.mileage).toLocaleString()} км
                         </span>
                       ) : (
                         <span className="text-sm text-gray-400">—</span>
@@ -1544,21 +1521,21 @@ export default function MaintenancePage() {
                       </span>
                     </td>
                     <td className="px-5 py-3">
-                      {item.remainingKm !== undefined ? (
+                      {item.remainingKm !== null ? (
                         <span className={`text-sm font-semibold ${
-                          item.remainingKm <= 0 
+                          Number(item.remainingKm) <= 0 
                             ? "text-red-600 dark:text-red-400" 
-                            : item.remainingKm < 10 
+                            : Number(item.remainingKm) < 10 
                               ? "text-amber-600 dark:text-amber-400"
                               : "text-gray-600 dark:text-gray-300"
                         }`}>
-                          {item.remainingKm <= 0 ? `−${Math.abs(item.remainingKm)}` : item.remainingKm} км
+                          {Number(item.remainingKm) <= 0 ? `−${Math.abs(Number(item.remainingKm))}` : item.remainingKm} км
                         </span>
                       ) : (
                         <span className="text-sm text-gray-400">—</span>
                       )}
                     </td>
-                    <td className="px-5 py-3 text-sm text-gray-600 dark:text-gray-300">{item.startDate}</td>
+                    <td className="px-5 py-3 text-sm text-gray-600 dark:text-gray-300">{dateToDdMmYyyy(item.startDate)}</td>
                     <td className="px-5 py-3">
                       <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${st.cls}`}>
                         <st.icon className="w-3 h-3"/>
@@ -1576,8 +1553,8 @@ export default function MaintenancePage() {
                       )}
                     </td>
                     <td className="px-5 py-3">
-                      <button
-                        onClick={() => handleCreateOrder(item.unit, item.depot)}
+                      {item.entity_type !== "work_order" && <button
+                        onClick={() => handleCreateOrder(item)}
                         className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors whitespace-nowrap border ${
                           item.status === "overdue"
                             ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-950 border-red-200 dark:border-red-800"
@@ -1585,7 +1562,7 @@ export default function MaintenancePage() {
                         }`}>
                         <Plus className="w-3 h-3"/> 
                         Наряд
-                      </button>
+                      </button>}
                     </td>
                   </tr>
                 )

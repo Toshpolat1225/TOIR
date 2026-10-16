@@ -607,6 +607,9 @@ export type WorkOrder = {
 
 export type WorkOrderCreatePayload = {
   fixed_asset_id: string;
+  maintenance_plan_id?: string | null;
+  maintenance_interval_id?: string | null;
+  maintenance_trigger_mileage?: number | string | null;
   section_id?: string | null;
   department_id?: string | null;
   order_kind: WorkOrderKind;
@@ -730,12 +733,102 @@ const workOrders = {
 
 // --- Maintenance Schedule Module ---
 
-type ScheduleItem = { id: string; unit: string; type: string; startDate: string; durationH: number; depot: string; tech: string; status: string; note?: string; mileage?: number; remainingKm?: number; nextThreshold?: number; };
-type MaintenanceScheduleResponse = { schedule: ScheduleItem[]; };
+export type MaintenanceScheduleItem = {
+  id: string;
+  entity_type: "work_order" | "maintenance_plan" | "forecast";
+  unit: string;
+  type: string;
+  startDate: string;
+  durationH: number;
+  depot: string;
+  tech: string;
+  status: "upcoming" | "in_progress" | "completed" | "overdue";
+  note: string | null;
+  mileage: number | string | null;
+  remainingKm: number | string | null;
+  nextThreshold: number | string | null;
+  asset_id: string;
+  section_id: string | null;
+  interval_id: string | null;
+  work_type_id: string | null;
+  plan_id: string | null;
+  work_order_id: string | null;
+};
+
+export type MaintenanceScheduleResponse = {
+  schedule: MaintenanceScheduleItem[];
+  daily_average_km: number | string | null;
+};
+
+export type MaintenanceSettings = {
+  daily_average_km: number | string | null;
+};
+
+export type MaintenancePlan = {
+  id: string;
+  asset_id: string;
+  asset_name: string;
+  asset_inv_number: string;
+  section_id: string | null;
+  interval_id: string;
+  interval_code: string;
+  interval_name: string;
+  work_type_id: string | null;
+  status: "scheduled" | "in_progress" | "completed" | "cancelled";
+  trigger_mileage: number | string | null;
+  scheduled_date: string | null;
+  completed_date: string | null;
+  work_order_id: string | null;
+};
+
+export type MaintenancePlanUpdate = Partial<{
+  status: MaintenancePlan["status"];
+  completed_date: string | null;
+  work_order_id: string | null;
+}>;
 
 const maintenanceSchedule = {
-  async get(params: { month?: string }): Promise<MaintenanceScheduleResponse> {
+  async get(params: { month: string }): Promise<MaintenanceScheduleResponse> {
     return request<MaintenanceScheduleResponse>({ method: "GET", path: "/maintenance-schedule", params });
+  },
+};
+
+const maintenancePlans = {
+  async list(
+    params: ListParams & {
+      month?: string;
+      asset_id?: string;
+      status?: MaintenancePlan["status"];
+    } = {}
+  ): Promise<Paginated<MaintenancePlan>> {
+    return request<Paginated<MaintenancePlan>>({
+      method: "GET",
+      path: "/maintenance-plan",
+      params,
+    });
+  },
+  async update(id: string, data: MaintenancePlanUpdate): Promise<MaintenancePlan> {
+    return request<MaintenancePlan>({
+      method: "PATCH",
+      path: `/maintenance-plan/${id}`,
+      body: data,
+    });
+  },
+};
+
+const maintenanceSettings = {
+  async get(): Promise<MaintenanceSettings> {
+    return request<MaintenanceSettings>({
+      method: "GET",
+      path: "/maintenance-settings",
+    });
+  },
+  async update(data: { daily_average_km: number }): Promise<MaintenanceSettings> {
+    return request<MaintenanceSettings>({
+      method: "PATCH",
+      path: "/maintenance-settings",
+      body: data,
+    });
   },
 };
 
@@ -1129,6 +1222,8 @@ export const api = {
   nomenclatureNorms,
   workTypeTemplates,
   maintenanceSchedule,
+  maintenancePlans,
+  maintenanceSettings,
   dashboard,
   employees,
   workTypes,

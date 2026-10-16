@@ -338,6 +338,13 @@ CREATE TABLE maintenance_plan (
 );
 CREATE INDEX ix_plan_status_date ON maintenance_plan(status, scheduled_date);
 
+-- Admin/operator/management-configured daily mileage estimate for maintenance forecasts.
+CREATE TABLE maintenance_settings (
+    id                  smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    daily_average_km    numeric(10,2) CHECK (daily_average_km IS NULL OR daily_average_km > 0),
+    updated_at           timestamptz NOT NULL DEFAULT now()
+);
+
 -- Excel'dan import qilinadigan tarixiy sarf (anomaliya tahlili uchun)
 CREATE TABLE maintenance_log (
     id                bigserial PRIMARY KEY,

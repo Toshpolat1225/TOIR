@@ -10,8 +10,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.identity import User
+from app.models.maintenance import MaintenancePlan
 from app.models.work_orders import WorkOrder
 from app.repositories import work_orders as repository
+from app.repositories import maintenance as maintenance_repository
 from app.schemas.work_orders import (
     NormCheckRequest,
     NormCheckResult,
@@ -167,6 +169,70 @@ async def create_order(
 ) -> WorkOrderRead:
     section_id, department_id, mileage = await _resolve_create_scope(db, user, payload)
     user_id = user.id
+    maintenance_plan_id = payload.maintenance_plan_id
+    maintenance_interval_id = payload.maintenance_interval_id
+    if maintenance_plan_id is not None:
+        plan = await maintenance_repository.get_plan(db, maintenance_plan_id)
+        if plan is None or plan.asset_id != payload.fixed_asset_id:
+            raise HTTPException(
+                status_code=422,
+                detail="Maintenance plan must exist and belong to the selected fixed asset",
+            )
+        if plan.work_order_id is not None:
+            raise _conflict(
+                "Maintenance plan is already linked to a work order"
+            )
+        if plan.status in {"completed", "cancelled"}:
+            raise _conflict("A completed or cancelled maintenance plan cannot be reopened")
+        if (
+            maintenance_interval_id is not None
+            and plan.interval_id != maintenance_interval_id
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Maintenance plan does not match the selected maintenance interval",
+            )
+        maintenance_interval_id = plan.interval_id
+        if (
+            payload.maintenance_trigger_mileage is not None
+            and plan.trigger_mileage != payload.maintenance_trigger_mileage
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Maintenance plan does not match the selected mileage threshold",
+            )
+        interval = await maintenance_repository.get_interval(db, plan.interval_id)
+        if interval is not None and interval.work_type_id is not None and all(
+            repair.work_type_id != interval.work_type_id
+            for repair in payload.repairs
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Work order repair type does not match the maintenance plan",
+            )
+    elif maintenance_interval_id is not None:
+        asset = await repository.get_asset(db, payload.fixed_asset_id)
+        interval = await maintenance_repository.get_interval(
+            db, maintenance_interval_id
+        )
+        if (
+            asset is None
+            or interval is None
+            or not interval.is_active
+            or asset.asset_type not in interval.asset_types
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Maintenance interval is not active for the selected fixed asset",
+            )
+        if interval.work_type_id is not None and all(
+            repair.work_type_id != interval.work_type_id
+            for repair in payload.repairs
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Work order repair type does not match the maintenance interval",
+            )
     base_time = datetime.now(timezone.utc).replace(microsecond=0)
     for attempt in range(5):
         number = f"НЗ-{(base_time + timedelta(seconds=attempt)).strftime('%Y%m%d-%H%M%S')}"
@@ -193,6 +259,47 @@ async def create_order(
                 await db.flush()
                 order_id = order.id
                 await repository.add_repair_rows(db, order_id, payload.repairs)
+                if maintenance_plan_id is not None or maintenance_interval_id is not None:
+                    await maintenance_repository.lock_asset_mileage(
+                        db, payload.fixed_asset_id
+                    )
+                    if maintenance_plan_id is not None:
+                        plan = await maintenance_repository.get_plan(
+                            db, maintenance_plan_id, lock=True
+                        )
+                    else:
+                        plan = await maintenance_repository.get_plan_for_trigger(
+                            db,
+                            payload.fixed_asset_id,
+                            maintenance_interval_id,
+                            payload.maintenance_trigger_mileage,
+                        )
+                        if plan is None:
+                            plan = MaintenancePlan(
+                                asset_id=payload.fixed_asset_id,
+                                interval_id=maintenance_interval_id,
+                                trigger_mileage=payload.maintenance_trigger_mileage,
+                                scheduled_date=(
+                                    payload.date_start.date()
+                                    if payload.date_start is not None
+                                    else datetime.now(timezone.utc).date()
+                                ),
+                                status="scheduled",
+                            )
+                            db.add(plan)
+                            await db.flush()
+                    if plan is None or plan.asset_id != payload.fixed_asset_id:
+                        raise HTTPException(
+                            status_code=422,
+                            detail="Maintenance plan must exist and belong to the selected fixed asset",
+                        )
+                    if plan.status in {"completed", "cancelled"}:
+                        raise _conflict(
+                            "A completed or cancelled maintenance plan cannot be reopened"
+                        )
+                    plan.work_order_id = order_id
+                    plan.status = "in_progress"
+                    plan.updated_at = datetime.now(timezone.utc)
             await db.commit()
             result = await repository.get_order_row(db, order_id)
             if result is None:
@@ -278,6 +385,10 @@ async def update_order(
             setattr(order, field, value)
         if "repairs" in payload.model_fields_set:
             await repository.replace_repairs(db, order.id, payload.repairs or [])
+        if requested_status == "completed":
+            await maintenance_repository.complete_plan_for_order(
+                db, order.id, datetime.now(timezone.utc).date()
+            )
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()

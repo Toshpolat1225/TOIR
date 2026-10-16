@@ -35,6 +35,9 @@ class WorkOrderRepairInput(BaseModel):
 
 class WorkOrderCreate(BaseModel):
     fixed_asset_id: UUID
+    maintenance_plan_id: UUID | None = None
+    maintenance_interval_id: UUID | None = None
+    maintenance_trigger_mileage: Decimal | None = Field(default=None, ge=0)
     section_id: UUID | None = None
     department_id: UUID | None = None
     order_kind: OrderKind

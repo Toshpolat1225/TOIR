@@ -11,6 +11,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    SmallInteger,
     Text,
     UniqueConstraint,
     text,
@@ -141,6 +142,25 @@ class MaintenancePlan(Base):
     created_at: Mapped[datetime] = mapped_column(
         nullable=False, server_default=text("now()")
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        nullable=False, server_default=text("now()")
+    )
+
+
+class MaintenanceSettings(Base):
+    __tablename__ = "maintenance_settings"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="maintenance_settings_id_check"),
+        CheckConstraint(
+            "daily_average_km IS NULL OR daily_average_km > 0",
+            name="maintenance_settings_daily_average_km_check",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        SmallInteger, primary_key=True, server_default=text("1")
+    )
+    daily_average_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     updated_at: Mapped[datetime] = mapped_column(
         nullable=False, server_default=text("now()")
     )

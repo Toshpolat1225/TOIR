@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assets import FixedAsset
 from app.repositories import assets as repository
+from app.repositories import maintenance as maintenance_repository
+from app.services import maintenance as maintenance_service
 from app.schemas.assets import (
     AssetStatus,
     AssetType,
@@ -133,12 +135,13 @@ async def create_fixed_asset(
 async def _save_mileage_change(
     db: AsyncSession, asset: FixedAsset, mileage: Decimal, source: str
 ) -> None:
-    if asset.mileage == mileage:
+    previous_mileage = await maintenance_repository.lock_asset_mileage(db, asset.id)
+    if previous_mileage is None or previous_mileage == mileage:
         return
-    previous_mileage = asset.mileage
     asset.mileage = mileage
     asset.updated_at = datetime.now(timezone.utc)
     await repository.add_mileage_history(db, asset.id, mileage, source)
+    await maintenance_service.reconcile_asset_plans(db, asset, mileage)
     if source == "wialon" and mileage < previous_mileage:
         logger.warning("Wialon mileage decreased for fixed asset %s", asset.id)
 

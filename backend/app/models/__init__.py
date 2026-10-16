@@ -5,6 +5,7 @@ from app.models.inventory import Nomenclature, NomenclatureNorm, WorkTypeTemplat
 from app.models.maintenance import (
     MaintenanceInterval,
     MaintenancePlan,
+    MaintenanceSettings,
     WorkSubtask,
     WorkType,
 )
@@ -22,6 +23,7 @@ __all__ = [
     "MaintenanceInterval",
     "MaintenanceLog",
     "MaintenancePlan",
+    "MaintenanceSettings",
     "MileageHistory",
     "Nomenclature",
     "NomenclatureNorm",

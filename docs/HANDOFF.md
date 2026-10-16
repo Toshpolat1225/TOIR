@@ -55,6 +55,7 @@ Avvalgi agent sessiyasi logidan olingan. **"Tasdiqlangan" = real ishga tushirib 
 | CLI: `python -m app.cli create-admin` (interaktiv) | Yozilgan | **Admin hali yaratilmagan** |
 | Users API (faqat admin): ro'yxat (limit/offset, `sort_by` whitelist), yaratish, tahrirlash, parol reset (refresh'lar revoke) | Yozilgan | Faqat kod. O'chirish endpointi ataylab yo'q |
 | Work-orders API: list/get/create/PATCH, repairs/items, status oqimi, master scope, norm-check va template-items | Yozilgan (`T4a`), ID bo'yicha master GET/PATCH scope filtri status tekshiruvlaridan oldin qo'llanadi; `DELETE` faqat admin/management uchun | Faqat kod; `backend/scripts/e2e_workorders.py` cross-section pending/completed regressiyalarini ham qamraydi, real API/DB test hali bajarilmagan |
+| ТО planner (`maintenance_intervals`, mileage hook, `maintenance-schedule`, `maintenance-plan`, editable `daily_average_km`) | Yozilgan (`T5`); settings jadvali Alembic `0002` migratsiyasi bilan; lokal unit-testlar qo'shilgan | Testlar hali ishga tushirilmagan; PostgreSQL migratsiyasi, backend API va brauzer real muhitda tekshirilmagan |
 | CORS faqat `CORS_ORIGINS` env'dan, compose'da majburiy | Yozilgan | Faqat kod |
 | Testlar (`backend/tests`) | Logdan mavjudligi ko'rinmaydi | — |
 
@@ -135,7 +136,7 @@ TOIR/
 └── PROJECT.md                   # tizimning to'liq tavsifi
 ```
 
-Sxema qisqacha (22 jadval): `departments, sections, users, refresh_tokens, employees, fixed_assets, mileage_history, wialon_settings, work_types, work_subtasks, maintenance_intervals, nomenclature, nomenclature_norms, work_type_templates, work_orders, work_order_repairs, work_order_items, tmc_documents, tmc_document_items, maintenance_plan, maintenance_log, ai_insights`. Analytics view'lari (`executive_summary`, `section_efficiency`, `work_type_efficiency`, `monthly_efficiency`, `fleet_health`, `ai_insights_summary`, `maintenance_schedule`, `work_order_tmc_details`) **hali yozilmagan** — alohida migratsiya.
+Sxema qisqacha (23 jadval): `departments, sections, users, refresh_tokens, employees, fixed_assets, mileage_history, wialon_settings, work_types, work_subtasks, maintenance_intervals, nomenclature, nomenclature_norms, work_type_templates, work_orders, work_order_repairs, work_order_items, tmc_documents, tmc_document_items, maintenance_plan, maintenance_settings, maintenance_log, ai_insights`. Analytics view'lari (`executive_summary`, `section_efficiency`, `work_type_efficiency`, `monthly_efficiency`, `fleet_health`, `ai_insights_summary`, `maintenance_schedule`, `work_order_tmc_details`) **hali yozilmagan** — alohida migratsiya.
 
 ---
 
@@ -151,7 +152,7 @@ Har bir vazifaning "tayyor" mezoni — **real ishga tushirilgan** tekshiruv. Pro
 | **T3** | **Fixed assets + mileage + Wialon ingest** (`WIALON_INGEST_TOKEN`) | ОС CRUD; `POST /wialon/input` tokensiz 401; mileage_history yoziladi |
 | **T4a** | **Work-orders backend** (repairs/items, `number` generatsiyasi, status o'tishlari, master server filtri, norma >20% tekshiruvi) | Kod va E2E skript yozilgan; deploy/PostgreSQL orqali real test kutilmoqda |
 | **T4b** | Work-orders frontend va **tmc-documents** API | Hali bajarilmagan |
-| **T5** | **ТО-reja xizmati** (`maintenance_intervals` asosida) + `maintenance-schedule` | Pробег o'zgarganda reja yaratiladi; qattiq chegaralar yo'q |
+| **T5** | **ТО-reja xizmati** (`maintenance_intervals` asosida) + `maintenance-schedule` | Kod yozilgan; `daily_average_km` interfeysdan sozlanadi, mileage-hook va interval forecast mavjud. Alembic/PostgreSQL, API va brauzer deploydan keyin tekshiriladi |
 | **T6** | **Analytics view'lari** + `dashboard/summary` + reports | Analytics va dashboard sahifalari backend'dan ma'lumot oladi |
 | **T7** | **WebSocket `/ws`** (LISTEN/NOTIFY, JWT bilan autentifikatsiya) | Nariyad o'zgarsa klientga event keladi |
 | **T8** | **Frontend'ni to'liq Supabase'dan tozalash**, ildizdagi dublikat fayllarni o'chirish, `package.json`dan `@supabase/*` | `grep -ri supabase` natijasi bo'sh; build toza |

@@ -300,11 +300,7 @@ Faqat admin (boshqalar uchun "ruxsat yo'q" ekrani). Qidiruv, rol sanagichlari, y
 
 **Normativdan og'ish (DB view):** `(fakt − norma) / norma × 100`; `>20%` — "перерасход" (overrun). `cost_savings = norm_cost − actual_cost`.
 
-> ⚠ **Uch xil ТО-chegara tizimi bir vaqtda mavjud va bir-biriga zid:**
-> 1. `auto_schedule_maintenance` triggeri va `/api/mileage` route: 5 000 … 1 600 000 km, sutkasiga 200 km.
-> 2. `maintenance_intervals` jadvali (standart qiymatlar): ТО-1 = 50 km, ТО-2 = 90, ТО-3 = 200, ТР-1 = 500, ТР-2 = 1 000, ТР-3 = 2 000, СР = 5 000, КР = 10 000; grafik taxmini sutkasiga 200 km (SQL view) yoki 10 km (`/api/maintenance-schedule`).
-> 3. Wialon receiver: pробег ≥ 90 bo'lsa qat'iy `ТО-90` rejasi yaratadi.
-> Qaysi biri "haqiqat manbai" ekanini bitta qilib belgilash kerak.
+**Amaldagi ТО-rejalashtirish (FastAPI T5):** faol `maintenance_intervals` — intervallar uchun yagona manba; servis qatlami probeg o'zgarganda `maintenance_plan` yozuvlarini yaratadi/yangilaydi. Kilometr bo'yicha sanani hisoblash uchun admin, operator yoki management interfeysdan yagona `daily_average_km` qiymatini sozlaydi; sozlanmaguncha kilometr intervallari uchun sana prognozi berilmaydi. Kunlik interval prognozi bu sozlamaga bog'liq emas. Qattiq yozilgan kilometr chegaralari va `ТО-90` ishlatilmaydi. DB/serverdagi xatti-harakat real muhitda deploydan so'ng tekshirilishi kerak.
 
 ---
 
@@ -323,7 +319,7 @@ Faqat admin (boshqalar uchun "ruxsat yo'q" ekrani). Qidiruv, rol sanagichlari, y
 | `/input` | GET/POST | Faqat yo'l-yo'riq xabari (Wialon uchun haqiqiy port 3002) |
 
 ### 11.2 FastAPI (`/api/v1`, `lib/api.ts` kutadigan)
-`/auth/{login,logout,me,refresh}`, `/sections`, `/departments`, `/nomenclature`, `/fixed-assets`, `/work-orders`, `/tmc-documents`, `/nomenclature-norms`, `/work-type-templates`, `/maintenance-schedule`, `/dashboard/summary`, `/employees`, `/work-types`, `/health` (ildizda), WebSocket `/ws`.
+`/auth/{login,logout,me,refresh}`, `/sections`, `/departments`, `/nomenclature`, `/fixed-assets`, `/work-orders`, `/tmc-documents`, `/nomenclature-norms`, `/work-type-templates`, `/maintenance-settings`, `/maintenance-schedule`, `/maintenance-plan`, `/dashboard/summary`, `/employees`, `/work-types`, `/health` (ildizda), WebSocket `/ws`.
 
 **Umumiy qoidalar:** ro'yxat javobi `Paginated<T> = {items,total,limit,offset}`; `limit` 1–1000 (standart 50); `sort_by` ruxsat etilgan maydonlar ro'yxati bilan (`created_at, updated_at, date_start, date_end, status, priority`); xatolar `{detail}`; 204 — bo'sh javob. Nariyadlar filtri: `status, section_id, department_id, fixed_asset_id, date_from, date_to, q`. `lib/api.ts` da `fetchAllPaginated()` yordamchisi bor.
 
@@ -337,7 +333,7 @@ Faqat admin (boshqalar uchun "ruxsat yo'q" ekrani). Qidiruv, rol sanagichlari, y
 - Endpointlar: `POST/GET /input`, `GET /health`, `GET /` (test sahifasi: "Тест GET/POST"). Port `WIALON_PORT` (standart **3002**), `0.0.0.0`.
 - Kiruvchi format (JSON/form/matn): birlik — `i | unitId | unit_id | id | uid | unit`, nom — `nm | name | unit_name | na`, pробег — `mileage | odo | odometer | km | total_odometer | total_km | run | …`, tezlik — `speed | spd | vel`.
 - **Moslashtirish** (`findAsset`): `wialon_id` → nom → nomdagi 2–4 xonali raqam (`ПЭ-2У 111` → `111`, `094` ↔ `94` ↔ `#094`). `fixed_assets` keshi 60 soniya.
-- **Saqlash**: `wialon_last_sync`, `wialon_speed`, `wialon_online=true`; pробег > 0 bo'lsa `mileage` (Wialon — "haqiqat manbai", pробег kamaysa ham yoziladi, logda qayd etiladi), `mileage_history` ga yozuv, ≥90 bo'lsa `ТО-90` rejasi.
+- **Saqlash**: `wialon_last_sync`, `wialon_speed`, `wialon_online=true`; pробег > 0 bo'lsa `mileage` (Wialon — "haqiqat manbai", pробег kamaysa ham yoziladi, logda qayd etiladi), `mileage_history` ga yozuv. O'zgargan probeg T5 servis qatlami orqali faol `maintenance_intervals` bo'yicha rejalashtirishni ham ishga tushiradi; `ТО-90` qoidasi yo'q.
 - Faqat `locomotive`/`diesel` turidagi ОС'lar kesh'ga olinadi.
 - `server/check-db.js` — pробeglari bor 10 ta ОС holatini konsolga chiqaradi.
 - `scripts/test-wialon-server.js`, `scripts/wialon_integration.sql` — test va migratsiya.
