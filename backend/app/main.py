@@ -14,6 +14,7 @@ from app.routers.assets import router as assets_router
 from app.routers.analytics import router as analytics_router
 from app.routers.health import router as health_router
 from app.routers.maintenance import router as maintenance_router
+from app.routers.ml import router as ml_router
 from app.routers.nomenclature import router as nomenclature_router
 from app.routers.references import router as references_router
 from app.routers.realtime import router as realtime_router
@@ -82,5 +83,6 @@ app.include_router(assets_router, prefix="/api/v1")
 app.include_router(wialon_router, prefix="/api/v1")
 app.include_router(work_orders_router, prefix="/api/v1")
 app.include_router(maintenance_router, prefix="/api/v1")
+app.include_router(ml_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(realtime_router)

@@ -29,7 +29,7 @@
 | Maintenance planner, analytics, reports | Kod va frontend API integratsiyasi yozilgan; real DB tekshiruvi deployga bog'liq |
 | Realtime `/ws` | Backend listener, token tekshiruvi, obuna va master section-scope kodi yozilgan |
 | P-T8 tozalash | Eski client, route, server/SQL skript, ML prototype va arxiv nusxalar olib tashlandi; Python utilitalari `DATABASE_URL` ishlatadi |
-| ML worker | Keyingi ish; `docs/PROMPTS.md` va `PROJECT.md` 13-bo'limda talablar saqlangan |
+| ML worker | Servis, endpointlar va completed nariyad background tahlili yozildi; sintetik testlar qo'shildi |
 
 ## Tekshiruvlar
 
@@ -37,6 +37,7 @@
 - Python: `scripts/import_nomenclature.py` va `scripts/anomaly_detection.py` sintaksis tekshiruvidan o'tdi.
 - Repository source scan'da eski platform nomiga mos keluvchi fayl topilmadi (node_modules, `.next`, lock fayllari chiqarilgan).
 - Importerlarning DB amali, PostgreSQL/Alembic, server HTTP/WebSocket va brauzer oqimi ishga tushirilmadi.
+- ML sintetik unit testlari lokal Python muhiti bilan tekshirilishi kerak; PostgreSQL, endpoint va background DB oqimi deployment muhitiga bog'liq.
 
 ## Keyingi ish
 

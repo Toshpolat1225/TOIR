@@ -129,14 +129,17 @@ npm run build
 Backend unit/E2E testlari tegishli Python 3.12 muhitida bajariladi. Real PostgreSQL migratsiyasi,
 API, WebSocket va brauzer tekshiruvlari deployment muhitida foydalanuvchi ruxsati bilan qilinadi.
 
-## 13. ML / AI moduli — keyingi vazifa
+## 13. ML / AI worker
 
-ML worker backend ichida hali amalga oshirilishi kerak. Rejalashtirilgan qoidalar:
+ML tahlili FastAPI servis qatlamida bajariladi; yangi jadval yoki DB trigger talab qilinmaydi.
+Completed nariyad saqlangach, alohida async DB session bilan background tahlil boshlanadi.
+Admin `POST /api/v1/ml/analyze` orqali locomotive va diesel aktivlarini qayta tahlil qilishi,
+autentifikatsiyalangan foydalanuvchi esa `GET /api/v1/ml/insights` orqali natijalarni ko'rishi mumkin.
 
-- TMC sarf anomaliyasi: repair turi + uchastka bo'yicha ko'pi bilan 200 ta tarixiy yozuv;
-  kamida 3 yozuv bo'lganda z-score >2 yoki og'ish >30% ni aniqlash.
-- RUL: `LinearRegression` va `failure_prob = 1 - exp(-kunlar_oxirgi_ТО_dan/o'rtacha_interval)`;
-  0.7/0.4 xavf chegaralari, qolgan masofa 500 km dan past bo'lsa critical.
+- TMC anomaliyasi repair turi + uchastka bo'yicha ko'pi bilan 200 ta oldingi completed nariyadni
+  solishtiradi; kamida 3 tarixiy yozuv bo'lganda z-score >2 yoki og'ish >30% signal hisoblanadi.
+- RUL uchun completed ТО oralig'iga oddiy `LinearRegression` qo'llanadi. Failure probability
+  `1 - exp(-kunlar_oxirgi_ТО_dan/o'rtacha_interval)` hisoblanadi; km prognozi mileage history'dan
+  regressiya qilinadi. Risk chegaralari 0.7/0.4, qolgan km 500 dan kam bo'lsa critical.
 - Health score: `(1-p)*100 - min(anomaliya_30kun*5,20) - min(ТО'siz_kunlar/30*5,15)`.
-- Natijalar `ai_insights` va `fixed_assets` ga yoziladi; diesel aktivlari ham qamrab olinadi.
-- Endpointlar: `POST /api/v1/ml/analyze` (admin), `GET /api/v1/ml/insights`.
+- Anomaliya/prediction natijalari `ai_insights` ga, asset risk ko'rsatkichlari esa `fixed_assets` ga yoziladi.

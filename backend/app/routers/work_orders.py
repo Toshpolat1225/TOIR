@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -18,6 +18,7 @@ from app.schemas.work_orders import (
     WorkOrderUpdate,
 )
 from app.services import work_orders as service
+from app.services import ml as ml_service
 
 router = APIRouter(prefix="/work-orders", tags=["work orders"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
@@ -110,8 +111,12 @@ async def patch_work_order(
     payload: WorkOrderUpdate,
     current_user: WorkOrderWriter,
     db: DatabaseSession,
+    background_tasks: BackgroundTasks,
 ) -> WorkOrderRead:
-    return await service.update_order(db, current_user, order_id, payload)
+    result = await service.update_order(db, current_user, order_id, payload)
+    if payload.status == "completed":
+        background_tasks.add_task(ml_service.analyze_completed_order, order_id)
+    return result
 
 
 @router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
