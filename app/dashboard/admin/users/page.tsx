@@ -5,6 +5,7 @@ import { Users, Plus, X, Save, Pencil, ShieldCheck, Shield, HardHat, Eye, EyeOff
 import { api } from "@/lib/api"
 import { useAuth, type Profile, type UserRole } from "@/lib/auth-context"
 import { useSections, type SectionData } from "@/lib/use-sections"
+import { useRealtime } from "@/lib/use-realtime"
 import { Button } from "@/components/ui/button"
 
 const ROLE_CFG: Record<"admin" | "operator" | "master" | "management", { label: string; cls: string; Icon: React.ElementType }> = {
@@ -284,6 +285,10 @@ export default function AdminUsersPage() {
   }, [])
 
   useEffect(() => { fetchUsers() }, [fetchUsers])
+  useRealtime(
+    useCallback(() => { void fetchUsers() }, [fetchUsers]),
+    ["users"]
+  )
 
   if (myProfile?.role !== "admin") {
     return (

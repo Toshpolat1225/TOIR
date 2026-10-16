@@ -111,7 +111,7 @@ export default function DashboardPage() {
       console.log(`Dashboard received update for ${event.resource}, refetching summary...`);
       loadData();
     }
-  }, [loadData]));
+  }, [loadData]), ["work_orders", "fixed_assets"]);
 
   const orders = summary.orders ?? []
   const assets = summary.assets ?? []

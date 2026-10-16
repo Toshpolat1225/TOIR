@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 from urllib.parse import parse_qsl
+import asyncio
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,15 +16,24 @@ from app.routers.health import router as health_router
 from app.routers.maintenance import router as maintenance_router
 from app.routers.nomenclature import router as nomenclature_router
 from app.routers.references import router as references_router
+from app.routers.realtime import router as realtime_router
 from app.routers.users import router as users_router
 from app.routers.wialon import router as wialon_router
 from app.routers.work_orders import router as work_orders_router
+from app.realtime import dispatch_database_events, listen_for_database_events
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    yield
-    await engine.dispose()
+    listener_task = asyncio.create_task(listen_for_database_events())
+    dispatcher_task = asyncio.create_task(dispatch_database_events())
+    try:
+        yield
+    finally:
+        listener_task.cancel()
+        dispatcher_task.cancel()
+        await asyncio.gather(listener_task, dispatcher_task, return_exceptions=True)
+        await engine.dispose()
 
 
 app = FastAPI(
@@ -73,3 +83,4 @@ app.include_router(wialon_router, prefix="/api/v1")
 app.include_router(work_orders_router, prefix="/api/v1")
 app.include_router(maintenance_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
+app.include_router(realtime_router)

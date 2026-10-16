@@ -125,7 +125,8 @@ function WorkOrdersPage() {
         if (event.resource === "work_orders") void loadOrders();
       },
       [loadOrders]
-    )
+    ),
+    ["work_orders"]
   );
 
   useEffect(() => {

@@ -12,6 +12,7 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8010/api/v1";
 
 let inMemoryAccessToken: string | null = null;
+let accessTokenExpiresAt = 0;
 let refreshRequest: Promise<AccessTokenResponse> | null = null;
 
 type ApiRequestOptions = {
@@ -125,6 +126,7 @@ const auth = {
       isPublic: true,
     });
     inMemoryAccessToken = response.access_token;
+    accessTokenExpiresAt = Date.now() + response.expires_in * 1000;
     try {
       const user = await request<CurrentUser>({
         method: "GET",
@@ -133,6 +135,7 @@ const auth = {
       return { ...response, user };
     } catch (error) {
       inMemoryAccessToken = null;
+      accessTokenExpiresAt = 0;
       try {
         await request<null>({
           method: "POST",
@@ -155,6 +158,7 @@ const auth = {
       });
     } finally {
       inMemoryAccessToken = null;
+      accessTokenExpiresAt = 0;
     }
   },
 
@@ -163,6 +167,14 @@ const auth = {
       method: "GET",
       path: "/auth/me",
     });
+  },
+
+  async getAccessToken(): Promise<string> {
+    if (!inMemoryAccessToken || accessTokenExpiresAt <= Date.now() + 30_000) {
+      await this.refresh();
+    }
+    if (!inMemoryAccessToken) throw new Error("No authentication token found.");
+    return inMemoryAccessToken;
   },
 
   async refresh(): Promise<AccessTokenResponse> {
@@ -174,10 +186,12 @@ const auth = {
       })
         .then((response) => {
           inMemoryAccessToken = response.access_token;
+          accessTokenExpiresAt = Date.now() + response.expires_in * 1000;
           return response;
         })
         .catch((error: unknown) => {
           inMemoryAccessToken = null;
+          accessTokenExpiresAt = 0;
           throw error;
         })
         .finally(() => {

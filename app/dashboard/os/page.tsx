@@ -587,7 +587,7 @@ export default function OsPage() {
       fetchAssets(filtersRef.current.page, filtersRef.current.search, filtersRef.current.fType, filtersRef.current.fDepot, filtersRef.current.fStatus);
       fetchCounts();
     }
-  }, [fetchAssets, fetchCounts]));
+  }, [fetchAssets, fetchCounts]), ["fixed_assets"]);
 
   // Сброс страницы при смене фильтров
   useEffect(() => {

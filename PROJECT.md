@@ -175,7 +175,7 @@ Rollar: `admin`, `operator`, `master` (frontend), `management` (faqat backend/`a
 | Admin/users | ❌ Supabase (`auth`, `profiles`) |
 | Employees, Work-types, Maintenance-intervals | ❌ Supabase |
 | Wialon receiver, ML engine, import skriptlari | ❌ Supabase |
-| Realtime | `lib/use-realtime.ts` (WebSocket `…/ws`) — hozir faqat klient tomoni yozilgan |
+| Realtime | ✅ Backend `/ws` JWT auth + Postgres `LISTEN/NOTIFY`, ruxsat etilgan jadval obunalari va master uchastka doirasi (`section_ids`); frontend 5 soniyada qayta ulanadi |
 
 `sections_migration_notes.md` va `departments_nomenclature_assets_notes.md` migratsiya qoidasini belgilaydi: komponentlarda `fetch`/`supabase` o'rniga faqat `lib/api.ts`dagi `api.<resurs>.<metod>()` chaqiriladi; ro'yxat javobi `{items,total,limit,offset}` ko'rinishida; xatolar `Error(detail)` sifatida tashlanadi.
 
@@ -464,7 +464,7 @@ Supabase uchun SQL'larni tartib bilan bajaring: `supabase_schema.sql` → `secti
 2. **Backend'ni tiklash**: asl `backend/` papkasini repoga qaytarish; ildizdagi/yassilangan `.py` fayllarni `app/{models,schemas,services,routers,security}` ga joylash; Alembic migratsiyalarini yozish.
 3. **Yagona auth**: Supabase yoki FastAPI JWT'dan birini tanlash va `lib/auth-context` ↔ `lib/api` ni bog'lash.
 4. **Sxemalarni birlashtirish**: bitta `work_orders`/`fixed_assets` sxemasi, bitta status lug'ati, bitta ТО-chegara manbai (`maintenance_intervals`).
-5. **Qolgan modullarni ko'chirish**: nariyadlar, tahlil, hisobotlar, foydalanuvchilar, spravochniklar; Wialon va ML'ni FastAPI/Postgres'ga ulash; WebSocket `/ws` ni backend'da amalga oshirish.
+5. **Qolgan modullarni ko'chirish**: Wialon va ML'ni FastAPI/Postgres'ga ulash; API modullarini deploydan keyin real tekshirish.
 6. **Sifat**: katta sahifalarni bo'lish, test va CI qo'shish, haqiqiy "готовность" tarixi.
 
 ---

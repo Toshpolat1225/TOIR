@@ -1,75 +1,125 @@
 "use client"
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from "react"
+import { api } from "@/lib/api"
 
-type RealtimeEvent = {
-  resource: string;
-  action: 'created' | 'updated' | 'deleted';
-};
+export type RealtimeEvent = {
+  resource: "work_orders" | "fixed_assets" | "users"
+  action: "created" | "updated" | "deleted"
+  id: string
+}
 
-type EventHandler = (event: RealtimeEvent) => void;
+type EventHandler = (event: RealtimeEvent) => void
 
-let socket: WebSocket | null = null;
-let listeners: Set<EventHandler> = new Set();
-let reconnectTimer: NodeJS.Timeout | null = null;
-let isConnecting = false;
+const allowedTables = new Set<RealtimeEvent["resource"]>([
+  "work_orders",
+  "fixed_assets",
+  "users",
+])
 
-const connect = () => {
-  if (socket || isConnecting) return;
+type Listener = { handler: EventHandler; tables: Set<RealtimeEvent["resource"]> }
 
-  isConnecting = true;
-  console.log("Realtime: Connecting...");
+let socket: WebSocket | null = null
+const listeners = new Set<Listener>()
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let isConnecting = false
+let connectGeneration = 0
 
-  const wsUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1")
-    .replace("http", "ws") + "/ws";
+function subscribedTables() {
+  return [...new Set([...listeners].flatMap((listener) => [...listener.tables]))]
+}
 
-  socket = new WebSocket(wsUrl);
+function sendSubscription() {
+  if (socket?.readyState !== WebSocket.OPEN) return
+  socket.send(JSON.stringify({ type: "subscribe", tables: subscribedTables() }))
+}
 
-  socket.onopen = () => {
-    console.log("Realtime: Connected.");
-    isConnecting = false;
-    if (reconnectTimer) {
-      clearInterval(reconnectTimer);
-      reconnectTimer = null;
+function scheduleReconnect() {
+  if (reconnectTimer || listeners.size === 0) return
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
+    void connect()
+  }, 5000)
+}
+
+async function connect() {
+  if (socket || isConnecting || listeners.size === 0) return
+
+  isConnecting = true
+  const generation = ++connectGeneration
+  try {
+    const accessToken = await api.auth.getAccessToken()
+    if (generation !== connectGeneration || listeners.size === 0) return
+
+    const apiUrl = new URL(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8010/api/v1")
+    const protocol = apiUrl.protocol === "https:" ? "wss:" : "ws:"
+    const wsUrl = new URL("/ws", apiUrl)
+    wsUrl.protocol = protocol
+
+    const connection = new WebSocket(wsUrl.toString())
+    socket = connection
+    connection.onopen = () => {
+      connection.send(JSON.stringify({
+        type: "auth",
+        access_token: accessToken,
+        tables: subscribedTables(),
+      }))
     }
-  };
-
-  socket.onmessage = (event) => {
-    try {
-      const parsedEvent: RealtimeEvent = JSON.parse(event.data);
-      listeners.forEach(listener => listener(parsedEvent));
-    } catch (error) {
-      console.error("Realtime: Error parsing message", error);
+    connection.onmessage = (message) => {
+      try {
+        const parsed = JSON.parse(message.data) as RealtimeEvent
+        if (
+          !allowedTables.has(parsed.resource) ||
+          !["created", "updated", "deleted"].includes(parsed.action) ||
+          typeof parsed.id !== "string"
+        ) return
+        listeners.forEach((listener) => {
+          if (listener.tables.has(parsed.resource)) listener.handler(parsed)
+        })
+      } catch (error) {
+        console.error("Realtime: Error parsing message", error)
+      }
     }
-  };
-
-  socket.onclose = () => {
-    console.log("Realtime: Disconnected.");
-    socket = null;
-    isConnecting = false;
-    if (!reconnectTimer) {
-      reconnectTimer = setInterval(() => {
-        console.log("Realtime: Attempting to reconnect...");
-        connect();
-      }, 5000);
+    connection.onclose = () => {
+      if (socket === connection) socket = null
+      scheduleReconnect()
     }
-  };
+    connection.onerror = () => connection.close()
+  } catch (error) {
+    console.error("Realtime: Could not authenticate WebSocket", error)
+    scheduleReconnect()
+  } finally {
+    isConnecting = false
+  }
+}
 
-  socket.onerror = (error) => {
-    console.error("Realtime: WebSocket error", error);
-    socket?.close();
-  };
-};
-
-export const useRealtime = (handler: EventHandler) => {
+export function useRealtime(
+  handler: EventHandler,
+  tables: RealtimeEvent["resource"][] = ["work_orders", "fixed_assets", "users"],
+) {
+  const tableKey = [...new Set(tables.filter((table) => allowedTables.has(table)))].sort().join("|")
   useEffect(() => {
-    connect();
-    listeners.add(handler);
+    const listener: Listener = {
+      handler,
+      tables: new Set(tableKey ? tableKey.split("|") as RealtimeEvent["resource"][] : []),
+    }
+    listeners.add(listener)
+    void connect()
+    sendSubscription()
 
     return () => {
-      listeners.delete(handler);
-      // Note: We don't close the socket here to maintain a single connection
-      // across the app. A more advanced implementation might use reference counting.
-    };
-  }, [handler]);
-};
+      listeners.delete(listener)
+      if (listeners.size === 0) {
+        connectGeneration += 1
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer)
+          reconnectTimer = null
+        }
+        socket?.close()
+        socket = null
+      } else {
+        sendSubscription()
+      }
+    }
+  }, [handler, tableKey])
+}

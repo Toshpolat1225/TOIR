@@ -410,10 +410,32 @@ END $$;
 --      va WebSocket /ws orqali klientlarga uzatadi)
 -- =====================================================================
 CREATE OR REPLACE FUNCTION notify_change() RETURNS trigger AS $$
+DECLARE
+    changed_id uuid;
+    scopes uuid[] := ARRAY[]::uuid[];
 BEGIN
-    PERFORM pg_notify('toir_changes',
-        json_build_object('table', TG_TABLE_NAME, 'op', TG_OP,
-                          'id', COALESCE(NEW.id, OLD.id))::text);
+    IF TG_OP <> 'INSERT' THEN
+        changed_id := OLD.id;
+        IF OLD.section_id IS NOT NULL THEN
+            scopes := array_append(scopes, OLD.section_id);
+        END IF;
+    END IF;
+    IF TG_OP <> 'DELETE' THEN
+        changed_id := NEW.id;
+        IF NEW.section_id IS NOT NULL
+           AND NOT (NEW.section_id = ANY(scopes)) THEN
+            scopes := array_append(scopes, NEW.section_id);
+        END IF;
+    END IF;
+    PERFORM pg_notify(
+        'toir_changes',
+        json_build_object(
+            'table', TG_TABLE_NAME,
+            'op', TG_OP,
+            'id', changed_id,
+            'section_ids', scopes
+        )::text
+    );
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
