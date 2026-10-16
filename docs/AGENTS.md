@@ -9,7 +9,7 @@ Reply to the user in Uzbek, in simple short words. The user is a beginner: give 
 
 ## Project in 3 lines
 TOIR = web system for locomotive/wagon maintenance and repair. Russian UI, currency UZS.
-Next.js 15 frontend + FastAPI backend + PostgreSQL 16 in Docker. Supabase is being removed completely.
+Next.js 15 frontend + FastAPI backend + PostgreSQL 16 in Docker Compose.
 
 ## Hard rules
 - Never say "works / passed / fixed" unless you ran a command and saw its output. Otherwise write **NOT TESTED**. At the end always list what you did NOT verify.
@@ -24,7 +24,7 @@ Next.js 15 frontend + FastAPI backend + PostgreSQL 16 in Docker. Supabase is bei
 ## Code rules
 - Backend layers: `routers -> services -> repositories -> schemas` in `backend/app/`. List response `{items,total,limit,offset}`; errors `{"detail": ...}`; delete returns 204; `sort_by` only from a whitelist.
 - Roles: admin, operator, master, management. A **master sees only his own section**. Enforce it on the SERVER inside the DB query, return **404** for other sections' records, and do it BEFORE any status or conflict checks.
-- Frontend: call the backend only through `api.<resource>.<method>()` in `lib/api.ts`. No `supabase-js` in new code. UI text stays Russian.
+- Frontend: call the backend only through `api.<resource>.<method>()` in `lib/api.ts`. Do not add direct database clients to browser code. UI text stays Russian.
 - Python 3.12 (Docker image). Frontend dev: `npm run dev -- -H 127.0.0.1`. If styles break: stop the dev server, delete the `.next` folder, start again.
 
 ## Checks before saying "done"

@@ -1,30 +1,22 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Импорт номенклатуры из Excel в Supabase.
-- Создаёт записи в departments по именам участков.
-- Загружает данные из каждого файла в nomenclature с привязкой к участку.
-- Очистка: пустые строки в начале, лишние запятые. Upsert по (department_id, name).
-"""
+"""Import nomenclature Excel files into the TOIR PostgreSQL database."""
+
+import asyncio
+import json
 import os
 import re
 import sys
-import time
 from pathlib import Path
-
-# Консоль Windows: вывод в UTF-8, чтобы путь "Отчёты ТОИР" и русский текст не падали
-if hasattr(sys.stdout, "reconfigure"):
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+from typing import Any
 
 import pandas as pd
-from supabase import create_client
+from sqlalchemy import text
+from sqlalchemy.engine import URL, make_url
+from sqlalchemy.exc import ArgumentError, SQLAlchemyError
+from sqlalchemy.ext.asyncio import create_async_engine
 
-BATCH_SIZE = 100  # записей за один запрос — меньше таймаутов
+BATCH_SIZE = 100
 
-# Участки и привязка файлов
 DEPARTMENTS = [
     ("Участок ПТОВ", "#0ea5e9"),
     ("Участок ПТОЛ", "#3b82f6"),
@@ -39,179 +31,190 @@ FILE_TO_DEPARTMENT = {
     "ВРП.xlsx": "Участок ВРП",
 }
 
-# Папка с файлами: excel_folder.txt (UTF-8) > аргумент > env EXCEL_BASE_DIR > по умолчанию
-def _get_base_dir():
+
+def get_base_dir() -> Path:
     script_dir = Path(__file__).resolve().parent
-    txt = script_dir / "excel_folder.txt"
-    if txt.exists():
-        try:
-            path = txt.read_text(encoding="utf-8").strip()
-            if path:
-                return Path(path)
-        except Exception:
-            pass
+    folder_file = script_dir / "excel_folder.txt"
+    if folder_file.exists():
+        folder = folder_file.read_text(encoding="utf-8").strip()
+        if folder:
+            return Path(folder)
     if len(sys.argv) > 1:
         return Path(sys.argv[1])
     return Path(os.environ.get("EXCEL_BASE_DIR", r"C:\Users\User\Desktop\Отчёты ТОИР"))
-BASE_DIR = _get_base_dir()
 
 
-def clean_cell(value):
+def clean_cell(value: Any) -> str:
     if isinstance(value, pd.Series):
         value = value.iloc[0] if len(value) > 0 else None
     if pd.isna(value):
         return ""
-    s = str(value).strip()
-    s = re.sub(r",+", ",", s)
-    s = re.sub(r"^,|,$", "", s)
-    return s.strip()
+    value = re.sub(r",+", ",", str(value).strip())
+    return re.sub(r"^,|,$", "", value).strip()
 
 
-def first_non_empty_row_index(df: pd.DataFrame) -> int:
-    for i in range(len(df)):
-        row = df.iloc[i].astype(str).str.strip()
+def first_non_empty_row_index(frame: pd.DataFrame) -> int:
+    for index in range(len(frame)):
+        row = frame.iloc[index].astype(str).str.strip()
         if (row != "").any():
-            return i
-    return len(df)
+            return index
+    return len(frame)
 
 
-def infer_name_code_columns(df: pd.DataFrame):
-    cols = [c for c in df.columns if isinstance(c, str)]
-    name_col = None
-    code_col = None
-    for c in cols:
-        c_lower = str(c).lower().strip()
-        if "наименование" in c_lower or "наименомание" in c_lower or "название" in c_lower or c_lower == "name" or "номенклатура" in c_lower or "тмц" in c_lower:
-            name_col = c
-        if "код" in c_lower or "артикул" in c_lower or c_lower == "code" or c_lower == "№":
-            code_col = c
-    # Если нашли только код — наименование берём из другого столбца (не подставляем первый столбец как name)
-    if name_col is None and code_col is not None and len(cols) >= 2:
-        for c in cols:
-            if c != code_col:
-                name_col = c
-                break
-    # Часто в Excel: первый столбец = код, второй = наименование. Если оба не распознаны — так и берём.
-    if name_col is None and code_col is None and len(cols) >= 2:
-        code_col = cols[0]
-        name_col = cols[1]
-    if name_col is None and len(cols) >= 1:
-        name_col = cols[0]
-    if code_col is None and len(cols) >= 2:
-        code_col = cols[1]
-    return name_col, code_col
+def infer_name_code_columns(frame: pd.DataFrame) -> tuple[Any | None, Any | None]:
+    columns = [column for column in frame.columns if isinstance(column, str)]
+    name_column = None
+    code_column = None
+    for column in columns:
+        normalized = column.lower().strip()
+        if any(
+            label in normalized
+            for label in (
+                "наименование",
+                "наименомание",
+                "название",
+                "номенклатура",
+                "тмц",
+            )
+        ) or normalized == "name":
+            name_column = column
+        if any(label in normalized for label in ("код", "артикул")) or normalized in (
+            "code",
+            "№",
+        ):
+            code_column = column
+    if name_column is None and code_column is not None and len(columns) >= 2:
+        name_column = next(column for column in columns if column != code_column)
+    if name_column is None and code_column is None and len(columns) >= 2:
+        code_column, name_column = columns[0], columns[1]
+    if name_column is None and columns:
+        name_column = columns[0]
+    if code_column is None and len(columns) >= 2:
+        code_column = columns[1]
+    return name_column, code_column
 
 
-def load_and_clean_excel(path: Path) -> list[dict]:
+def load_and_clean_excel(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         print(f"  Пропуск (файл не найден): {path}")
         return []
-    df = pd.read_excel(path, header=None)
-    if df.empty:
+    frame = pd.read_excel(path, header=None)
+    if frame.empty:
         return []
-    start_idx = first_non_empty_row_index(df)
-    df = df.iloc[start_idx:].copy()
-    df.columns = [clean_cell(c) for c in df.iloc[0]]
-    df = df.iloc[1:].reset_index(drop=True)
-    df = df.dropna(how="all")
-    name_col, code_col = infer_name_code_columns(df)
-    if name_col is None:
-        name_col = df.columns[0]
+    frame = frame.iloc[first_non_empty_row_index(frame) :].copy()
+    frame.columns = [clean_cell(value) for value in frame.iloc[0]]
+    frame = frame.iloc[1:].reset_index(drop=True).dropna(how="all")
+    name_column, code_column = infer_name_code_columns(frame)
+    if name_column is None:
+        name_column = frame.columns[0]
+
     rows = []
-    for _, r in df.iterrows():
-        name = clean_cell(r.get(name_col, ""))
+    for _, row in frame.iterrows():
+        name = clean_cell(row.get(name_column, ""))
         if not name:
             continue
-        code = clean_cell(r.get(code_col, "")) if code_col else ""
-        extra = {str(k): clean_cell(r.get(k, "")) for k in df.columns if k not in (name_col, code_col)}
-        extra = {k: v for k, v in extra.items() if v}
-        rows.append({"name": name, "code": code, "extra": extra})
+        code = clean_cell(row.get(code_column, "")) if code_column else ""
+        extra = {
+            str(column): clean_cell(row.get(column, ""))
+            for column in frame.columns
+            if column not in (name_column, code_column)
+        }
+        rows.append(
+            {
+                "name": name,
+                "code": code or None,
+                "extra": {key: value for key, value in extra.items() if value},
+            }
+        )
     return rows
 
 
-def main():
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
-    if not url or not key:
-        print("Задайте SUPABASE_URL и SUPABASE_SERVICE_KEY (или SUPABASE_ANON_KEY) в .env или окружении")
-        return
-    supabase = create_client(url, key)
+def database_url() -> URL:
+    raw_url = os.environ.get("DATABASE_URL")
+    if not raw_url:
+        raise RuntimeError("Set DATABASE_URL in the environment before running this script.")
+    parsed = make_url(raw_url)
+    if parsed.get_backend_name() != "postgresql":
+        raise RuntimeError("DATABASE_URL must point to PostgreSQL.")
+    return parsed.set(drivername="postgresql+asyncpg")
 
-    print("1. Создание/обновление участков (departments)...")
-    dept_by_name = {}
-    for name, color in DEPARTMENTS:
-        existing = supabase.table("departments").select("id").eq("name", name).execute()
-        if existing.data and len(existing.data) > 0:
-            dept_id = existing.data[0]["id"]
-            dept_by_name[name] = dept_id
-            print(f"   Обновлён: {name}")
-        else:
-            # вставка только name (колонка color может отсутствовать в БД)
-            ins = supabase.table("departments").insert({"name": name}).execute()
-            if ins.data:
-                dept_by_name[name] = ins.data[0]["id"]
-                print(f"   Создан: {name}")
-    if not dept_by_name:
-        print("   Не удалось создать участки. Проверьте таблицу departments в Supabase.")
-        return
 
-    print("\n2. Импорт номенклатуры из Excel...")
-    for filename, dept_name in FILE_TO_DEPARTMENT.items():
-        path = BASE_DIR / filename
-        dept_id = dept_by_name.get(dept_name)
-        if not dept_id:
-            continue
-        rows = load_and_clean_excel(path)
-        if not rows:
-            print(f"   {filename}: записей нет")
-            continue
-        seen = set()
-        unique_rows = []
-        for r in rows:
-            if r["name"] in seen:
-                continue
-            seen.add(r["name"])
-            unique_rows.append(r)
+async def import_files() -> None:
+    engine = create_async_engine(database_url(), pool_pre_ping=True)
+    try:
+        async with engine.begin() as connection:
+            department_ids: dict[str, Any] = {}
+            for name, color in DEPARTMENTS:
+                department_id = (
+                    await connection.execute(
+                        text(
+                            """
+                            INSERT INTO departments (name, color)
+                            VALUES (:name, :color)
+                            ON CONFLICT (name) DO UPDATE
+                            SET color = EXCLUDED.color
+                            RETURNING id
+                            """
+                        ),
+                        {"name": name, "color": color},
+                    )
+                ).scalar_one()
+                department_ids[name] = department_id
 
-        inserted = 0
-        for i in range(0, len(unique_rows), BATCH_SIZE):
-            batch = unique_rows[i : i + BATCH_SIZE]
-            payloads = [
-                {
-                    "department_id": dept_id,
-                    "name": r["name"],
-                    "code": r["code"],
-                    "unit": "шт.",
-                    "extra": r["extra"],
-                }
-                for r in batch
-            ]
-            for attempt in range(3):
-                try:
-                    supabase.table("nomenclature").upsert(
-                        payloads,
-                        on_conflict="department_id,name",
-                    ).execute()
-                    inserted += len(batch)
-                    break
-                except Exception as e:
-                    if attempt < 2 and ("timeout" in str(e).lower() or "timed out" in str(e).lower()):
-                        time.sleep(2 * (attempt + 1))
-                        continue
-                    print(f"   Ошибка батча {i // BATCH_SIZE + 1} ({len(batch)} записей): {e}")
-                    for r in batch:
-                        try:
-                            supabase.table("nomenclature").upsert(
-                                {"department_id": dept_id, "name": r["name"], "code": r["code"], "unit": "шт.", "extra": r["extra"]},
-                                on_conflict="department_id,name",
-                            ).execute()
-                            inserted += 1
-                        except Exception as e2:
-                            print(f"   Ошибка для '{r['name'][:40]}...': {e2}")
-                    break
-        print(f"   {filename} -> {dept_name}: обработано {inserted} записей (уникальных {len(unique_rows)})")
+            base_dir = get_base_dir()
+            for filename, department_name in FILE_TO_DEPARTMENT.items():
+                rows = load_and_clean_excel(base_dir / filename)
+                unique_rows = []
+                seen_names = set()
+                for row in rows:
+                    if row["name"] not in seen_names:
+                        seen_names.add(row["name"])
+                        unique_rows.append(row)
+                department_id = department_ids[department_name]
+                imported = 0
+                for start in range(0, len(unique_rows), BATCH_SIZE):
+                    batch = unique_rows[start : start + BATCH_SIZE]
+                    await connection.execute(
+                        text(
+                            """
+                            INSERT INTO nomenclature
+                                (department_id, name, code, unit, extra)
+                            VALUES
+                                (:department_id, :name, :code, 'шт.',
+                                 CAST(:extra AS jsonb))
+                            ON CONFLICT (department_id, name) DO UPDATE
+                            SET code = EXCLUDED.code,
+                                unit = EXCLUDED.unit,
+                                extra = EXCLUDED.extra
+                            """
+                        ),
+                        [
+                            {
+                                "department_id": department_id,
+                                "name": row["name"],
+                                "code": row["code"],
+                                "extra": json.dumps(row["extra"], ensure_ascii=False),
+                            }
+                            for row in batch
+                        ],
+                    )
+                    imported += len(batch)
+                print(
+                    f"   {filename} -> {department_name}: "
+                    f"upsert {imported} ta yozuv"
+                )
+    finally:
+        await engine.dispose()
 
-    print("\nГотово.")
+
+def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    try:
+        asyncio.run(import_files())
+    except (ArgumentError, SQLAlchemyError) as error:
+        print(f"Import failed ({type(error).__name__}); database details were withheld.")
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

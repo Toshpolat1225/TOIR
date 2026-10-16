@@ -2,8 +2,8 @@
 
 Short log of decisions and why. Add a new entry only when a real decision is made. Newest at the bottom.
 
-1. **Supabase is removed completely.** Target: FastAPI + PostgreSQL 16 + Docker. Reason: local, secure, one stack the user controls.
-2. **Old Supabase data is not migrated**, only structure and relations. Reason: user said the old data is not needed.
+1. **Backend ownership:** FastAPI + PostgreSQL 16 + Docker Compose are the sole application backend.
+2. **Data import:** historical hosted-service data is not migrated; only the normalized schema and relations are retained.
 3. **One schema** (`postgres/schema.sql`): real foreign keys, no text links; work order repairs and items are separate tables (no JSONB). Statuses: `pending -> in_progress -> completed | cancelled`; `overdue` is computed from `date_end`, not stored.
 4. **ТО intervals are a directory** (`maintenance_intervals`) edited by admin/operator in the UI. No hardcoded thresholds (no 5000...1600000 km, no "ТО-90").
 5. **Auth:** own JWT. Access token 30 min, kept in memory. Refresh token 7 days in an httpOnly cookie, rotated, only its hash stored in DB. Login limiter: 5 failures -> 429 (in process memory for now; move to Redis/DB for production).

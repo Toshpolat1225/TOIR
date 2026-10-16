@@ -1,5 +1,5 @@
 -- =====================================================================
--- TOIR — yagona PostgreSQL 16 sxemasi (Supabase'siz)
+-- TOIR — yagona PostgreSQL 16 sxemasi
 -- Prinsiplar:
 --   * barcha bog'lanishlar FK orqali (matn maydonlari yo'q)
 --   * JSONB o'rniga normallashtirilgan jadvallar (repair_items, items)
@@ -40,7 +40,7 @@ CREATE TABLE sections (
 CREATE INDEX ix_sections_department ON sections(department_id);
 
 -- =====================================================================
--- 2. FOYDALANUVCHILAR (Supabase Auth + profiles o'rniga)
+-- 2. FOYDALANUVCHILAR
 -- =====================================================================
 CREATE TABLE users (
     id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -406,8 +406,7 @@ END $$;
 
 -- =====================================================================
 -- 10. Realtime: o'zgarishlarni backend'ga LISTEN/NOTIFY orqali yetkazish
---     (Supabase Realtime o'rniga; backend `toir_changes` kanalini tinglaydi
---      va WebSocket /ws orqali klientlarga uzatadi)
+--     Backend `toir_changes` kanalini tinglaydi va WebSocket /ws orqali klientlarga uzatadi.
 -- =====================================================================
 CREATE OR REPLACE FUNCTION notify_change() RETURNS trigger AS $$
 DECLARE
