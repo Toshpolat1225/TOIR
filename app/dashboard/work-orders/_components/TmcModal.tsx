@@ -233,7 +233,7 @@ export function TmcModal({
                         <option value="">— вручную —</option>
                         {nomenclature.map((item) => (
                           <option key={item.id} value={item.id}>
-                            {item.name}{item.code ? ` (${item.code})` : ""}
+                            {item.localized_name ?? item.name}{item.code ? ` (${item.code})` : ""}
                           </option>
                         ))}
                       </select>

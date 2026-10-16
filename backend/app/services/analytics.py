@@ -10,6 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.identity import User
+from app.core.localization import Locale
+from app.core.translation_response import localize_reference_response
 from app.models.organization import Section
 from app.repositories import analytics as repository
 
@@ -158,6 +160,7 @@ async def get_report(
 async def report_csv(
     db: AsyncSession,
     user: User,
+    locale: Locale,
     *,
     report: str,
     section_id: UUID | None,
@@ -183,10 +186,24 @@ async def report_csv(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail="Report not found") from exc
+    report_path = f"/reports/{report}"
+    rows = await localize_reference_response(
+        db, path=report_path, locale=locale, payload=rows
+    )
+    localized_headers = _localized_report_headers(locale, columns)
     output = io.StringIO(newline="")
     writer = csv.writer(output)
-    writer.writerow(columns)
+    writer.writerow(localized_headers)
     for row in rows:
+        if report == "fixed-assets":
+            row["asset_type"] = row.get("asset_type_label", row.get("asset_type"))
+            row["status"] = row.get("asset_status_label", row.get("status"))
+        elif report == "work-orders":
+            row["status"] = _localized_status(locale, row.get("status"))
+        elif report == "tmc-documents":
+            row["status"] = _localized_tmc_status(locale, row.get("status"))
+        if row.get("localized_section"):
+            row["section"] = row["localized_section"]
         writer.writerow(
             [
                 value.isoformat() if isinstance(value, (date, datetime)) else value
@@ -194,3 +211,73 @@ async def report_csv(
             ]
         )
     return "\ufeff" + output.getvalue(), report
+
+
+def _localized_report_headers(locale: Locale, columns: tuple[str, ...]) -> list[str]:
+    labels = {
+        "ru": {
+            "number": "Номер наряда", "unit": "ОС", "asset_inv_number": "Инвентарный номер",
+            "section": "Участок", "work_type": "Вид работ", "status": "Статус",
+            "priority": "Приоритет", "created_at": "Создан", "closed": "Закрыт",
+            "tech": "Исполнитель", "description": "Описание", "total_cost": "Фактическая сумма",
+            "total_norm_cost": "Сумма по норме", "cost_savings": "Экономия",
+            "avg_deviation_percent": "Среднее отклонение, %", "id": "ID",
+            "inv_number": "Инвентарный номер", "name": "Наименование", "asset_type": "Тип ОС",
+            "series": "Серия", "depot": "Депо", "comm_date": "Дата ввода",
+            "year_built": "Год постройки", "mileage": "Пробег", "initial_cost": "Первоначальная стоимость",
+            "owner": "Владелец", "doc_no": "Номер документа", "doc_date": "Дата документа",
+            "work_order_id": "ID наряда", "work_order_number": "Номер наряда", "warehouse": "Склад",
+            "issued_by": "Выдал", "accepted_by": "Принял", "item_count": "Позиций ТМЦ",
+            "total_quantity": "Количество ТМЦ", "total_cost": "Общая стоимость",
+        },
+        "uz-Latn": {
+            "number": "Naryad raqami", "unit": "Asosiy vosita", "asset_inv_number": "Inventar raqami",
+            "section": "Uchastka", "work_type": "Ish turi", "status": "Holat",
+            "priority": "Muhimlik", "created_at": "Yaratilgan", "closed": "Yopilgan",
+            "tech": "Ijrochi", "description": "Tavsif", "total_cost": "Amaldagi summa",
+            "total_norm_cost": "Norma bo‘yicha summa", "cost_savings": "Tejamkorlik",
+            "avg_deviation_percent": "O‘rtacha farq, %", "id": "ID", "inv_number": "Inventar raqami",
+            "name": "Nomi", "asset_type": "Asosiy vosita turi", "series": "Seriya", "depot": "Depo",
+            "comm_date": "Foydalanishga topshirilgan sana", "year_built": "Ishlab chiqarilgan yil",
+            "mileage": "Probeg", "initial_cost": "Boshlang‘ich qiymat", "owner": "Egasi",
+            "doc_no": "Hujjat raqami", "doc_date": "Hujjat sanasi", "work_order_id": "Naryad ID",
+            "work_order_number": "Naryad raqami", "warehouse": "Ombor", "issued_by": "Bergan",
+            "accepted_by": "Qabul qilgan", "item_count": "Moddiy boyliklar qatori",
+            "total_quantity": "Moddiy boyliklar miqdori", "total_cost": "Umumiy qiymat",
+        },
+        "uz-Cyrl": {
+            "number": "Наряд рақами", "unit": "Асосий восита", "asset_inv_number": "Инвентар рақами",
+            "section": "Участка", "work_type": "Иш тури", "status": "Ҳолат",
+            "priority": "Муҳимлик", "created_at": "Яратилган", "closed": "Ёпилган",
+            "tech": "Ижрочи", "description": "Тавсиф", "total_cost": "Амалдаги сумма",
+            "total_norm_cost": "Норма бўйича сумма", "cost_savings": "Тежамкорлик",
+            "avg_deviation_percent": "Ўртача фарқ, %", "id": "ID", "inv_number": "Инвентар рақами",
+            "name": "Номи", "asset_type": "Асосий восита тури", "series": "Серия", "depot": "Депо",
+            "comm_date": "Фойдаланишга топширилган сана", "year_built": "Ишлаб чиқарилган йил",
+            "mileage": "Пробег", "initial_cost": "Бошланғич қиймат", "owner": "Эгаси",
+            "doc_no": "Ҳужжат рақами", "doc_date": "Ҳужжат санаси", "work_order_id": "Наряд ID",
+            "work_order_number": "Наряд рақами", "warehouse": "Омбор", "issued_by": "Берган",
+            "accepted_by": "Қабул қилган", "item_count": "Моддий бойликлар қатори",
+            "total_quantity": "Моддий бойликлар миқдори", "total_cost": "Умумий қиймат",
+        },
+    }
+    return [labels[locale].get(column, column) for column in columns]
+
+
+def _localized_status(locale: Locale, value: Any) -> Any:
+    labels = {
+        "pending": {"ru": "Ожидает", "uz-Latn": "Kutilmoqda", "uz-Cyrl": "Кутилмоқда"},
+        "in_progress": {"ru": "В работе", "uz-Latn": "Bajarilmoqda", "uz-Cyrl": "Бажарилмоқда"},
+        "completed": {"ru": "Выполнен", "uz-Latn": "Bajarildi", "uz-Cyrl": "Бажарилди"},
+        "cancelled": {"ru": "Отменён", "uz-Latn": "Bekor qilingan", "uz-Cyrl": "Бекор қилинган"},
+    }
+    return labels.get(str(value), {}).get(locale, value)
+
+
+def _localized_tmc_status(locale: Locale, value: Any) -> Any:
+    labels = {
+        "draft": {"ru": "Черновик", "uz-Latn": "Qoralama", "uz-Cyrl": "Қоралама"},
+        "issued": {"ru": "Выдан", "uz-Latn": "Berildi", "uz-Cyrl": "Берилди"},
+        "closed": {"ru": "Закрыт", "uz-Latn": "Yopilgan", "uz-Cyrl": "Ёпилган"},
+    }
+    return labels.get(str(value), {}).get(locale, value)

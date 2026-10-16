@@ -28,7 +28,7 @@ ANALYTICS_VIEWS = frozenset(
 REPORT_SQL: dict[str, tuple[str, str, tuple[str, ...]]] = {
     "work-orders": (
         """
-        SELECT number, unit, asset_inv_number, section, repair_kind AS work_type,
+        SELECT number, unit, asset_inv_number, section, section_id, repair_kind AS work_type,
                status, priority, created_at, closed, tech, description,
                total_cost, total_norm_cost, cost_savings, avg_deviation_percent
         FROM executive_summary
@@ -43,6 +43,7 @@ REPORT_SQL: dict[str, tuple[str, str, tuple[str, ...]]] = {
     "fixed-assets": (
         """
         SELECT fa.id, fa.inv_number, fa.name, fa.asset_type, fa.series, fa.depot,
+               fa.section_id,
                s.name AS section, fa.status, fa.comm_date, fa.year_built, fa.mileage,
                fa.initial_cost, fa.owner, fa.created_at
         FROM fixed_assets fa
@@ -58,6 +59,7 @@ REPORT_SQL: dict[str, tuple[str, str, tuple[str, ...]]] = {
     "tmc-documents": (
         """
         SELECT td.id, td.doc_no, td.doc_date, td.work_order_id, wo.number AS work_order_number,
+               td.section_id,
                s.name AS section, td.warehouse, td.status, td.issued_by, td.accepted_by,
                COALESCE(items.item_count, 0) AS item_count,
                COALESCE(items.total_quantity, 0) AS total_quantity,
@@ -126,13 +128,15 @@ async def dashboard_assets_and_orders(
             SELECT wo.id, wo.number, fa.name AS unit, s.name AS section,
                    wo.section_id, wo.status, wo.priority, wo.description,
                    wo.created_at, wo.date_start, e.full_name AS tech,
-                   types.work_types AS repair_kind
+                   types.work_types AS repair_kind,
+                   types.work_type_ids
             FROM work_orders wo
             JOIN fixed_assets fa ON fa.id = wo.fixed_asset_id
             JOIN sections s ON s.id = wo.section_id
             LEFT JOIN employees e ON e.id = wo.executor_id
             LEFT JOIN LATERAL (
-                SELECT string_agg(wt.code, ', ' ORDER BY wor.sort_order) AS work_types
+                SELECT string_agg(wt.code, ', ' ORDER BY wor.sort_order) AS work_types,
+                       string_agg(wor.work_type_id::text, ', ' ORDER BY wor.sort_order) AS work_type_ids
                 FROM work_order_repairs wor
                 JOIN work_types wt ON wt.id = wor.work_type_id
                 WHERE wor.work_order_id = wo.id
@@ -154,6 +158,7 @@ async def dashboard_assets_and_orders(
             "asset_type": asset.asset_type,
             "series": asset.series,
             "status": asset.status,
+            "section_id": asset.section_id,
             "section": section_name,
             "depot": section_name,
             "mileage": asset.mileage,

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.localization import Locale, get_locale
 from app.core.security import get_current_user
 from app.models.identity import User
 from app.schemas.common import PaginatedResponse
@@ -62,6 +63,7 @@ async def _report_response(
     *,
     user: User,
     db: AsyncSession,
+    locale: Locale,
     section_id: UUID | None,
     date_from: date | None,
     date_to: date | None,
@@ -86,7 +88,7 @@ async def _report_response(
         "q": q,
     }
     if csv:
-        content, filename = await service.report_csv(db, user, **filters)
+        content, filename = await service.report_csv(db, user, locale=locale, **filters)
         return Response(
             content=content,
             media_type="text/csv; charset=utf-8",
@@ -101,6 +103,7 @@ def _report_route(report: ReportName):
     async def endpoint(
         user: AuthenticatedUser,
         db: DatabaseSession,
+        locale: Annotated[Locale, Depends(get_locale)],
         section_id: UUID | None = None,
         date_from: date | None = None,
         date_to: date | None = None,
@@ -115,6 +118,7 @@ def _report_route(report: ReportName):
             report,
             user=user,
             db=db,
+            locale=locale,
             section_id=section_id,
             date_from=date_from,
             date_to=date_to,

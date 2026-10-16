@@ -93,16 +93,29 @@ CREATE INDEX ix_employees_section ON employees(section_id);
 -- =====================================================================
 -- 3. ASOSIY VOSITALAR (ОС)
 -- =====================================================================
+CREATE TABLE fixed_asset_types (
+    code       text PRIMARY KEY,
+    is_active  boolean NOT NULL DEFAULT true
+);
+INSERT INTO fixed_asset_types(code) VALUES ('locomotive'), ('diesel'), ('wagon');
+
+CREATE TABLE fixed_asset_statuses (
+    code       text PRIMARY KEY,
+    is_active  boolean NOT NULL DEFAULT true
+);
+INSERT INTO fixed_asset_statuses(code)
+VALUES ('operational'), ('maintenance'), ('repair'), ('out_of_service');
+
 CREATE TABLE fixed_assets (
     id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     inv_number           text NOT NULL UNIQUE,
     name                 text NOT NULL,
-    asset_type           text NOT NULL CHECK (asset_type IN ('locomotive','diesel','wagon')),
+    asset_type           text NOT NULL REFERENCES fixed_asset_types(code) ON UPDATE CASCADE ON DELETE RESTRICT,
     series               text,
     depot                text,
     section_id           uuid REFERENCES sections(id) ON DELETE SET NULL,
     status               text NOT NULL DEFAULT 'operational'
-                         CHECK (status IN ('operational','maintenance','repair','out_of_service')),
+                         REFERENCES fixed_asset_statuses(code) ON UPDATE CASCADE ON DELETE RESTRICT,
     comm_date            date,
     year_built           integer,
     mileage              numeric(12,2) NOT NULL DEFAULT 0,
@@ -395,6 +408,70 @@ CREATE TABLE daily_readiness_snapshots (
     PRIMARY KEY (snapshot_date, scope_key)
 );
 CREATE INDEX ix_readiness_section_date ON daily_readiness_snapshots(section_id, snapshot_date);
+
+-- =====================================================================
+-- 13. TARJIMALAR
+-- Eski name maydonlari asl qiymat/fallback bo'lib qoladi; ular avtomatik tarjima qilinmaydi.
+-- =====================================================================
+CREATE TABLE department_translations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    department_id uuid NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+    locale text NOT NULL CHECK (locale IN ('uz-Latn','uz-Cyrl','ru')),
+    name text NOT NULL,
+    CONSTRAINT uq_department_translation_locale UNIQUE (department_id, locale)
+);
+CREATE TABLE section_translations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    section_id uuid NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
+    locale text NOT NULL CHECK (locale IN ('uz-Latn','uz-Cyrl','ru')),
+    name text NOT NULL,
+    CONSTRAINT uq_section_translation_locale UNIQUE (section_id, locale)
+);
+CREATE TABLE work_type_translations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    work_type_id uuid NOT NULL REFERENCES work_types(id) ON DELETE CASCADE,
+    locale text NOT NULL CHECK (locale IN ('uz-Latn','uz-Cyrl','ru')),
+    name text NOT NULL,
+    CONSTRAINT uq_work_type_translation_locale UNIQUE (work_type_id, locale)
+);
+CREATE TABLE work_subtask_translations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    work_subtask_id uuid NOT NULL REFERENCES work_subtasks(id) ON DELETE CASCADE,
+    locale text NOT NULL CHECK (locale IN ('uz-Latn','uz-Cyrl','ru')),
+    name text NOT NULL,
+    CONSTRAINT uq_work_subtask_translation_locale UNIQUE (work_subtask_id, locale)
+);
+CREATE TABLE nomenclature_translations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    nomenclature_id uuid NOT NULL REFERENCES nomenclature(id) ON DELETE CASCADE,
+    locale text NOT NULL CHECK (locale IN ('uz-Latn','uz-Cyrl','ru')),
+    name text NOT NULL,
+    CONSTRAINT uq_nomenclature_translation_locale UNIQUE (nomenclature_id, locale)
+);
+CREATE TABLE fixed_asset_type_translations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    type_code text NOT NULL REFERENCES fixed_asset_types(code) ON DELETE CASCADE,
+    locale text NOT NULL CHECK (locale IN ('uz-Latn','uz-Cyrl','ru')),
+    name text NOT NULL,
+    CONSTRAINT uq_fixed_asset_type_translation_locale UNIQUE (type_code, locale)
+);
+CREATE TABLE fixed_asset_status_translations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    status_code text NOT NULL REFERENCES fixed_asset_statuses(code) ON DELETE CASCADE,
+    locale text NOT NULL CHECK (locale IN ('uz-Latn','uz-Cyrl','ru')),
+    name text NOT NULL,
+    CONSTRAINT uq_fixed_asset_status_translation_locale UNIQUE (status_code, locale)
+);
+
+INSERT INTO fixed_asset_type_translations(type_code, locale, name) VALUES
+    ('locomotive', 'ru', 'Локомотив'), ('locomotive', 'uz-Latn', 'Lokomotiv'), ('locomotive', 'uz-Cyrl', 'Локомотив'),
+    ('diesel', 'ru', 'Тепловоз'), ('diesel', 'uz-Latn', 'Teplovoz'), ('diesel', 'uz-Cyrl', 'Тепловоз'),
+    ('wagon', 'ru', 'Вагон'), ('wagon', 'uz-Latn', 'Vagon'), ('wagon', 'uz-Cyrl', 'Вагон');
+INSERT INTO fixed_asset_status_translations(status_code, locale, name) VALUES
+    ('operational', 'ru', 'В эксплуатации'), ('operational', 'uz-Latn', 'Foydalanishda'), ('operational', 'uz-Cyrl', 'Фойдаланишда'),
+    ('maintenance', 'ru', 'На ТО'), ('maintenance', 'uz-Latn', 'Texnik xizmatda'), ('maintenance', 'uz-Cyrl', 'Техник хизматда'),
+    ('repair', 'ru', 'Ремонт'), ('repair', 'uz-Latn', 'Ta’mirda'), ('repair', 'uz-Cyrl', 'Таъмирда'),
+    ('out_of_service', 'ru', 'Выведен'), ('out_of_service', 'uz-Latn', 'Foydalanishdan chiqarilgan'), ('out_of_service', 'uz-Cyrl', 'Фойдаланишдан чиқарилган');
 
 -- =====================================================================
 -- 9. updated_at triggerlari

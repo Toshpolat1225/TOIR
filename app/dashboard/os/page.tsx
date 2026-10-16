@@ -26,6 +26,8 @@ type AssetStatus = "operational" | "maintenance" | "repair" | "out_of_service"
 type FixedAsset = {
   id:           string
   name:         string   // наименование
+  assetTypeLabel?: string
+  statusLabel?: string
   assetType:    AssetType
   series:       string
   depot:        string
@@ -111,7 +113,7 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections }: {
             </div>
             <div>
               <p className="text-xs opacity-80 font-medium">
-                {typeInfo.label} {asset.series && `· ${asset.series}`}
+                {asset.assetTypeLabel || typeInfo.label} {asset.series && `· ${asset.series}`}
               </p>
               <p className="text-lg font-bold leading-tight">{asset.name}</p>
               {asset.invNumber && <p className="text-xs opacity-70">Инв. № {asset.invNumber}</p>}
@@ -175,7 +177,7 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections }: {
                 </div>
               ) : (
                 <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg ${st.cls}`}>
-                  <st.icon className="w-3.5 h-3.5"/>{st.label}
+                  <st.icon className="w-3.5 h-3.5"/>{asset.statusLabel || st.label}
                 </span>
               )}
             </div>
@@ -461,6 +463,8 @@ function fromRow(r: ApiFixedAsset): FixedAsset {
   return {
     id:               r.id,
     name:             r.name,
+    assetTypeLabel:   r.asset_type_label,
+    statusLabel:      r.asset_status_label,
     assetType:        r.asset_type,
     series:           r.series ?? "",
     depot:            r.depot ?? "",
@@ -778,7 +782,7 @@ export default function OsPage() {
                   <td className="px-4 py-3.5">
                     <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-md ${tc.cls}`}>
                       <tc.Icon className="w-3 h-3"/>
-                      {tc.label}
+                      {a.assetTypeLabel || tc.label}
                     </span>
                   </td>
                   <td className="px-4 py-3.5">
@@ -813,7 +817,7 @@ export default function OsPage() {
                   </td>
                   <td className="px-4 py-3.5">
                     <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${st.cls}`}>
-                      <st.icon className="w-3 h-3"/>{st.label}
+                      <st.icon className="w-3 h-3"/>{a.statusLabel || st.label}
                     </span>
                   </td>
                 </tr>

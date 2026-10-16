@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { api, type ReportName } from "@/lib/api"
 import { useSectionView } from "@/lib/section-view-context"
+import { useLocale } from "@/lib/i18n"
 import {
   FileText, ClipboardList, Landmark, Package,
   Calendar, Download, BarChart3, PieChart,
@@ -33,6 +34,7 @@ const ASSET_STATUS_LABEL: Record<string, string> = {
 }
 const ASSET_TYPE_LABEL: Record<string, string> = {
   locomotive: "Локомотив",
+  diesel: "Тепловоз",
   wagon: "Вагон",
 }
 
@@ -45,8 +47,9 @@ function parseDateStr(s: string): Date | null {
   return isNaN(t.getTime()) ? null : t
 }
 
-function formatDate(d: Date) {
-  return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" })
+function formatDate(d: Date, locale: string) {
+  const languageTag = locale === "uz-Latn" ? "uz-UZ" : locale === "uz-Cyrl" ? "uz-Cyrl-UZ" : "ru-RU"
+  return d.toLocaleDateString(languageTag, { day: "2-digit", month: "2-digit", year: "numeric" })
 }
 
 function toIsoDate(value: string): string | undefined {
@@ -65,6 +68,7 @@ async function resolveSectionId(sectionName: string | null): Promise<string | un
 }
 
 export default function ReportsPage() {
+  const { locale, t } = useLocale()
   const { effectiveSection } = useSectionView()
   const [reportType, setReportType] = useState<ReportId>("work-orders")
   const [dateFrom, setDateFrom] = useState("")
@@ -106,8 +110,8 @@ export default function ReportsPage() {
   const setDefaultDates = () => {
     const now = new Date()
     const start = new Date(now.getFullYear(), now.getMonth(), 1)
-    setDateFrom(formatDate(start))
-    setDateTo(formatDate(now))
+    setDateFrom(formatDate(start, locale))
+    setDateTo(formatDate(now, locale))
   }
 
   const filteredWo = woData
@@ -140,13 +144,13 @@ export default function ReportsPage() {
   }, {})
 
   const woBySection = filteredWo.reduce<Record<string, number>>((acc, row) => {
-    const s = (row.section as string) || "—"
+    const s = (row.localized_section as string) || (row.section as string) || "—"
     acc[s] = (acc[s] ?? 0) + 1
     return acc
   }, {})
 
   const woChartData = Object.entries(woByStatus).map(([k, v]) => ({
-    name: WO_STATUS_LABEL[k] || k,
+    name: t(WO_STATUS_LABEL[k] || k),
     value: v,
     fill: k === "completed" ? "#10b981" : k === "in_progress" ? "#f59e0b" : "#3b82f6",
   }))
@@ -169,7 +173,7 @@ export default function ReportsPage() {
   }, {})
 
   const assetsPieData = [
-    ...Object.entries(assetsByStatus).map(([k, v]) => ({ name: ASSET_STATUS_LABEL[k] || k, value: v })),
+    ...Object.entries(assetsByStatus).map(([k, v]) => ({ name: (filteredAssetsData.find((row) => row.status === k)?.asset_status_label as string) || t(ASSET_STATUS_LABEL[k] || k), value: v })),
   ]
   const PIE_COLORS = ["#10b981", "#f59e0b", "#f97316", "#ef4444", "#6366f1"]
 
@@ -179,10 +183,10 @@ export default function ReportsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <FileText className="w-7 h-7 text-blue-600"/>
-            Отчёты
+            {t("Отчёты")}
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Аналитика по наряд-заказам, основным средствам и ТМЦ
+            {t("Аналитика по наряд-заказам, основным средствам и ТМЦ")}
           </p>
         </div>
       </div>
@@ -206,7 +210,7 @@ export default function ReportsPage() {
             }`}
           >
             <Icon className="w-4 h-4"/>
-            {label}
+            {t(label)}
           </button>
         ))}
       </div>
@@ -324,7 +328,7 @@ export default function ReportsPage() {
                           <td className="px-4 py-2.5">{(row.unit as string) || "—"}</td>
                           <td className="px-4 py-2.5">{row.section as string}</td>
                           <td className="px-4 py-2.5">{(row.work_type as string) || "—"}</td>
-                          <td className="px-4 py-2.5">{WO_STATUS_LABEL[row.status as string] || (row.status as string)}</td>
+                          <td className="px-4 py-2.5">{t(WO_STATUS_LABEL[row.status as string] || (row.status as string))}</td>
                           <td className="px-4 py-2.5">{(row.created_at as string) || "—"}</td>
                         </tr>
                       ))}
@@ -376,7 +380,7 @@ export default function ReportsPage() {
                   <ul className="space-y-2">
                     {Object.entries(assetsByType).map(([type, count]) => (
                       <li key={type} className="flex justify-between text-sm">
-                        <span className="text-gray-600 dark:text-gray-300">{ASSET_TYPE_LABEL[type] || type}</span>
+                        <span className="text-gray-600 dark:text-gray-300">{(filteredAssetsData.find((row) => row.asset_type === type)?.asset_type_label as string) || t(ASSET_TYPE_LABEL[type] || type)}</span>
                         <span className="font-semibold text-gray-900 dark:text-white">{count} ед.</span>
                       </li>
                     ))}
@@ -405,9 +409,9 @@ export default function ReportsPage() {
                         <tr key={(row.id as string) || i} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
                           <td className="px-4 py-2.5 font-mono">{row.inv_number as string}</td>
                           <td className="px-4 py-2.5">{(row.name as string) || "—"}</td>
-                          <td className="px-4 py-2.5">{ASSET_TYPE_LABEL[row.asset_type as string] || (row.asset_type as string)}</td>
+                          <td className="px-4 py-2.5">{(row.asset_type_label as string) || t(ASSET_TYPE_LABEL[row.asset_type as string] || (row.asset_type as string))}</td>
                           <td className="px-4 py-2.5">{row.series as string}</td>
-                          <td className="px-4 py-2.5">{ASSET_STATUS_LABEL[row.status as string] || (row.status as string)}</td>
+                          <td className="px-4 py-2.5">{(row.asset_status_label as string) || t(ASSET_STATUS_LABEL[row.status as string] || (row.status as string))}</td>
                           <td className="px-4 py-2.5">{row.comm_date as string}</td>
                         </tr>
                       ))}

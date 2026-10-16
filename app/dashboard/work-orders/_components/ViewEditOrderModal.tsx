@@ -170,7 +170,7 @@ export function ViewEditOrderModal({
             <div>
               <h2 className="font-semibold text-gray-900 dark:text-white">{order.number}</h2>
               <p className="mt-1 text-xs text-gray-500">
-                {order.asset_name} · {order.asset_inv_number} · {order.section_name}
+                {order.asset_name} · {order.asset_inv_number} · {order.localized_section_name ?? order.section_name}
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-blue-50 px-2 py-1 text-xs text-blue-700 dark:bg-blue-950 dark:text-blue-300">

@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
@@ -16,6 +15,8 @@ type NomenclatureRow = {
   unit: string
   department_id: string
   department_name: string
+  localized_name?: string
+  localized_department_name?: string
 }
 
 type TmcItem = {
@@ -470,7 +471,7 @@ function fromRow(r: any): TmcDoc {
     date:        r.doc_date,
     workOrderId: r.work_order_number ?? r.work_order_id ?? "",
     loco:        r.loco,
-    workType:    r.work_type,
+    workType:    r.localized_work_type ?? r.work_type,
     depot:       r.depot,
     warehouse:   r.warehouse,
     issuedBy:    r.issued_by,
@@ -479,7 +480,7 @@ function fromRow(r: any): TmcDoc {
     status:      r.status,
     items:       (r.items ?? []).map((item: any, index: number) => ({
       no: index + 1,
-      name: item.name,
+      name: item.localized_nomenclature_name ?? item.name,
       invNo: item.inv_no ?? "",
       unit: item.unit ?? "",
       qty: Number(item.qty ?? 0),
@@ -554,7 +555,7 @@ export default function TmcPage() {
   const fetchDepartments = useCallback(async () => {
     try {
       const response = await api.departments.list({ limit: 1000, sort_by: 'name' });
-      setDepartments(response.items);
+      setDepartments(response.items.map((item) => ({ ...item, name: item.localized_name ?? item.name })));
     } catch (error) {
       console.error("Failed to fetch departments:", error);
       setDepartments([]);
@@ -564,7 +565,7 @@ export default function TmcPage() {
   const fetchSections = useCallback(async () => {
     try {
       const response = await api.sections.list({ limit: 1000, sort_by: "name" })
-      setSections(response.items)
+      setSections(response.items.map((item) => ({ ...item, name: item.localized_name ?? item.name })))
     } catch (error) {
       console.error("Failed to fetch sections:", error);
       setSections([]);
@@ -776,10 +777,10 @@ export default function TmcPage() {
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {filteredNomenclature.map((r) => (
                   <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                    <td className="px-5 py-3 text-sm text-gray-900 dark:text-white">{r.name}</td>
+                    <td className="px-5 py-3 text-sm text-gray-900 dark:text-white">{r.localized_name ?? r.name}</td>
                     <td className="px-5 py-3 text-sm font-mono text-gray-600 dark:text-gray-300">{r.code || "—"}</td>
                     <td className="px-5 py-3 text-sm text-gray-600 dark:text-gray-400">{r.unit}</td>
-                    <td className="px-5 py-3 text-sm text-gray-600 dark:text-gray-400">{r.department_name}</td>
+                    <td className="px-5 py-3 text-sm text-gray-600 dark:text-gray-400">{r.localized_department_name ?? r.department_name}</td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-1">
                         <Button

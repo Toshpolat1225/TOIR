@@ -45,10 +45,12 @@ async def list_documents(
                 FixedAsset.name.label("loco"),
                 FixedAsset.depot.label("depot"),
                 WorkType.name.label("work_type"),
+                Section.name.label("section_name"),
             )
             .outerjoin(WorkOrder, WorkOrder.id == TmcDocument.work_order_id)
             .outerjoin(FixedAsset, FixedAsset.id == WorkOrder.fixed_asset_id)
             .outerjoin(WorkType, WorkType.id == TmcDocument.work_type_id)
+            .outerjoin(Section, Section.id == TmcDocument.section_id)
             .where(*filters)
             .order_by(TmcDocument.created_at.desc(), TmcDocument.id.desc())
             .limit(limit)
@@ -70,7 +72,7 @@ async def list_documents(
         items_by_document.setdefault(item.document_id, []).append(item)
 
     result = []
-    for document, work_order_number, loco, depot, work_type in rows:
+    for document, work_order_number, loco, depot, work_type, section_name in rows:
         result.append(
             {
                 "id": document.id,
@@ -79,6 +81,7 @@ async def list_documents(
                 "work_order_id": document.work_order_id,
                 "work_order_number": work_order_number,
                 "section_id": document.section_id,
+                "section_name": section_name,
                 "work_type_id": document.work_type_id,
                 "loco": loco,
                 "work_type": work_type,

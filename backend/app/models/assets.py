@@ -25,14 +25,6 @@ from app.models.base import Base
 class FixedAsset(Base):
     __tablename__ = "fixed_assets"
     __table_args__ = (
-        CheckConstraint(
-            "asset_type IN ('locomotive','diesel','wagon')",
-            name="fixed_assets_asset_type_check",
-        ),
-        CheckConstraint(
-            "status IN ('operational','maintenance','repair','out_of_service')",
-            name="fixed_assets_status_check",
-        ),
         Index("ix_assets_type_status", "asset_type", "status"),
         Index("ix_assets_section", "section_id"),
         Index("ix_assets_series", "series"),
@@ -43,14 +35,19 @@ class FixedAsset(Base):
     )
     inv_number: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    asset_type: Mapped[str] = mapped_column(Text, nullable=False)
+    asset_type: Mapped[str] = mapped_column(
+        Text, ForeignKey("fixed_asset_types.code", onupdate="CASCADE", ondelete="RESTRICT"), nullable=False
+    )
     series: Mapped[str | None] = mapped_column(Text)
     depot: Mapped[str | None] = mapped_column(Text)
     section_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("sections.id", ondelete="SET NULL")
     )
     status: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default=text("'operational'")
+        Text,
+        ForeignKey("fixed_asset_statuses.code", onupdate="CASCADE", ondelete="RESTRICT"),
+        nullable=False,
+        server_default=text("'operational'"),
     )
     comm_date: Mapped[date | None] = mapped_column(Date)
     year_built: Mapped[int | None] = mapped_column(Integer)

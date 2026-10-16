@@ -3,6 +3,17 @@ from app.models.analytics import DailyReadinessSnapshot
 from app.models.base import Base
 from app.models.identity import LoginAttempt, RefreshToken, User
 from app.models.inventory import Nomenclature, NomenclatureNorm, WorkTypeTemplate
+from app.models.localization import (
+    DepartmentTranslation,
+    FixedAssetStatus,
+    FixedAssetStatusTranslation,
+    FixedAssetType,
+    FixedAssetTypeTranslation,
+    NomenclatureTranslation,
+    SectionTranslation,
+    WorkSubtaskTranslation,
+    WorkTypeTranslation,
+)
 from app.models.maintenance import (
     MaintenanceInterval,
     MaintenancePlan,
@@ -19,9 +30,14 @@ __all__ = [
     "AiInsight",
     "Base",
     "Department",
+    "DepartmentTranslation",
     "DailyReadinessSnapshot",
     "Employee",
     "FixedAsset",
+    "FixedAssetStatus",
+    "FixedAssetStatusTranslation",
+    "FixedAssetType",
+    "FixedAssetTypeTranslation",
     "LoginAttempt",
     "MaintenanceInterval",
     "MaintenanceLog",
@@ -29,9 +45,11 @@ __all__ = [
     "MaintenanceSettings",
     "MileageHistory",
     "Nomenclature",
+    "NomenclatureTranslation",
     "NomenclatureNorm",
     "RefreshToken",
     "Section",
+    "SectionTranslation",
     "TmcDocument",
     "TmcDocumentItem",
     "User",
@@ -40,6 +58,8 @@ __all__ = [
     "WorkOrderItem",
     "WorkOrderRepair",
     "WorkSubtask",
+    "WorkSubtaskTranslation",
     "WorkType",
+    "WorkTypeTranslation",
     "WorkTypeTemplate",
 ]

@@ -16,7 +16,7 @@ let accessTokenExpiresAt = 0;
 let refreshRequest: Promise<AccessTokenResponse> | null = null;
 
 type ApiRequestOptions = {
-  method: "GET" | "POST" | "PATCH" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   body?: unknown;
   params?: Record<string, string | number | boolean>;
@@ -48,6 +48,16 @@ async function request<T>(options: ApiRequestOptions): Promise<T> {
   const headers: HeadersInit = {
     "Content-Type": "application/json",
   };
+
+  if (typeof document !== "undefined") {
+    const localeCookie = document.cookie
+      .split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith("toir-locale="))
+      ?.slice("toir-locale=".length);
+    const locale = localeCookie ? decodeURIComponent(localeCookie) : "ru";
+    headers["Accept-Language"] = ["uz-Latn", "uz-Cyrl", "ru"].includes(locale) ? locale : "ru";
+  }
 
   if (!isPublic) {
     if (!inMemoryAccessToken) {
@@ -265,6 +275,8 @@ const users = {
 export type Section = {
   id: string;
   name: string;
+  localized_name?: string;
+  translation_missing?: boolean;
   department_id: string | null;
   created_at: string;
   updated_at: string;
@@ -322,6 +334,8 @@ const sections = {
 export type Department = {
   id: string;
   name: string;
+  localized_name?: string;
+  translation_missing?: boolean;
   color: string;
   created_at: string;
   updated_at: string;
@@ -401,7 +415,11 @@ export type Nomenclature = {
   id: string;
   department_id: string;
   department_name: string;
+  localized_department_name?: string;
+  department_translation_missing?: boolean;
   name: string;
+  localized_name?: string;
+  translation_missing?: boolean;
   code: string | null;
   unit: string;
   extra: Record<string, unknown>;
@@ -472,6 +490,10 @@ export type FixedAsset = {
   id: string;
   inv_number: string;
   name: string;
+  asset_type_label?: string;
+  asset_status_label?: string;
+  asset_type_translation_missing?: boolean;
+  asset_status_translation_missing?: boolean;
   asset_type: "locomotive" | "wagon" | "diesel";
   series: string | null;
   depot: string | null;
@@ -584,6 +606,8 @@ export type WorkOrderItem = WorkOrderItemInput & {
   id: string;
   repair_id: string;
   nomenclature_id: string | null;
+  localized_nomenclature_name?: string;
+  nomenclature_translation_missing?: boolean;
   inv_no: string | null;
   unit: string | null;
   note: string | null;
@@ -597,6 +621,8 @@ export type WorkOrderRepair = {
   work_type_id: string;
   work_type_code: string;
   work_type_name: string;
+  localized_work_type_name?: string;
+  work_type_translation_missing?: boolean;
   sort_order: number;
   items: WorkOrderItem[];
 };
@@ -613,6 +639,8 @@ export type WorkOrder = {
   asset_inv_number: string;
   section_id: string;
   section_name: string;
+  localized_section_name?: string;
+  section_translation_missing?: boolean;
   department_id: string | null;
   order_kind: WorkOrderKind;
   status: WorkOrderStatus;
@@ -948,6 +976,8 @@ type WorkTypeTemplateCreate = Omit<WorkTypeTemplate, "id" | "work_type" | "nomen
 type WorkTypeTemplateUpdate = Partial<Omit<WorkTypeTemplateCreate, "work_type_id">>;
 type WorkTypeTemplateListParams = ListParams & {
   work_type?: string;
+  localized_work_type?: string;
+  localized_section_name?: string;
   work_type_id?: string;
   department_id?: string;
 };
@@ -971,6 +1001,8 @@ export type WorkSubtask = {
   id: string;
   work_type_id: string;
   name: string;
+  localized_name?: string;
+  translation_missing?: boolean;
   sort_order: number;
 };
 
@@ -978,6 +1010,8 @@ export type WorkType = {
   id: string;
   code: string;
   name: string;
+  localized_name?: string;
+  translation_missing?: boolean;
   description: string | null;
   unit_type: "locomotive" | "wagon";
   sort_order: number;
@@ -1084,6 +1118,8 @@ const maintenanceIntervals = {
 type TmcItem = {
   id: string;
   nomenclature_id: string | null;
+  localized_nomenclature_name?: string;
+  nomenclature_translation_missing?: boolean;
   name: string;
   inv_no: string | null;
   unit: string | null;
@@ -1142,6 +1178,12 @@ export type DashboardSummary = {
     asset_type: string;
     series: string | null;
     status: string;
+    asset_type_label?: string;
+    asset_status_label?: string;
+    asset_type_translation_missing?: boolean;
+    asset_status_translation_missing?: boolean;
+    section_id?: string | null;
+    localized_section?: string | null;
     section: string | null;
     depot: string | null;
     mileage: number | string;
@@ -1159,6 +1201,8 @@ export type DashboardSummary = {
     date_start: string | null;
     tech: string | null;
     repair_kind: string | null;
+    localized_repair_kind?: string | null;
+    repair_kind_translation_missing?: boolean;
   }>;
   availability: Array<{
     month: string;
@@ -1224,6 +1268,46 @@ const reports = {
       params: { ...params, format: "csv" },
       responseType: "blob",
     });
+  },
+};
+
+export type TranslationLocale = "uz-Latn" | "uz-Cyrl" | "ru";
+export type TranslationEntity =
+  | "department"
+  | "section"
+  | "work_type"
+  | "work_subtask"
+  | "nomenclature"
+  | "asset_type"
+  | "asset_status";
+export type TranslationEntry = {
+  id: string;
+  source_name: string;
+  name: string;
+  locale: TranslationLocale;
+  translation_missing: boolean;
+  translations: Partial<Record<TranslationLocale, string>>;
+  missing_locales: TranslationLocale[];
+};
+export type TranslationDetail = {
+  id: string;
+  source_name: string;
+  translations: Partial<Record<TranslationLocale, string>>;
+  missing_locales: TranslationLocale[];
+};
+
+const translations = {
+  async list(entity: TranslationEntity, params: ListParams & { q?: string } = {}): Promise<Paginated<TranslationEntry>> {
+    return request({ method: "GET", path: `/translations/${entity}`, params });
+  },
+  async get(entity: TranslationEntity, id: string): Promise<TranslationDetail> {
+    return request({ method: "GET", path: `/translations/${entity}/${encodeURIComponent(id)}` });
+  },
+  async set(entity: TranslationEntity, id: string, locale: TranslationLocale, name: string): Promise<TranslationDetail> {
+    return request({ method: "PUT", path: `/translations/${entity}/${encodeURIComponent(id)}/${locale}`, body: { name } });
+  },
+  async remove(entity: TranslationEntity, id: string, locale: TranslationLocale): Promise<void> {
+    return request({ method: "DELETE", path: `/translations/${entity}/${encodeURIComponent(id)}/${locale}` });
   },
 };
 
@@ -1337,6 +1421,7 @@ export const api = {
   dashboard,
   analytics,
   reports,
+  translations,
   employees,
   workTypes,
   maintenanceIntervals,

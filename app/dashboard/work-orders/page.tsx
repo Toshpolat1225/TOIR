@@ -71,8 +71,18 @@ function WorkOrdersPage() {
       ]);
       setAssets(assetsResult.items);
       setEmployees(employeesResult.items);
-      setSections(sectionsResult.items);
-      setWorkTypes(workTypesResult.items);
+      setSections(sectionsResult.items.map((item) => ({
+        ...item,
+        name: item.localized_name ?? item.name,
+      })));
+      setWorkTypes(workTypesResult.items.map((item) => ({
+        ...item,
+        name: item.localized_name ?? item.name,
+        subtasks: item.subtasks.map((subtask) => ({
+          ...subtask,
+          name: subtask.localized_name ?? subtask.name,
+        })),
+      })));
       setNomenclature(nomenclatureResult.items);
       setNorms(normsResult.items);
       setReferenceError(null);

@@ -121,7 +121,7 @@ export function RepairItemsModal({
                 <option value="">Выберите...</option>
                 {workTypes.map((workType) => (
                   <option key={workType.id} value={workType.id}>
-                    {workType.code} — {workType.name}
+                    {workType.code} — {workType.localized_name ?? workType.name}
                   </option>
                 ))}
               </select>
@@ -139,7 +139,7 @@ export function RepairItemsModal({
                     <li key={repair.id} className="flex items-center gap-2 rounded-lg border p-3 dark:border-gray-700">
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-gray-900 dark:text-white">
-                          {repair.kind} — {workType?.name ?? "Вид ремонта"}
+                          {repair.kind} — {workType?.localized_name ?? workType?.name ?? "Вид ремонта"}
                         </p>
                         <p className="text-xs text-gray-500">Позиций ТМЦ: {repair.rows.length}</p>
                       </div>

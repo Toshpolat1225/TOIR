@@ -4,11 +4,13 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Eye, EyeOff, AlertCircle, Wrench } from "@/components/ui/icons"
 import { useAuth } from "@/lib/auth-context"
+import { useLocale } from "@/lib/i18n"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 
 export default function LoginPage() {
   const router       = useRouter()
   const { signIn, user, loading } = useAuth()
+  const { t } = useLocale()
 
   const [email,    setEmail]    = useState("")
   const [password, setPassword] = useState("")
@@ -48,14 +50,14 @@ export default function LoginPage() {
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-wide text-slate-950 dark:text-white">STTB</h1>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-gray-400">Система технического обслуживания</p>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-gray-400">{t("Система технического обслуживания")}</p>
           </div>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-900/5 sm:p-8 dark:border-gray-800 dark:bg-gray-900 dark:shadow-black/20">
           <div className="mb-6">
-            <h2 className="text-xl font-semibold tracking-tight text-slate-950 dark:text-white">Вход в систему</h2>
-            <p className="mt-1.5 text-sm text-slate-500 dark:text-gray-400">Введите данные учетной записи, чтобы продолжить.</p>
+            <h2 className="text-xl font-semibold tracking-tight text-slate-950 dark:text-white">{t("Вход в систему")}</h2>
+            <p className="mt-1.5 text-sm text-slate-500 dark:text-gray-400">{t("Введите данные учетной записи, чтобы продолжить.")}</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -75,21 +77,21 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label htmlFor="login-password" className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-gray-300">Пароль</label>
+              <label htmlFor="login-password" className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-gray-300">{t("Пароль")}</label>
               <div className="relative">
                 <input
                   id="login-password"
                   type={showPwd ? "text" : "password"}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="Введите пароль"
+                  placeholder={t("Введите пароль")}
                   required
                   autoComplete="current-password"
                   className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 pr-11 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-600"
                 />
                 <button
                   type="button"
-                  aria-label={showPwd ? "Скрыть пароль" : "Показать пароль"}
+                  aria-label={showPwd ? t("Скрыть пароль") : t("Показать пароль")}
                   aria-pressed={showPwd}
                   onClick={() => setShowPwd(v => !v)}
                   className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
@@ -114,15 +116,15 @@ export default function LoginPage() {
               {busy ? (
                 <>
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                  Вход...
+                  {t("Вход...")}
                 </>
-              ) : "Войти"}
+              ) : t("Войти")}
             </button>
           </form>
         </div>
 
         <p className="mt-5 text-center text-xs text-slate-500 dark:text-gray-400">
-          Обратитесь к администратору системы для получения доступа.
+          {t("Обратитесь к администратору системы для получения доступа.")}
         </p>
       </div>
     </div>

@@ -154,7 +154,7 @@ export function WorkOrderList({
                         )}
                       </div>
                       <p className="mt-2 truncate font-medium text-gray-900 dark:text-white">{order.description}</p>
-                      <p className="mt-1 text-sm text-gray-500">{order.asset_name} · {order.asset_inv_number} · {order.section_name}</p>
+                      <p className="mt-1 text-sm text-gray-500">{order.asset_name} · {order.asset_inv_number} · {order.localized_section_name ?? order.section_name}</p>
                       <p className="mt-1 text-xs text-gray-500">
                         {order.repairs.map((repair) => repair.work_type_code).join(", ") || "Без типа ремонта"}
                         {" · "}{employeeName(order.executor_id)}
