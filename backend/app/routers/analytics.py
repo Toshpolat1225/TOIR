@@ -37,18 +37,6 @@ VIEW_NAMES = {
 }
 
 
-@router.get("/dashboard/summary")
-async def get_dashboard_summary(
-    user: AuthenticatedUser,
-    db: DatabaseSession,
-    section_id: UUID | None = None,
-    section: str | None = Query(default=None, max_length=200),
-) -> dict:
-    return await service.dashboard_summary(
-        db, user, section_id=section_id, section=section
-    )
-
-
 @router.get("/analytics/{block}", response_model=PaginatedResponse[dict])
 async def get_analytics_block(
     block: AnalyticsBlock,

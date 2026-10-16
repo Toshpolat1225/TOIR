@@ -12,6 +12,7 @@ from app.core.database import engine
 from app.routers.auth import router as auth_router
 from app.routers.assets import router as assets_router
 from app.routers.analytics import router as analytics_router
+from app.routers.dashboard import router as dashboard_router
 from app.routers.health import router as health_router
 from app.routers.maintenance import router as maintenance_router
 from app.routers.ml import router as ml_router
@@ -85,4 +86,5 @@ app.include_router(work_orders_router, prefix="/api/v1")
 app.include_router(maintenance_router, prefix="/api/v1")
 app.include_router(ml_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
+app.include_router(dashboard_router, prefix="/api/v1")
 app.include_router(realtime_router)

@@ -22,10 +22,18 @@ type ApiRequestOptions = {
   params?: Record<string, string | number | boolean>;
   isPublic?: boolean;
   responseType?: "json" | "blob";
+  suppress404Log?: boolean;
 };
 
+export class ApiHttpError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = "ApiHttpError";
+  }
+}
+
 async function request<T>(options: ApiRequestOptions): Promise<T> {
-  const { method, path, body, params, isPublic = false, responseType = "json" } = options;
+  const { method, path, body, params, isPublic = false, responseType = "json", suppress404Log = false } = options;
 
   const url = new URL(`${API_BASE_URL}${path}`);
   if (params) {
@@ -82,7 +90,7 @@ async function request<T>(options: ApiRequestOptions): Promise<T> {
           throw refreshError; // If refresh fails, propagate the error
         }
       }
-      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      throw new ApiHttpError(errorData.detail || `HTTP error! status: ${response.status}`, response.status);
     }
 
     // Handle cases with no content in response body (e.g., 204 No Content)
@@ -92,7 +100,9 @@ async function request<T>(options: ApiRequestOptions): Promise<T> {
 
     return (responseType === "blob" ? await response.blob() : await response.json()) as T;
   } catch (error) {
-    console.error(`API request failed: ${method} ${path}`, error);
+    if (!(suppress404Log && error instanceof ApiHttpError && error.status === 404)) {
+      console.error(`API request failed: ${method} ${path}`, error);
+    }
     // Re-throw the error so it can be caught by the caller
     throw error;
   }
@@ -1145,13 +1155,11 @@ export type DashboardSummary = {
   availability: Array<{
     month: string;
     label: string;
-    pct: number | null;
-    days_recorded: number;
+    pct: number;
   }>;
-  availability_history_starts_at: string;
 };
 const dashboard = {
-  async getSummary(params: { section?: string; section_id?: string }): Promise<DashboardSummary> {
+  async getSummary(params: { section_id?: string }): Promise<DashboardSummary> {
     return request<DashboardSummary>({ method: "GET", path: "/dashboard/summary", params });
   },
 };
@@ -1175,6 +1183,7 @@ const analytics = {
       method: "GET",
       path: `/analytics/${block}`,
       params,
+      suppress404Log: true,
     });
   },
 };

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { api } from "@/lib/api"
+import { ApiHttpError } from "@/lib/api"
 
 export type SectionEfficiency = {
   section: string
@@ -165,7 +166,9 @@ export function useAnalyticsData(): AnalyticsData {
         }
       }))
     }).catch((cause: unknown) => {
-      setError(cause instanceof Error ? cause.message : "Не удалось загрузить аналитику")
+      setError(cause instanceof ApiHttpError && cause.status === 404
+        ? "Bu bo‘lim keyingi bosqichda ko‘chiriladi"
+        : cause instanceof Error ? cause.message : "Не удалось загрузить аналитику")
       setSectionData([])
       setWorkTypeData([])
       setMonthlyData([])
@@ -232,7 +235,9 @@ export function useAnalyticsData(): AnalyticsData {
           })),
       )
     }).catch((cause: unknown) => {
-      setError((current) => current ?? (cause instanceof Error ? cause.message : "Не удалось загрузить AI-аналитику"))
+      setError((current) => current ?? (cause instanceof ApiHttpError && cause.status === 404
+        ? "Bu bo‘lim keyingi bosqichda ko‘chiriladi"
+        : cause instanceof Error ? cause.message : "Не удалось загрузить AI-аналитику"))
       setAiInsights([])
       setFleetHealth(null)
       setRiskEquipment([])

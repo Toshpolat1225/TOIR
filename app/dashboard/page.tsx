@@ -78,7 +78,6 @@ const EMPTY_SUMMARY: DashboardSummary = {
   availability: [],
   assets: [],
   orders: [],
-  availability_history_starts_at: "",
 }
 
 /* ════════════════════════════════════════
@@ -93,7 +92,11 @@ export default function DashboardPage() {
     setLoading(true)
     try {
       // A single call to the new dashboard summary endpoint
-      const summaryData = await api.dashboard.getSummary({ section: effectiveSection || undefined });
+      const selected = effectiveSection
+        ? await api.sections.list({ limit: 1000, offset: 0 })
+        : null
+      const sectionId = selected?.items.find((section) => section.name === effectiveSection)?.id
+      const summaryData = await api.dashboard.getSummary({ section_id: sectionId });
       setSummary(summaryData);
     } catch (e) {
       console.error("Ошибка загрузки дашборда:", e)
@@ -241,7 +244,7 @@ export default function DashboardPage() {
     month: label,
     pct: readinessByMonth.get(key) ?? null,
   }))
-  const hasReadinessHistory = availability.some((point) => point.pct !== null)
+  const hasReadinessHistory = availability.length > 0
 
   /* ── Виды ремонта ── */
   const rkMap: Record<string,number> = {}
@@ -256,6 +259,7 @@ export default function DashboardPage() {
   /* ── Предстоящее ТО (pending наряды с датой) ── */
   const upcomingOrders = filteredOrders
     .filter((o) => o.status === "pending" && o.date_start)
+    .sort((a, b) => new Date(a.date_start!).getTime() - new Date(b.date_start!).getTime())
     .slice(0, 5)
 
   /* ── Последние наряды ── */
@@ -598,7 +602,7 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">Готовность парка</p>
-                <p className="text-xs text-gray-400">% исправных единиц ОС</p>
+                <p className="text-xs text-gray-400">% исправных единиц ОС · приблизительно</p>
               </div>
             </div>
             <div className="text-right">
@@ -609,10 +613,7 @@ export default function DashboardPage() {
           {totalAssets === 0 ? (
             <div className="flex items-center justify-center h-40 text-gray-400 text-xs">Нет данных</div>
           ) : !hasReadinessHistory ? (
-            <div className="flex flex-col items-center justify-center h-40 text-center text-xs text-gray-400">
-              <span>Исторических снимков пока нет</span>
-              <span className="mt-1">Данные начнут накапливаться после первого сохранения снимка</span>
-            </div>
+            <div className="flex items-center justify-center h-40 text-xs text-gray-400">Нет данных</div>
           ) : (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={availability}>
