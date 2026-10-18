@@ -42,4 +42,6 @@ Production server/database, API, E2E, CSV runtime and browser behavior are NOT T
 Existing OS/work-order/report/nomenclature filters were audited; common indexes exist, but substring search index plans were not evaluated.
 No schema or migration changed; URL filter persistence and several reference-list search controls remain for follow-up.
 
+2026-10-18 | Codex | Independent acceptance audit of stages 1–10; excluded generated Next type file from standalone lint | .eslintignore, docs/HANDOFF.md, docs/AI_WORKLOG.md | tsc, lint, build and Python AST 116 files exit 0; two Hook warnings remain; backend tests/API/DB/E2E/browser NOT TESTED | Resolve master maintenance scope, admin demotion, dashboard readiness/ID mapping, and TMC API contract before acceptance
+
 2026-10-18 | Codex | Stage 10 static integration/security audit; no application code changed | docs/HANDOFF.md, docs/AI_WORKLOG.md | tsc and build exit 0; lint exit 1; Python AST 116 files passed; API/DB/E2E/browser NOT TESTED | Fix audited maintenance master-scope and admin-role-demotion risks, then verify on authorized test API
