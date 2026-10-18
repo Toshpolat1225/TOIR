@@ -25,7 +25,7 @@ const PAGE_SIZE = 50;
 function WorkOrdersPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { profile } = useAuth();
+  const { hasPermission } = useAuth();
   const [assets, setAssets] = useState<FixedAsset[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
@@ -158,15 +158,8 @@ function WorkOrdersPage() {
     router.replace("/dashboard/work-orders");
   }, [resourceLoading, router, searchParams]);
 
-  const canCreate =
-    profile?.role === "admin" ||
-    profile?.role === "management" ||
-    profile?.role === "operator";
-  const canEdit =
-    profile?.role === "admin" ||
-    profile?.role === "management" ||
-    profile?.role === "operator" ||
-    profile?.role === "master";
+  const canCreate = hasPermission("work_orders.create");
+  const canEdit = hasPermission("work_orders.update");
 
   function resetOffsetAnd<T>(setter: (value: T) => void, value: T) {
     setOffset(0);

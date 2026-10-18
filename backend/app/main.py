@@ -27,6 +27,7 @@ from app.routers.references import router as references_router
 from app.routers.realtime import router as realtime_router
 from app.routers.tmc_documents import router as tmc_documents_router
 from app.routers.users import router as users_router
+from app.routers.permissions import router as permissions_router
 from app.routers.wialon import router as wialon_router
 from app.routers.work_orders import router as work_orders_router
 from app.realtime import dispatch_database_events, listen_for_database_events
@@ -143,6 +144,7 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(users_router, prefix="/api/v1")
+app.include_router(permissions_router, prefix="/api/v1")
 app.include_router(references_router, prefix="/api/v1")
 app.include_router(nomenclature_router, prefix="/api/v1")
 app.include_router(assets_router, prefix="/api/v1")

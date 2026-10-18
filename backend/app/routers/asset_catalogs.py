@@ -5,15 +5,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.localization import Locale, get_locale
-from app.core.security import get_current_user, require_role
+from app.core.permissions import require_permission
 from app.models.identity import User
 from app.schemas.asset_catalogs import AssetCatalogList, AssetCatalogUpdate, AssetCatalogWrite, CatalogKind
 from app.services import asset_catalogs as service
 
 router = APIRouter(prefix="/fixed-asset-catalogs", tags=["fixed asset catalogs"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
-AuthenticatedUser = Annotated[User, Depends(get_current_user)]
-CatalogAdmin = Annotated[User, Depends(require_role("admin"))]
+AuthenticatedUser = Annotated[User, Depends(require_permission("asset_catalogs.view"))]
+CatalogAdmin = Annotated[User, Depends(require_permission("asset_catalogs.manage_reference_data"))]
 
 
 @router.get("/{kind}", response_model=AssetCatalogList)

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.permissions import require_permission
 from app.models.identity import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.tmc_documents import TmcDocumentRead
@@ -13,7 +13,7 @@ from app.services import tmc_documents as service
 
 router = APIRouter(prefix="/tmc-documents", tags=["TMC documents"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
-AuthenticatedUser = Annotated[User, Depends(get_current_user)]
+AuthenticatedUser = Annotated[User, Depends(require_permission("tmc.view"))]
 DocumentStatus = Literal["draft", "issued", "closed"]
 
 

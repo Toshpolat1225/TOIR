@@ -342,3 +342,19 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - `backend/scripts/e2e_workorders.py` ni mo‘ljallangan test API’da ishga tushirish. So‘ng detail tablari va filtrlashni browser’da tekshirish, TMC document CRUD mavjud bo‘lmaganligi sabab haqiqiy bog‘langan ombor hujjati bilan UI oqimini alohida tekshirish.
+
+## Granular RBAC (2026-10-18)
+
+### Verified
+
+- Existing roles remain `admin`, `operator`, `master`, and `management`. JWT access tokens do not carry roles; authenticated API requests load the active user from PostgreSQL.
+- Added permission catalog, per-role grants, audit rows, an additive Alembic revision `0008_granular_permissions`, permission checks on API routers, `/permissions/me`, and an admin permissions page. Existing role access is seeded from the source role policy. `admin` permission grants are immutable; creating another admin through the users API is blocked. Master data scope remains a separate server-side query rule.
+- `backend/scripts/e2e_permissions.py` covers permission denial with an existing access token, unknown/elevated grants, protected admin role, last-admin case when test DB has exactly one active admin, no-token 401, and master cross-section reads when at least two sections exist. The script was not run.
+- Python AST syntax check passed for 88 files. `npx.cmd tsc --noEmit` exited 0. `npm.cmd run build` exited 0; Next.js reported two React Hook warnings in work-orders files. Build ran after confirming no `node.exe` process.
+
+### Security notes and next task
+
+- Production server, database, Alembic migration, E2E API calls, browser behavior, and actual permission matrix were not tested. Do not deploy the code before applying migration 0008; code expects seeded permission rows.
+- All current `admin` accounts are effectively highest-level administrators; repository has no distinct super-admin identity. Admin permissions are protected, and only initial setup may create new admins through the API path.
+- Existing maintenance schedule/plan master-scope issue documented in the earlier audit was not addressed here. Long-lived websocket subscriptions re-check permission every 30 seconds; this timing was not runtime-tested.
+- Next: review the default role matrix, then apply migration and run `backend/scripts/e2e_permissions.py` only against the intended test API. Afterwards verify page/action visibility and section scopes in browser/API.

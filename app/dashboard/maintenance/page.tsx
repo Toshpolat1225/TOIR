@@ -902,7 +902,7 @@ function dateToDdMmYyyy(isoDate: string): string {
 }
 
 export default function MaintenancePage() {
-  const { profile } = useAuth()
+  const { hasPermission } = useAuth()
   const [schedule,  setSchedule]  = useState<ScheduleItem[]>([])
   const [loading,   setLoading]   = useState(true)
   const [view, setView]           = useState<"gantt"|"table">("gantt")
@@ -1041,9 +1041,7 @@ export default function MaintenancePage() {
   }, [])
 
   const canConfigureMaintenance =
-    profile?.role === "admin" ||
-    profile?.role === "operator" ||
-    profile?.role === "management"
+    hasPermission("maintenance_settings.update") || hasPermission("maintenance.update")
 
   const saveDailyAverageKm = async () => {
     const value = Number(dailyAverageKm)

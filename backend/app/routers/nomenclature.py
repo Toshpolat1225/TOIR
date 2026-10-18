@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user, require_role
+from app.core.permissions import require_permission
 from app.models.identity import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.nomenclature import (
@@ -20,8 +20,10 @@ from app.services import nomenclature as service
 
 router = APIRouter(tags=["nomenclature"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
-AuthenticatedUser = Annotated[User, Depends(get_current_user)]
-NomenclatureWriter = Annotated[User, Depends(require_role("admin", "operator"))]
+AuthenticatedUser = Annotated[User, Depends(require_permission("inventory.view"))]
+NomenclatureCreator = Annotated[User, Depends(require_permission("inventory.create"))]
+NomenclatureUpdater = Annotated[User, Depends(require_permission("inventory.update"))]
+NomenclatureDeleter = Annotated[User, Depends(require_permission("inventory.delete"))]
 SortOrder = Literal["asc", "desc"]
 
 
@@ -72,7 +74,7 @@ async def get_nomenclature_item(
     status_code=status.HTTP_201_CREATED,
 )
 async def post_nomenclature(
-    payload: NomenclatureCreate, _: NomenclatureWriter, db: DatabaseSession
+    payload: NomenclatureCreate, _: NomenclatureCreator, db: DatabaseSession
 ) -> NomenclatureRead:
     return await service.create_nomenclature(db, payload)
 
@@ -83,7 +85,7 @@ async def post_nomenclature(
 async def patch_nomenclature(
     nomenclature_id: UUID,
     payload: NomenclatureUpdate,
-    _: NomenclatureWriter,
+    _: NomenclatureUpdater,
     db: DatabaseSession,
 ) -> NomenclatureRead:
     return await service.update_nomenclature(db, nomenclature_id, payload)
@@ -93,7 +95,7 @@ async def patch_nomenclature(
     "/nomenclature/{nomenclature_id}", status_code=status.HTTP_204_NO_CONTENT
 )
 async def remove_nomenclature(
-    nomenclature_id: UUID, _: NomenclatureWriter, db: DatabaseSession
+    nomenclature_id: UUID, _: NomenclatureDeleter, db: DatabaseSession
 ) -> Response:
     await service.delete_nomenclature(db, nomenclature_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -152,7 +154,7 @@ async def get_nomenclature_norm(
 )
 async def post_nomenclature_norm(
     payload: NomenclatureNormCreate,
-    _: NomenclatureWriter,
+    _: NomenclatureCreator,
     db: DatabaseSession,
 ) -> NomenclatureNormRead:
     return await service.create_norm(db, payload)
@@ -164,7 +166,7 @@ async def post_nomenclature_norm(
 async def patch_nomenclature_norm(
     norm_id: UUID,
     payload: NomenclatureNormUpdate,
-    _: NomenclatureWriter,
+    _: NomenclatureUpdater,
     db: DatabaseSession,
 ) -> NomenclatureNormRead:
     return await service.update_norm(db, norm_id, payload)
@@ -174,7 +176,7 @@ async def patch_nomenclature_norm(
     "/nomenclature-norms/{norm_id}", status_code=status.HTTP_204_NO_CONTENT
 )
 async def remove_nomenclature_norm(
-    norm_id: UUID, _: NomenclatureWriter, db: DatabaseSession
+    norm_id: UUID, _: NomenclatureDeleter, db: DatabaseSession
 ) -> Response:
     await service.delete_norm(db, norm_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

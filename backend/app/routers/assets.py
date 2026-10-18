@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user, require_role
+from app.core.permissions import require_permission
 from app.models.identity import User
 from app.schemas.assets import (
     AssetStatus,
@@ -23,8 +23,10 @@ from app.services import assets as service
 
 router = APIRouter(prefix="/fixed-assets", tags=["fixed assets"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
-AuthenticatedUser = Annotated[User, Depends(get_current_user)]
-AssetWriter = Annotated[User, Depends(require_role("admin", "operator"))]
+AuthenticatedUser = Annotated[User, Depends(require_permission("assets.view"))]
+AssetCreator = Annotated[User, Depends(require_permission("assets.create"))]
+AssetUpdater = Annotated[User, Depends(require_permission("assets.update"))]
+AssetDeleter = Annotated[User, Depends(require_permission("assets.delete"))]
 SortOrder = Literal["asc", "desc"]
 
 
@@ -110,7 +112,7 @@ async def get_asset_mileage_history(
     response_model=FixedAssetRead,
 )
 async def post_asset_mileage(
-    asset_id: UUID, payload: MileageUpdate, _: AssetWriter, db: DatabaseSession
+    asset_id: UUID, payload: MileageUpdate, _: AssetUpdater, db: DatabaseSession
 ) -> FixedAssetRead:
     return await service.set_fixed_asset_mileage(db, asset_id, payload)
 
@@ -130,7 +132,7 @@ async def get_fixed_asset(
     status_code=status.HTTP_201_CREATED,
 )
 async def post_fixed_asset(
-    payload: FixedAssetCreate, _: AssetWriter, db: DatabaseSession
+    payload: FixedAssetCreate, _: AssetCreator, db: DatabaseSession
 ) -> FixedAssetRead:
     return await service.create_fixed_asset(db, payload)
 
@@ -139,7 +141,7 @@ async def post_fixed_asset(
 async def patch_fixed_asset(
     asset_id: UUID,
     payload: FixedAssetUpdate,
-    _: AssetWriter,
+    _: AssetUpdater,
     db: DatabaseSession,
 ) -> FixedAssetRead:
     return await service.update_fixed_asset(db, asset_id, payload)
@@ -147,7 +149,7 @@ async def patch_fixed_asset(
 
 @router.delete("/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_fixed_asset(
-    asset_id: UUID, _: AssetWriter, db: DatabaseSession
+    asset_id: UUID, _: AssetDeleter, db: DatabaseSession
 ) -> Response:
     await service.delete_fixed_asset(db, asset_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

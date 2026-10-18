@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
@@ -43,6 +43,8 @@ async def list_users_page(
 
 
 async def create_user(db: AsyncSession, payload: UserCreate) -> User:
+    if payload.role == "admin":
+        raise HTTPException(status_code=403, detail="Admin accounts can only be created by the initial setup")
     if await get_user_by_email(db, payload.email) is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -75,12 +77,24 @@ async def update_user(
     user_id: UUID,
     payload: UserUpdate,
 ) -> User:
+    await db.execute(select(func.pg_advisory_xact_lock(782134992)))
     user = await get_user(db, user_id)
     if user is None:
         raise _not_found()
 
     changes = payload.model_dump(exclude_unset=True)
     next_role = changes.get("role", user.role)
+    if user.role != "admin" and next_role == "admin":
+        await db.rollback()
+        raise HTTPException(status_code=403, detail="Admin role assignment is protected")
+    next_active = changes.get("is_active", user.is_active)
+    if user.role == "admin" and (next_role != "admin" or not next_active):
+        active_admins = await db.execute(
+            select(func.count()).select_from(User).where(User.role == "admin", User.is_active.is_(True))
+        )
+        if active_admins.scalar_one() <= 1:
+            await db.rollback()
+            raise HTTPException(status_code=409, detail="The last active admin cannot be demoted or deactivated")
     next_section_id = changes.get("section_id", user.section_id)
     if next_role == "master" and next_section_id is None:
         raise HTTPException(

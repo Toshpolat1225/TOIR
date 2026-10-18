@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user, require_role
+from app.core.permissions import require_permission
 from app.models.identity import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.references import (
@@ -35,8 +35,10 @@ from app.services import references as service
 
 router = APIRouter(tags=["reference data"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
-AuthenticatedUser = Annotated[User, Depends(get_current_user)]
-ReferenceWriter = Annotated[User, Depends(require_role("admin", "operator"))]
+AuthenticatedUser = Annotated[User, Depends(require_permission("organization.view"))]
+ReferenceCreator = Annotated[User, Depends(require_permission("organization.create"))]
+ReferenceUpdater = Annotated[User, Depends(require_permission("organization.update"))]
+ReferenceDeleter = Annotated[User, Depends(require_permission("organization.delete"))]
 SortOrder = Literal["asc", "desc"]
 
 
@@ -83,7 +85,7 @@ async def get_department(
     status_code=status.HTTP_201_CREATED,
 )
 async def post_department(
-    payload: DepartmentCreate, _: ReferenceWriter, db: DatabaseSession
+    payload: DepartmentCreate, _: ReferenceCreator, db: DatabaseSession
 ) -> DepartmentRead:
     return await service.create_department(db, payload)
 
@@ -92,7 +94,7 @@ async def post_department(
 async def patch_department(
     department_id: UUID,
     payload: DepartmentUpdate,
-    _: ReferenceWriter,
+    _: ReferenceUpdater,
     db: DatabaseSession,
 ) -> DepartmentRead:
     return await service.update_department(db, department_id, payload)
@@ -102,7 +104,7 @@ async def patch_department(
     "/departments/{department_id}", status_code=status.HTTP_204_NO_CONTENT
 )
 async def remove_department(
-    department_id: UUID, _: ReferenceWriter, db: DatabaseSession
+    department_id: UUID, _: ReferenceDeleter, db: DatabaseSession
 ) -> Response:
     await service.delete_department(db, department_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -151,7 +153,7 @@ async def get_section(
     status_code=status.HTTP_201_CREATED,
 )
 async def post_section(
-    payload: SectionCreate, _: ReferenceWriter, db: DatabaseSession
+    payload: SectionCreate, _: ReferenceCreator, db: DatabaseSession
 ) -> SectionRead:
     return await service.create_section(db, payload)
 
@@ -160,7 +162,7 @@ async def post_section(
 async def patch_section(
     section_id: UUID,
     payload: SectionUpdate,
-    _: ReferenceWriter,
+    _: ReferenceUpdater,
     db: DatabaseSession,
 ) -> SectionRead:
     return await service.update_section(db, section_id, payload)
@@ -168,7 +170,7 @@ async def patch_section(
 
 @router.delete("/sections/{section_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_section(
-    section_id: UUID, _: ReferenceWriter, db: DatabaseSession
+    section_id: UUID, _: ReferenceDeleter, db: DatabaseSession
 ) -> Response:
     await service.delete_section(db, section_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -213,7 +215,7 @@ async def get_employee(
     status_code=status.HTTP_201_CREATED,
 )
 async def post_employee(
-    payload: EmployeeCreate, _: ReferenceWriter, db: DatabaseSession
+    payload: EmployeeCreate, _: ReferenceCreator, db: DatabaseSession
 ) -> EmployeeRead:
     return await service.create_employee(db, payload)
 
@@ -222,7 +224,7 @@ async def post_employee(
 async def patch_employee(
     employee_id: UUID,
     payload: EmployeeUpdate,
-    _: ReferenceWriter,
+    _: ReferenceUpdater,
     db: DatabaseSession,
 ) -> EmployeeRead:
     return await service.update_employee(db, employee_id, payload)
@@ -230,7 +232,7 @@ async def patch_employee(
 
 @router.delete("/employees/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_employee(
-    employee_id: UUID, _: ReferenceWriter, db: DatabaseSession
+    employee_id: UUID, _: ReferenceDeleter, db: DatabaseSession
 ) -> Response:
     await service.delete_employee(db, employee_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -272,7 +274,7 @@ async def get_work_type(
     status_code=status.HTTP_201_CREATED,
 )
 async def post_work_type(
-    payload: WorkTypeCreate, _: ReferenceWriter, db: DatabaseSession
+    payload: WorkTypeCreate, _: ReferenceCreator, db: DatabaseSession
 ) -> WorkTypeRead:
     return await service.create_work_type(db, payload)
 
@@ -281,7 +283,7 @@ async def post_work_type(
 async def patch_work_type(
     work_type_id: UUID,
     payload: WorkTypeUpdate,
-    _: ReferenceWriter,
+    _: ReferenceUpdater,
     db: DatabaseSession,
 ) -> WorkTypeRead:
     return await service.update_work_type(db, work_type_id, payload)
@@ -289,7 +291,7 @@ async def patch_work_type(
 
 @router.delete("/work-types/{work_type_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_work_type(
-    work_type_id: UUID, _: ReferenceWriter, db: DatabaseSession
+    work_type_id: UUID, _: ReferenceDeleter, db: DatabaseSession
 ) -> Response:
     await service.delete_work_type(db, work_type_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -342,7 +344,7 @@ async def get_work_subtask(
 async def post_work_subtask(
     work_type_id: UUID,
     payload: WorkSubtaskCreate,
-    _: ReferenceWriter,
+    _: ReferenceCreator,
     db: DatabaseSession,
 ) -> WorkSubtaskRead:
     return await service.create_work_subtask(db, work_type_id, payload)
@@ -356,7 +358,7 @@ async def patch_work_subtask(
     work_type_id: UUID,
     subtask_id: UUID,
     payload: WorkSubtaskUpdate,
-    _: ReferenceWriter,
+    _: ReferenceUpdater,
     db: DatabaseSession,
 ) -> WorkSubtaskRead:
     return await service.update_work_subtask(
@@ -371,7 +373,7 @@ async def patch_work_subtask(
 async def remove_work_subtask(
     work_type_id: UUID,
     subtask_id: UUID,
-    _: ReferenceWriter,
+    _: ReferenceDeleter,
     db: DatabaseSession,
 ) -> Response:
     await service.delete_work_subtask(db, work_type_id, subtask_id)
@@ -423,7 +425,7 @@ async def get_work_type_template(
     status_code=status.HTTP_201_CREATED,
 )
 async def post_work_type_template(
-    payload: WorkTypeTemplateCreate, _: ReferenceWriter, db: DatabaseSession
+    payload: WorkTypeTemplateCreate, _: ReferenceCreator, db: DatabaseSession
 ) -> WorkTypeTemplateRead:
     return await service.create_work_type_template(db, payload)
 
@@ -434,7 +436,7 @@ async def post_work_type_template(
 async def patch_work_type_template(
     template_id: UUID,
     payload: WorkTypeTemplateUpdate,
-    _: ReferenceWriter,
+    _: ReferenceUpdater,
     db: DatabaseSession,
 ) -> WorkTypeTemplateRead:
     return await service.update_work_type_template(db, template_id, payload)
@@ -445,7 +447,7 @@ async def patch_work_type_template(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def remove_work_type_template(
-    template_id: UUID, _: ReferenceWriter, db: DatabaseSession
+    template_id: UUID, _: ReferenceDeleter, db: DatabaseSession
 ) -> Response:
     await service.delete_work_type_template(db, template_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -493,7 +495,7 @@ async def get_maintenance_interval(
     status_code=status.HTTP_201_CREATED,
 )
 async def post_maintenance_interval(
-    payload: MaintenanceIntervalCreate, _: ReferenceWriter, db: DatabaseSession
+    payload: MaintenanceIntervalCreate, _: ReferenceCreator, db: DatabaseSession
 ) -> MaintenanceIntervalRead:
     return await service.create_maintenance_interval(db, payload)
 
@@ -505,7 +507,7 @@ async def post_maintenance_interval(
 async def patch_maintenance_interval(
     interval_id: UUID,
     payload: MaintenanceIntervalUpdate,
-    _: ReferenceWriter,
+    _: ReferenceUpdater,
     db: DatabaseSession,
 ) -> MaintenanceIntervalRead:
     return await service.update_maintenance_interval(db, interval_id, payload)
@@ -516,7 +518,7 @@ async def patch_maintenance_interval(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def remove_maintenance_interval(
-    interval_id: UUID, _: ReferenceWriter, db: DatabaseSession
+    interval_id: UUID, _: ReferenceDeleter, db: DatabaseSession
 ) -> Response:
     await service.delete_maintenance_interval(db, interval_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -10,6 +10,8 @@ type AuthContextType = {
   user: CurrentUser | null
   profile: CurrentUser | null
   loading: boolean
+  permissionCodes: string[]
+  hasPermission: (code: string) => boolean
   signIn: (email: string, password: string) => Promise<{ error: string | null; user: CurrentUser | null }>
   signOut: () => Promise<void>
 }
@@ -31,6 +33,8 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
   loading: true,
+  permissionCodes: [],
+  hasPermission: () => false,
   signIn: async () => ({ error: null, user: null }),
   signOut: async () => {},
 })
@@ -38,6 +42,7 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null)
   const [loading, setLoading] = useState(true)
+  const [permissionCodes, setPermissionCodes] = useState<string[]>([])
 
   useEffect(() => {
     let active = true
@@ -48,11 +53,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const currentUser = await api.auth.me()
         if (active) {
           setUser(currentUser)
+          const permissions = await api.permissions.mine()
+          if (active) setPermissionCodes(permissions.permissions)
           setSessionHint()
         }
       } catch {
         if (active) {
           setUser(null)
+          setPermissionCodes([])
           clearSessionHint()
         }
       } finally {
@@ -69,10 +77,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = async (email: string, password: string) => {
     try {
       const result = await api.auth.login({ email, password })
+      const permissions = await api.permissions.mine()
       setUser(result.user)
+      setPermissionCodes(permissions.permissions)
       setSessionHint()
       return { error: null, user: result.user }
     } catch (error) {
+      setUser(null)
+      setPermissionCodes([])
       return {
         error: error instanceof Error ? error.message : "Login failed",
         user: null,
@@ -86,11 +98,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       clearSessionHint()
       setUser(null)
+      setPermissionCodes([])
     }
   }
 
   return (
-    <AuthContext.Provider value={{ user, profile: user, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, profile: user, loading, permissionCodes, hasPermission: (code) => permissionCodes.includes(code), signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   )

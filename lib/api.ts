@@ -270,6 +270,20 @@ const users = {
   },
 };
 
+export type PermissionEntry = { code: string; module: string; action: string; label: string; granted: boolean };
+export type RolePermissionMatrix = { role: "admin" | "operator" | "master" | "management"; permissions: PermissionEntry[]; changed: string[] };
+const permissions = {
+  async mine(): Promise<{ permissions: string[] }> {
+    return request({ method: "GET", path: "/permissions/me" });
+  },
+  async getRole(role: RolePermissionMatrix["role"]): Promise<RolePermissionMatrix> {
+    return request({ method: "GET", path: `/permissions/${role}` });
+  },
+  async setRole(role: Exclude<RolePermissionMatrix["role"], "admin">, granted: string[]): Promise<RolePermissionMatrix> {
+    return request({ method: "PUT", path: `/permissions/${role}`, body: { granted } });
+  },
+};
+
 // --- Sections Module ---
 
 export type Section = {
@@ -1440,6 +1454,7 @@ async function fetchAllPaginated<T>(
 export const api = {
   auth,
   users,
+  permissions,
   sections,
   departments,
   nomenclature,

@@ -68,6 +68,7 @@ CREATE TABLE refresh_tokens (
 );
 CREATE INDEX ix_refresh_tokens_user ON refresh_tokens(user_id);
 
+
 -- Persistent per-account/IP failed-login window; key_hash does not contain raw credentials.
 CREATE TABLE login_attempts (
     id         bigserial PRIMARY KEY,

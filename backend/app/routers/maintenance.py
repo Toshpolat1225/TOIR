@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user, require_role
+from app.core.permissions import require_permission
 from app.models.identity import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.maintenance import (
@@ -19,10 +19,9 @@ from app.services import maintenance as service
 
 router = APIRouter(tags=["maintenance"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
-AuthenticatedUser = Annotated[User, Depends(get_current_user)]
-MaintenanceConfigurator = Annotated[
-    User, Depends(require_role("admin", "operator", "management"))
-]
+AuthenticatedUser = Annotated[User, Depends(require_permission("maintenance.view"))]
+MaintenanceConfigurator = Annotated[User, Depends(require_permission("maintenance.update"))]
+MaintenanceSettingsEditor = Annotated[User, Depends(require_permission("maintenance_settings.update"))]
 PlanStatus = Literal["scheduled", "in_progress", "completed", "cancelled"]
 
 
@@ -36,7 +35,7 @@ async def read_maintenance_settings(
 @router.patch("/maintenance-settings", response_model=MaintenanceSettingsRead)
 async def patch_maintenance_settings(
     payload: MaintenanceSettingsUpdate,
-    _: MaintenanceConfigurator,
+    _: MaintenanceSettingsEditor,
     db: DatabaseSession,
 ) -> MaintenanceSettingsRead:
     return await service.update_settings(db, payload)

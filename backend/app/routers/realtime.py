@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.database import SessionFactory
 from app.models.identity import User
+from app.models.permissions import RolePermission
 from app.realtime import ALLOWED_TABLES, hub
 
 router = APIRouter()
@@ -36,6 +37,16 @@ async def _authenticate(token: str) -> tuple[User | None, float | None]:
         ).scalar_one_or_none()
         if user is None or not user.is_active:
             return None, None
+        if user.role != "admin":
+            allowed = await db.execute(
+                select(RolePermission.id).where(
+                    RolePermission.role == user.role,
+                    RolePermission.permission_code == "realtime.view",
+                    RolePermission.granted.is_(True),
+                )
+            )
+            if allowed.scalar_one_or_none() is None:
+                return None, None
         return user, expires_at
 
 
@@ -87,20 +98,35 @@ async def realtime_websocket(websocket: WebSocket) -> None:
             return
 
         client = hub.connect(websocket, user, tables)
+        access_token = message["access_token"]
+        loop = asyncio.get_running_loop()
+        last_auth_check = loop.time()
         await websocket.send_json({"type": "ready"})
         while True:
-            timeout = expires_at - datetime.now(timezone.utc).timestamp()
-            if timeout <= 0:
+            remaining = expires_at - datetime.now(timezone.utc).timestamp()
+            if remaining <= 0:
                 await websocket.close(code=4401, reason="Access token expired")
                 break
             try:
-                command = await asyncio.wait_for(websocket.receive_json(), timeout=timeout)
+                command = await asyncio.wait_for(websocket.receive_json(), timeout=min(30, remaining))
             except asyncio.TimeoutError:
-                await websocket.close(code=4401, reason="Access token expired")
-                break
+                refreshed_user, refreshed_expiry = await _authenticate(access_token)
+                if refreshed_user is None or refreshed_expiry is None:
+                    await websocket.close(code=4403, reason="Permission denied")
+                    break
+                client.user = refreshed_user
+                last_auth_check = loop.time()
+                continue
             except (ValueError, RuntimeError):
                 await websocket.close(code=4400, reason="Invalid subscription message")
                 break
+            if loop.time() - last_auth_check >= 30:
+                refreshed_user, refreshed_expiry = await _authenticate(access_token)
+                if refreshed_user is None or refreshed_expiry is None:
+                    await websocket.close(code=4403, reason="Permission denied")
+                    break
+                client.user = refreshed_user
+                last_auth_check = loop.time()
             if not isinstance(command, dict) or command.get("type") != "subscribe":
                 await websocket.close(code=4400, reason="Unsupported command")
                 break

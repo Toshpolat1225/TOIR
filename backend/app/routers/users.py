@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import require_role
+from app.core.permissions import require_permission
 from app.models.identity import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.users import PasswordReset, UserCreate, UserRead, UserUpdate
@@ -18,7 +18,7 @@ from app.services.users import (
 
 router = APIRouter(prefix="/users", tags=["users"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
-AdminUser = Annotated[User, Depends(require_role("admin"))]
+AdminUser = Annotated[User, Depends(require_permission("users.manage_users"))]
 
 
 @router.get("", response_model=PaginatedResponse[UserRead])

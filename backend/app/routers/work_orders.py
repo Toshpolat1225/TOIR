@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user, require_role
+from app.core.permissions import require_permission
 from app.models.identity import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.work_orders import (
@@ -22,14 +22,10 @@ from app.services import ml as ml_service
 
 router = APIRouter(prefix="/work-orders", tags=["work orders"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
-AuthenticatedUser = Annotated[User, Depends(get_current_user)]
-WorkOrderCreator = Annotated[
-    User, Depends(require_role("admin", "management", "operator", "master"))
-]
-WorkOrderWriter = Annotated[
-    User, Depends(require_role("admin", "management", "operator", "master"))
-]
-WorkOrderDeleter = Annotated[User, Depends(require_role("admin", "management"))]
+AuthenticatedUser = Annotated[User, Depends(require_permission("work_orders.view"))]
+WorkOrderCreator = Annotated[User, Depends(require_permission("work_orders.create"))]
+WorkOrderWriter = Annotated[User, Depends(require_permission("work_orders.update"))]
+WorkOrderDeleter = Annotated[User, Depends(require_permission("work_orders.delete"))]
 SortOrder = Literal["asc", "desc"]
 
 

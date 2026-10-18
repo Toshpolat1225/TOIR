@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.localization import Locale, get_locale
-from app.core.security import get_current_user, require_role
+from app.core.permissions import require_permission
 from app.models.identity import User
 from app.schemas.localization import (
     Locale as LocaleSchema,
@@ -18,8 +18,8 @@ from app.services import localization as service
 
 router = APIRouter(prefix="/translations", tags=["localization"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
-AuthenticatedUser = Annotated[User, Depends(get_current_user)]
-TranslationAdmin = Annotated[User, Depends(require_role("admin"))]
+AuthenticatedUser = Annotated[User, Depends(require_permission("translations.view"))]
+TranslationAdmin = Annotated[User, Depends(require_permission("translations.manage_reference_data"))]
 
 
 @router.get("/{entity_type}", response_model=TranslationList)

@@ -30,3 +30,4 @@ Server, database, API E2E and browser/theme/locales were not tested.
 Cards use persisted asset type/status/status behavior and current section IDs; asset active/inactive is not represented as an asset field.
 Stats and list share query dimensions; master section scope is forced server-side.
 No migration, server, database, browser, theme, mobile, or interaction test was run.
+2026-10-18 | Codex | Added database-backed granular RBAC, protected admin role, and permission editor | backend/app permission model/service/router, migration 0008, lib/api.ts/auth-context.tsx, dashboard permission UI, e2e_permissions.py, docs | Python AST 88 files passed; tsc exit 0; build exit 0 with 2 React Hook warnings; E2E and migration NOT RUN | Review permission matrix and run migration/E2E only on intended test environment

@@ -7,6 +7,7 @@ import {
   Wrench, ClipboardList, LayoutDashboard, PanelLeftIcon,
   ChevronRight, Package, Landmark, LogOut, Users, FileText, ChevronDown, FolderOpen,
   BarChart3,
+  ShieldCheck,
 } from "@/components/ui/icons"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
@@ -16,17 +17,18 @@ import { ThemeSwitcher } from "@/components/theme-switcher"
 import { useLocale } from "@/lib/i18n"
 
 const ALL_NAV = [
-  { href: "/dashboard",             label: "Дашборд",        icon: LayoutDashboard, roles: ["admin","operator"],         exact: true },
-  { href: "/dashboard/analytics",   label: "Аналитика",      icon: BarChart3,       roles: ["admin","operator"]                    },
-  { href: "/dashboard/os",          label: "Осн. средства",  icon: Landmark,        roles: ["admin","operator"]                    },
-  { href: "/dashboard/maintenance", label: "ТО и ремонты",   icon: Wrench,          roles: ["admin","operator"]                    },
-  { href: "/dashboard/work-orders", label: "Наряд-заказы",   icon: ClipboardList,   roles: ["admin","operator","master"]            },
-  { href: "/dashboard/tmc",         label: "ТМЦ",            icon: Package,         roles: ["admin","operator"]                    },
-  { href: "/dashboard/reports",     label: "Отчёты",        icon: FileText,       roles: ["admin","operator"]                    },
-  { href: "/dashboard/directories", label: "Справочники",    icon: FolderOpen,      roles: ["admin","operator"]                    },
-  { href: "/dashboard/admin/users",    label: "Пользователи", icon: Users,      roles: ["admin"] },
-  { href: "/dashboard/admin/translations", label: "Переводы", icon: Package, roles: ["admin"] },
-  { href: "/dashboard/admin/asset-catalogs", label: "Справочники ОС", icon: Package, roles: ["admin"] },
+  { href: "/dashboard",             label: "Дашборд",        icon: LayoutDashboard, permission: "dashboard.view",         exact: true },
+  { href: "/dashboard/analytics",   label: "Аналитика",      icon: BarChart3,       permission: "analytics.view"                    },
+  { href: "/dashboard/os",          label: "Осн. средства",  icon: Landmark,        permission: "assets.view"                    },
+  { href: "/dashboard/maintenance", label: "ТО и ремонты",   icon: Wrench,          permission: "maintenance.view"                    },
+  { href: "/dashboard/work-orders", label: "Наряд-заказы",   icon: ClipboardList,   permission: "work_orders.view"            },
+  { href: "/dashboard/tmc",         label: "ТМЦ",            icon: Package,         permission: "tmc.view"                    },
+  { href: "/dashboard/reports",     label: "Отчёты",        icon: FileText,       permission: "reports.view"                    },
+  { href: "/dashboard/directories", label: "Справочники",    icon: FolderOpen,      permission: "organization.view"                    },
+  { href: "/dashboard/admin/users",    label: "Пользователи", icon: Users,      permission: "users.manage_users" },
+  { href: "/dashboard/admin/permissions", label: "Права доступа", icon: ShieldCheck, permission: "permissions.manage_permissions" },
+  { href: "/dashboard/admin/translations", label: "Переводы", icon: Package, permission: "translations.manage_reference_data" },
+  { href: "/dashboard/admin/asset-catalogs", label: "Справочники ОС", icon: Package, permission: "asset_catalogs.manage_reference_data" },
 ]
 
 const ROLE_BADGE: Record<string, { label: string; cls: string }> = {
@@ -140,7 +142,7 @@ function UserBlockWithSection({
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router   = useRouter()
-  const { user, profile, loading, signOut } = useAuth()
+  const { user, profile, loading, signOut, hasPermission } = useAuth()
   const { t } = useLocale()
   const { sections, sectionsData, loading: sectionsLoading } = useSections()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
@@ -161,7 +163,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   const role     = profile?.role ?? "master"
-  const navItems = ALL_NAV.filter(n => n.roles.includes(role))
+  const navItems = ALL_NAV.filter(n => hasPermission(n.permission))
   const badge    = ROLE_BADGE[role]
   const isAdmin  = role === "admin"
   const sectionName = sectionsData.find((section) => section.id === profile?.section_id)?.localized_name

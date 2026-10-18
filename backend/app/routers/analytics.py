@@ -2,19 +2,19 @@ from datetime import date
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.localization import Locale, get_locale
-from app.core.security import get_current_user
+from app.core.permissions import require_permission, user_has_permission
 from app.models.identity import User
 from app.schemas.common import PaginatedResponse
 from app.services import analytics as service
 
 router = APIRouter(tags=["analytics"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
-AuthenticatedUser = Annotated[User, Depends(get_current_user)]
+AuthenticatedUser = Annotated[User, Depends(require_permission("analytics.view"))]
 AnalyticsBlock = Literal[
     "executive-summary",
     "section-efficiency",
@@ -114,6 +114,8 @@ def _report_route(report: ReportName):
         offset: int = Query(default=0, ge=0),
         format: Literal["json", "csv"] = "json",
     ):
+        if format == "csv" and not await user_has_permission(db, user, "reports.export"):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
         return await _report_response(
             report,
             user=user,
@@ -131,6 +133,7 @@ def _report_route(report: ReportName):
         )
 
     endpoint.__name__ = f"get_{report}_report"
+    endpoint.__annotations__["user"] = Annotated[User, Depends(require_permission("reports.view"))]
     return endpoint
 
 
