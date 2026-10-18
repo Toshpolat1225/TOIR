@@ -327,3 +327,18 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 
 - Await approval of the proposed additive `sections` tree plan: preserve every existing ID and FK, set all existing `parent_id` values to NULL (no guessed relationships), keep `departments` as the separate TMC/norm dimension, add translated names/category/activity/order, recursive cycle-safe moves, and archive instead of delete. Then implement the endpoint/UI and descendant filters, with master scope remaining the exact assigned unit pending an explicit business change.
 - Migration dry-run, live ID mapping, rollback feasibility after new hierarchy data is entered, E2E, and UI behavior remain NOT TESTED.
+
+## Наряд-заказ detail va filtrlar (2026-10-18)
+
+### Verified
+
+- Work-order list API filtrlari mavjud `date_start`, executor, work type va nested work-order item nomi/kodi bo‘yicha kengaytirildi. Sana, asset, uchastka, status, mas’ul, ish turi va material filtrlari birga yuboriladi; master section scope queryda saqlanadi.
+- TMC document list API `work_order_id` filtri oldi. Master uchun service avval наряд-заказni o‘z uchastkasi bo‘yicha tekshiradi va begona/yo‘q orderda 404 qaytaradi.
+- Detail modal umumiy ma’lumot va ОС holati, ishlar/reja materiallari, bog‘langan TMC hujjatlari uchun alohida tablar ko‘rsatadi. TMC miqdori “hujjat miqdori” deb belgilanadi; alohida vazifa, material qaytarish va audit trail modeli topilmadi.
+- `backend/scripts/e2e_workorders.py` yangi list filterlar, detail relations, bo‘sh TMC ro‘yxati, locale ID barqarorligi va master TMC scope holatlarini tekshirish uchun yangilandi. E2E skript ishga tushirilmadi.
+- Python AST sintaksis tekshiruvi 7 backend/script faylida o‘tdi. `npx.cmd tsc --noEmit` exit 0. `npm.cmd run build` exit 0; build’da 2 React Hook ogohlantirishi chiqdi. Build oldidan `node.exe` process topilmadi.
+- Schema yoki migration o‘zgarmadi. Server, API, DB, E2E va browser tekshiruvlari bajarilmadi.
+
+### Next task
+
+- `backend/scripts/e2e_workorders.py` ni mo‘ljallangan test API’da ishga tushirish. So‘ng detail tablari va filtrlashni browser’da tekshirish, TMC document CRUD mavjud bo‘lmaganligi sabab haqiqiy bog‘langan ombor hujjati bilan UI oqimini alohida tekshirish.

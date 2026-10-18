@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle, Calendar, Plus, Search, Wrench } from "@/components/ui/icons";
-import type { Employee, FixedAsset, Section, WorkOrder } from "@/lib/api";
+import type { Employee, FixedAsset, Section, WorkOrder, WorkType } from "@/lib/api";
 import type { WorkOrderTab } from "./types";
 
 type Props = {
@@ -12,14 +12,26 @@ type Props = {
   query: string;
   sectionId: string;
   assetId: string;
+  executorId: string;
+  workTypeId: string;
+  dateFrom: string;
+  dateTo: string;
+  materialQuery: string;
   sections: Section[];
   assets: FixedAsset[];
   employees: Employee[];
+  workTypes: WorkType[];
   canCreate: boolean;
   onTabChange: (tab: WorkOrderTab) => void;
   onQueryChange: (value: string) => void;
   onSectionChange: (value: string) => void;
   onAssetChange: (value: string) => void;
+  onExecutorChange: (value: string) => void;
+  onWorkTypeChange: (value: string) => void;
+  onDateFromChange: (value: string) => void;
+  onDateToChange: (value: string) => void;
+  onMaterialQueryChange: (value: string) => void;
+  onClearFilters: () => void;
   onCreate: () => void;
   onSelect: (order: WorkOrder) => void;
   onPageChange: (offset: number) => void;
@@ -32,6 +44,7 @@ const tabs: Array<{ value: WorkOrderTab; label: string }> = [
   { value: "pending", label: "Запланировано" },
   { value: "in_progress", label: "Выполняется" },
   { value: "completed", label: "Выполнено" },
+  { value: "cancelled", label: "Отменено" },
 ];
 
 const statusNames: Record<WorkOrder["status"], string> = {
@@ -62,14 +75,26 @@ export function WorkOrderList({
   query,
   sectionId,
   assetId,
+  executorId,
+  workTypeId,
+  dateFrom,
+  dateTo,
+  materialQuery,
   sections,
   assets,
   employees,
+  workTypes,
   canCreate,
   onTabChange,
   onQueryChange,
   onSectionChange,
   onAssetChange,
+  onExecutorChange,
+  onWorkTypeChange,
+  onDateFromChange,
+  onDateToChange,
+  onMaterialQueryChange,
+  onClearFilters,
   onCreate,
   onSelect,
   onPageChange,
@@ -127,6 +152,25 @@ export function WorkOrderList({
           <option value="">Все ОС</option>
           {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.name} · {asset.inv_number}</option>)}
         </select>
+        <select aria-label="Исполнитель" value={executorId} onChange={(event) => onExecutorChange(event.target.value)} className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800">
+          <option value="">Все исполнители</option>
+          {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name}</option>)}
+        </select>
+        <select aria-label="Вид работ" value={workTypeId} onChange={(event) => onWorkTypeChange(event.target.value)} className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800">
+          <option value="">Все виды работ</option>
+          {workTypes.map((workType) => <option key={workType.id} value={workType.id}>{workType.localized_name ?? workType.name}</option>)}
+        </select>
+        <label className="text-xs text-gray-500">Начало работ с
+          <input aria-label="Начало работ с даты" type="datetime-local" value={dateFrom} onChange={(event) => onDateFromChange(event.target.value)} className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+        </label>
+        <label className="text-xs text-gray-500">Начало работ по
+          <input aria-label="Начало работ по дату" type="datetime-local" value={dateTo} onChange={(event) => onDateToChange(event.target.value)} className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+        </label>
+        <label className="relative sm:col-span-2">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input value={materialQuery} onChange={(event) => onMaterialQueryChange(event.target.value)} placeholder="Поиск по материалу или коду" className="w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm dark:border-gray-700 dark:bg-gray-800" />
+        </label>
+        {[query, sectionId, assetId, executorId, workTypeId, dateFrom, dateTo, materialQuery].some(Boolean) && <button onClick={onClearFilters} className="rounded-md border px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">Сбросить фильтры</button>}
       </div>
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
         {loading ? (

@@ -20,7 +20,7 @@ export type RepairDraft = {
   rows: TmcDraft[];
 };
 
-export type WorkOrderTab = "open" | "pending" | "in_progress" | "completed";
+export type WorkOrderTab = "open" | "pending" | "in_progress" | "completed" | "cancelled";
 
 export type WorkOrderListFilters = {
   tab: WorkOrderTab;

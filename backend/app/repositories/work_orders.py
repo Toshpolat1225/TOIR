@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assets import FixedAsset
@@ -66,6 +66,9 @@ async def list_orders(
     section_id: UUID | None,
     department_id: UUID | None,
     fixed_asset_id: UUID | None,
+    executor_id: UUID | None,
+    work_type_id: UUID | None,
+    material_q: str | None,
     date_from: datetime | None,
     date_to: datetime | None,
     q: str | None,
@@ -86,6 +89,17 @@ async def list_orders(
         filters.append(WorkOrder.department_id == department_id)
     if fixed_asset_id is not None:
         filters.append(WorkOrder.fixed_asset_id == fixed_asset_id)
+    if executor_id is not None:
+        filters.append(WorkOrder.executor_id == executor_id)
+    if work_type_id is not None:
+        filters.append(
+            exists(
+                select(WorkOrderRepair.id).where(
+                    WorkOrderRepair.work_order_id == WorkOrder.id,
+                    WorkOrderRepair.work_type_id == work_type_id,
+                )
+            )
+        )
     if date_from is not None:
         filters.append(WorkOrder.date_start >= date_from)
     if date_to is not None:
@@ -99,6 +113,21 @@ async def list_orders(
                 WorkOrder.number.ilike(term),
                 WorkOrder.description.ilike(term),
                 FixedAsset.name.ilike(term),
+            )
+        )
+    if material_q and material_q.strip():
+        material_term = f"%{material_q.strip()}%"
+        filters.append(
+            exists(
+                select(WorkOrderItem.id)
+                .join(WorkOrderRepair, WorkOrderRepair.id == WorkOrderItem.repair_id)
+                .where(
+                    WorkOrderRepair.work_order_id == WorkOrder.id,
+                    or_(
+                        WorkOrderItem.name.ilike(material_term),
+                        WorkOrderItem.inv_no.ilike(material_term),
+                    ),
+                )
             )
         )
 

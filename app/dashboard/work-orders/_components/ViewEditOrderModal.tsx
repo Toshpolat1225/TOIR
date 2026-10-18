@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertCircle, CheckCircle, Clock, Pencil, X } from "@/components/ui/icons";
 import {
   api,
@@ -11,6 +11,7 @@ import {
   type Section,
   type WorkOrder,
   type WorkOrderRepairInput,
+  type TmcDocument,
   type WorkType,
 } from "@/lib/api";
 import type { RepairDraft, TmcDraft } from "./types";
@@ -35,6 +36,18 @@ const statusLabel: Record<WorkOrder["status"], string> = {
   completed: "Выполнено",
   cancelled: "Отменено",
 };
+
+const documentStatusLabel: Record<TmcDocument["status"], string> = {
+  draft: "Черновик",
+  issued: "Выдан",
+  closed: "Закрыт",
+};
+
+function displayDateTime(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("ru-RU");
+}
 
 function localDateTime(value: string | null): string {
   if (!value) return "";
@@ -100,11 +113,42 @@ export function ViewEditOrderModal({
   const [dateEnd, setDateEnd] = useState(localDateTime(order.date_end));
   const [repairs, setRepairs] = useState(() => toRepairDrafts(order));
   const [repairsOpen, setRepairsOpen] = useState(false);
+  const [detailTab, setDetailTab] = useState<"overview" | "work" | "warehouse">("overview");
+  const [tmcDocuments, setTmcDocuments] = useState<TmcDocument[]>([]);
+  const [tmcLoading, setTmcLoading] = useState(false);
+  const [tmcError, setTmcError] = useState<string | null>(null);
+  const [currentAsset, setCurrentAsset] = useState<FixedAsset | null>(
+    () => assets.find((item) => item.id === order.fixed_asset_id) ?? null
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const readOnly =
     !canEdit || order.status === "completed" || order.status === "cancelled";
   const canTransition = !readOnly;
+  const asset = currentAsset;
+  const chiefName = employees.find((employee) => employee.id === order.chief_id)?.full_name;
+
+  useEffect(() => {
+    if (detailTab !== "warehouse") return;
+    let current = true;
+    setTmcLoading(true);
+    setTmcError(null);
+    api.tmcDocuments.list({ work_order_id: order.id, limit: 1000, offset: 0 })
+      .then((result) => { if (current) setTmcDocuments(result.items); })
+      .catch((cause) => { if (current) setTmcError(cause instanceof Error ? cause.message : "Не удалось загрузить складские документы"); })
+      .finally(() => { if (current) setTmcLoading(false); });
+    return () => { current = false; };
+  }, [detailTab, order.id]);
+
+  useEffect(() => {
+    let current = true;
+    const fallback = assets.find((item) => item.id === order.fixed_asset_id) ?? null;
+    setCurrentAsset(fallback);
+    api.fixedAssets.get(order.fixed_asset_id)
+      .then((result) => { if (current) setCurrentAsset(result); })
+      .catch(() => { if (current) setCurrentAsset(fallback); });
+    return () => { current = false; };
+  }, [assets, order.fixed_asset_id]);
 
   async function update(patch: Parameters<typeof api.workOrders.update>[1]) {
     setSaving(true);
@@ -187,6 +231,22 @@ export function ViewEditOrderModal({
           </header>
           <div className="overflow-auto p-4">
             {error && <p role="alert" className="mb-3 rounded bg-red-50 p-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{error}</p>}
+            <div role="tablist" aria-label="Разделы наряда" className="mb-4 flex gap-1 overflow-x-auto border-b dark:border-gray-700">
+              {([ ["overview", "Обзор"], ["work", "Работы и материалы"], ["warehouse", "Складские документы"] ] as const).map(([value, label]) => (
+                <button key={value} type="button" role="tab" aria-selected={detailTab === value} onClick={() => setDetailTab(value)} className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${detailTab === value ? "border-blue-600 text-blue-700 dark:text-blue-300" : "border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white"}`}>{label}</button>
+              ))}
+            </div>
+            {detailTab === "overview" && <>
+            <section className="mb-4 grid gap-3 rounded-lg border bg-gray-50 p-3 text-sm dark:border-gray-700 dark:bg-gray-800/60 sm:grid-cols-2 lg:grid-cols-3">
+              <p><span className="text-gray-500">Создан:</span> <span className="font-medium text-gray-900 dark:text-white">{displayDateTime(order.created_at)}</span></p>
+              <p><span className="text-gray-500">Ответственный:</span> <span className="font-medium text-gray-900 dark:text-white">{order.executor_name ?? "Не назначен"}</span></p>
+              <p><span className="text-gray-500">Начальник:</span> <span className="font-medium text-gray-900 dark:text-white">{chiefName ?? "Не указан"}</span></p>
+              <p><span className="text-gray-500">Приоритет:</span> <span className="font-medium text-gray-900 dark:text-white">{order.priority}</span></p>
+              <p><span className="text-gray-500">Пробег при открытии:</span> <span className="font-medium text-gray-900 dark:text-white">{order.mileage_at_creation == null ? "—" : `${order.mileage_at_creation} км`}</span></p>
+              {asset && <p><span className="text-gray-500">Текущее состояние ОС:</span> <span className="font-medium text-gray-900 dark:text-white">{asset.asset_status_label ?? asset.status}</span></p>}
+              {asset && <p><span className="text-gray-500">Тип ОС:</span> <span className="font-medium text-gray-900 dark:text-white">{asset.asset_type_label ?? asset.asset_type}</span></p>}
+              {asset && <p><span className="text-gray-500">Текущий пробег:</span> <span className="font-medium text-gray-900 dark:text-white">{asset.mileage == null ? "—" : `${asset.mileage} км`}</span></p>}
+            </section>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="text-sm font-medium sm:col-span-2">Основное средство
                 <select disabled={readOnly} className="mt-1 w-full rounded-md border bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800" value={assetId} onChange={(event) => {
@@ -258,6 +318,37 @@ export function ViewEditOrderModal({
                 ))}
               </ul>
             </div>
+            </>}
+            {detailTab === "work" && (
+              <section aria-label="Работы и плановые материалы" className="space-y-4">
+                <div className="rounded-lg border p-4 dark:border-gray-700">
+                  <h3 className="font-semibold text-gray-900 dark:text-white">Работы по наряду</h3>
+                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{order.description}</p>
+                  <p className="mt-2 text-xs text-gray-500">Отдельные подзадачи, исполнители задач и факт выполнения в модели наряда не хранятся.</p>
+                </div>
+                {order.repairs.length === 0 ? <p className="rounded-lg border border-dashed p-8 text-center text-sm text-gray-500 dark:border-gray-700">В наряде нет видов работ.</p> : order.repairs.map((repair) => (
+                  <section key={repair.id} className="overflow-hidden rounded-lg border dark:border-gray-700">
+                    <header className="flex flex-wrap items-center justify-between gap-2 bg-gray-50 p-3 dark:bg-gray-800">
+                      <h4 className="font-medium text-gray-900 dark:text-white">{repair.work_type_code} · {repair.localized_work_type_name ?? repair.work_type_name}</h4>
+                      <span className="text-xs text-gray-500">Позиции: {repair.items.length}</span>
+                    </header>
+                    {repair.items.length === 0 ? <p className="p-4 text-sm text-gray-500">Материалы не указаны.</p> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-xs text-gray-500"><tr><th className="p-3">Материал</th><th className="p-3">Код</th><th className="p-3">Ед.</th><th className="p-3">Плановое количество</th></tr></thead><tbody className="divide-y dark:divide-gray-700">{repair.items.map((item) => <tr key={item.id}><td className="p-3 text-gray-900 dark:text-white">{item.localized_nomenclature_name ?? item.name}{item.note && <p className="text-xs text-gray-500">{item.note}</p>}</td><td className="p-3">{item.inv_no ?? "—"}</td><td className="p-3">{item.unit ?? "—"}</td><td className="p-3">{item.qty}</td></tr>)}</tbody></table></div>}
+                  </section>
+                ))}
+              </section>
+            )}
+            {detailTab === "warehouse" && (
+              <section aria-label="Складские документы" className="space-y-3">
+                <p className="text-sm text-gray-500">Количество и суммы ниже взяты из связанных документов. Они не обозначают автоматически фактический расход или возврат.</p>
+                {tmcLoading ? <p className="p-8 text-center text-sm text-gray-500">Загрузка складских документов…</p> : tmcError ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">{tmcError}</p> : tmcDocuments.length === 0 ? <p className="rounded-lg border border-dashed p-8 text-center text-sm text-gray-500 dark:border-gray-700">Связанных складских документов нет.</p> : tmcDocuments.map((document) => (
+                  <article key={document.id} className="overflow-hidden rounded-lg border dark:border-gray-700">
+                    <header className="flex flex-wrap justify-between gap-2 bg-gray-50 p-3 dark:bg-gray-800"><div><h3 className="font-medium text-gray-900 dark:text-white">{document.doc_no}</h3><p className="text-xs text-gray-500">{new Date(`${document.doc_date}T00:00:00`).toLocaleDateString("ru-RU")} · {document.warehouse ?? "Склад не указан"}</p></div><span className="rounded-full bg-blue-50 px-2 py-1 text-xs text-blue-700 dark:bg-blue-950 dark:text-blue-300">{documentStatusLabel[document.status]}</span></header>
+                    <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-xs text-gray-500"><tr><th className="p-3">Материал</th><th className="p-3">Код</th><th className="p-3">Ед.</th><th className="p-3">Количество по документу</th><th className="p-3">Цена</th><th className="p-3">Сумма</th></tr></thead><tbody className="divide-y dark:divide-gray-700">{(document.items ?? []).map((item) => { const price = item.price == null ? null : Number(item.price); const qty = Number(item.qty); return <tr key={item.id}><td className="p-3 text-gray-900 dark:text-white">{item.localized_nomenclature_name ?? item.name}</td><td className="p-3">{item.inv_no ?? "—"}</td><td className="p-3">{item.unit ?? "—"}</td><td className="p-3">{item.qty}</td><td className="p-3">{price == null ? "—" : `${price.toLocaleString("ru-RU")} UZS`}</td><td className="p-3">{price == null ? "—" : `${(price * qty).toLocaleString("ru-RU")} UZS`}</td></tr>; })}</tbody></table></div>
+                    <p className="px-3 pb-3 text-xs text-gray-500">Выдал: {document.issued_by ?? "—"} · Получил: {document.accepted_by ?? "—"}</p>
+                  </article>
+                ))}
+              </section>
+            )}
           </div>
           <footer className="flex flex-wrap items-center justify-between gap-2 border-t p-4 dark:border-gray-700">
             <div className="flex flex-wrap gap-2">

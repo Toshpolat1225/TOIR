@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.identity import User
 from app.repositories import tmc_documents as repository
+from app.repositories import work_orders as work_orders_repository
 
 
 def _master_section(user: User) -> UUID | None:
@@ -25,14 +26,23 @@ async def list_documents(
     *,
     department_id: UUID | None,
     status_filter: str | None,
+    work_order_id: UUID | None,
     limit: int,
     offset: int,
 ) -> tuple[list[dict[str, Any]], int]:
+    master_section_id = _master_section(user)
+    if work_order_id is not None and master_section_id is not None:
+        work_order = await work_orders_repository.get_order(
+            db, work_order_id, master_section_id=master_section_id
+        )
+        if work_order is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Work order not found")
     return await repository.list_documents(
         db,
-        section_id=_master_section(user),
+        section_id=master_section_id,
         department_id=department_id,
         status_filter=status_filter,
+        work_order_id=work_order_id,
         limit=limit,
         offset=offset,
     )

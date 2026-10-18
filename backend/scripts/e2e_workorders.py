@@ -471,6 +471,37 @@ def main() -> int:
             ),
             200,
         )
+        filter_combinations = request(
+            "GET",
+            f"/api/v1/work-orders?{urlencode({'section_id': own_section_id, 'fixed_asset_id': asset_id, 'executor_id': employee_id, 'work_type_id': work_type_id, 'material_q': f'INV-{suffix[:8]}', 'date_from': '2000-01-01T00:00:00Z', 'date_to': '2100-01-01T00:00:00Z'})}",
+            bearer=operator_token,
+        )
+        combination_items = (
+            parse_object(filter_combinations).get("items", [])
+            if filter_combinations.status == 200
+            else []
+        )
+        check_condition(
+            checks,
+            "Combined section, asset, executor, work type, material, and date filters",
+            filter_combinations.status == 200
+            and any(item.get("id") == primary_id for item in combination_items),
+            "Primary fixture matches all supplied filters"
+            if any(item.get("id") == primary_id for item in combination_items)
+            else f"HTTP {filter_combinations.status}; fixture did not match",
+        )
+        tmc_for_primary = request(
+            "GET",
+            f"/api/v1/tmc-documents?{urlencode({'work_order_id': primary_id})}",
+            bearer=operator_token,
+        )
+        check_status(checks, "List TMC documents linked to a work order", tmc_for_primary, 200)
+        check_condition(
+            checks,
+            "New fixture has an explicit empty linked-document state",
+            parse_object(tmc_for_primary).get("total") == 0,
+            "No linked TMC documents returned for the new fixture",
+        )
         check_status(
             checks,
             "List by multiple statuses and date range",
@@ -485,6 +516,47 @@ def main() -> int:
             "GET", f"/api/v1/work-orders/{primary_id}", bearer=operator_token
         )
         check_status(checks, "Get work order", get_primary, 200)
+        no_token_detail = request("GET", f"/api/v1/work-orders/{primary_id}")
+        check_status(checks, "Work-order detail requires authentication", no_token_detail, 401)
+        detail_data = parse_object(get_primary) if get_primary.status == 200 else {}
+        detail_repairs = detail_data.get("repairs", [])
+        detail_nested_ok = (
+            detail_data.get("id") == primary_id
+            and detail_data.get("fixed_asset_id") == asset_id
+            and str(detail_data.get("mileage_at_creation")) == "1234.50"
+            and isinstance(detail_repairs, list)
+            and len(detail_repairs) == 1
+            and detail_repairs[0].get("work_type_id") == work_type_id
+            and len(detail_repairs[0].get("items", [])) == 1
+        )
+        check_condition(
+            checks,
+            "Detail preserves asset snapshot, repair, and material relations",
+            detail_nested_ok,
+            "Detail fields retain their expected foreign-key relations"
+            if detail_nested_ok
+            else "A detail relation or opening-mileage snapshot is missing",
+        )
+        locale_details = [
+            request(
+                "GET",
+                f"/api/v1/work-orders/{primary_id}",
+                bearer=operator_token,
+                headers={"Accept-Language": locale},
+            )
+            for locale in ("uz-Latn", "uz-Cyrl", "ru")
+        ]
+        locale_ids = [
+            parse_object(response).get("id")
+            for response in locale_details
+            if response.status == 200
+        ]
+        check_condition(
+            checks,
+            "Work-order identity is stable across supported locales",
+            len(locale_ids) == 3 and all(value == primary_id for value in locale_ids),
+            "All locale responses preserve the same work-order id",
+        )
         check_status(
             checks,
             "Patch work-order note",
@@ -742,6 +814,17 @@ def main() -> int:
                 "No matching foreign work order returned"
                 if hidden_from_query
                 else f"HTTP {query_response.status}; foreign work order was visible",
+            )
+            linked_tmc = request(
+                "GET",
+                f"/api/v1/tmc-documents?{urlencode({'work_order_id': foreign_id})}",
+                bearer=master_token,
+            )
+            check_status(
+                checks,
+                f"Master receives 404 for foreign {label} work-order materials",
+                linked_tmc,
+                404,
             )
         check_status(
             checks,

@@ -731,6 +731,9 @@ export type WorkOrderListParams = ListParams & {
   section_id?: string;
   department_id?: string;
   fixed_asset_id?: string;
+  executor_id?: string;
+  work_type_id?: string;
+  material_q?: string;
   date_from?: string;
   date_to?: string;
   q?: string;
@@ -1158,7 +1161,7 @@ type TmcItem = {
   sort_order: number;
 };
 
-type TmcDocument = {
+export type TmcDocument = {
   id: string;
   doc_no: string;
   doc_date: string;
@@ -1182,6 +1185,7 @@ type TmcDocument = {
 type TmcDocumentListParams = ListParams & {
   status?: "draft" | "issued" | "closed";
   department_id?: string;
+  work_order_id?: string;
 };
 
 const tmcDocuments = {

@@ -17,11 +17,12 @@ async def list_documents(
     section_id: UUID | None,
     department_id: UUID | None,
     status_filter: str | None,
+    work_order_id: UUID | None,
     limit: int,
     offset: int,
 ) -> tuple[list[dict[str, Any]], int]:
     filters = []
-    if section_id is not None:
+    if section_id is not None and work_order_id is None:
         filters.append(TmcDocument.section_id == section_id)
     if department_id is not None:
         filters.append(
@@ -31,12 +32,15 @@ async def list_documents(
         )
     if status_filter is not None:
         filters.append(TmcDocument.status == status_filter)
+    if work_order_id is not None:
+        filters.append(TmcDocument.work_order_id == work_order_id)
+        if section_id is not None:
+            filters.append(WorkOrder.section_id == section_id)
 
-    total = (
-        await db.execute(
-            select(func.count()).select_from(TmcDocument).where(*filters)
-        )
-    ).scalar_one()
+    count_query = select(func.count()).select_from(TmcDocument)
+    if work_order_id is not None and section_id is not None:
+        count_query = count_query.join(WorkOrder, WorkOrder.id == TmcDocument.work_order_id)
+    total = (await db.execute(count_query.where(*filters))).scalar_one()
     rows = (
         await db.execute(
             select(

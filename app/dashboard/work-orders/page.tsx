@@ -42,6 +42,11 @@ function WorkOrdersPage() {
   const [query, setQuery] = useState("");
   const [sectionId, setSectionId] = useState("");
   const [assetId, setAssetId] = useState("");
+  const [executorId, setExecutorId] = useState("");
+  const [workTypeId, setWorkTypeId] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [materialQuery, setMaterialQuery] = useState("");
   const [offset, setOffset] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const [showCreate, setShowCreate] = useState(false);
@@ -106,6 +111,11 @@ function WorkOrdersPage() {
           : { status: tab }),
         ...(sectionId ? { section_id: sectionId } : {}),
         ...(assetId ? { fixed_asset_id: assetId } : {}),
+        ...(executorId ? { executor_id: executorId } : {}),
+        ...(workTypeId ? { work_type_id: workTypeId } : {}),
+        ...(materialQuery.trim() ? { material_q: materialQuery.trim() } : {}),
+        ...(dateFrom ? { date_from: new Date(dateFrom).toISOString() } : {}),
+        ...(dateTo ? { date_to: new Date(dateTo).toISOString() } : {}),
         ...(deferredQuery ? { q: deferredQuery } : {}),
       };
       const result = await api.workOrders.list(params);
@@ -119,7 +129,7 @@ function WorkOrdersPage() {
     } finally {
       setOrdersLoading(false);
     }
-  }, [assetId, deferredQuery, offset, refreshKey, sectionId, tab]);
+  }, [assetId, dateFrom, dateTo, deferredQuery, executorId, materialQuery, offset, refreshKey, sectionId, tab, workTypeId]);
 
   useEffect(() => {
     void loadReferenceData();
@@ -192,14 +202,29 @@ function WorkOrdersPage() {
           query={query}
           sectionId={sectionId}
           assetId={assetId}
+          executorId={executorId}
+          workTypeId={workTypeId}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          materialQuery={materialQuery}
           sections={sections}
           assets={assets}
           employees={employees}
+          workTypes={workTypes}
           canCreate={canCreate}
           onTabChange={(value) => resetOffsetAnd(setTab, value)}
           onQueryChange={(value) => resetOffsetAnd(setQuery, value)}
           onSectionChange={(value) => resetOffsetAnd(setSectionId, value)}
           onAssetChange={(value) => resetOffsetAnd(setAssetId, value)}
+          onExecutorChange={(value) => resetOffsetAnd(setExecutorId, value)}
+          onWorkTypeChange={(value) => resetOffsetAnd(setWorkTypeId, value)}
+          onDateFromChange={(value) => resetOffsetAnd(setDateFrom, value)}
+          onDateToChange={(value) => resetOffsetAnd(setDateTo, value)}
+          onMaterialQueryChange={(value) => resetOffsetAnd(setMaterialQuery, value)}
+          onClearFilters={() => {
+            setOffset(0); setQuery(""); setSectionId(""); setAssetId(""); setExecutorId("");
+            setWorkTypeId(""); setDateFrom(""); setDateTo(""); setMaterialQuery("");
+          }}
           onCreate={() => {
             setInitialAssetId("");
             setInitialUnit("");

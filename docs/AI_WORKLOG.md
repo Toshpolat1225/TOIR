@@ -22,6 +22,10 @@ Next: inspect/run the new API E2E and migration only against the intended test e
 Existing section IDs feed users, employees, assets, work orders, TMC documents, maintenance logs, translations and readiness snapshots; live values were not inspected.
 Proposed mapping preserves each old section ID and leaves existing parent IDs NULL; no parent is inferred from the static seed pairs.
 Next: after approval, implement migration dry-run/mapping and backend hierarchy rules before updating consumers.
+2026-10-18 | Codex | Organized work-order detail, added server-side filters and scoped TMC document lookup | work-orders/TMC backend layers, lib/api.ts, work-orders UI, e2e_workorders.py, docs | Python AST (7 files), tsc, build passed; build has 2 Hook warnings; E2E NOT TESTED | Run E2E on intended test API and verify detail flow in browser
+Detail shows existing repair rows and planned quantities separately from linked warehouse-document quantities and prices.
+No dedicated tasks, returned quantities, work-order audit trail, or TMC write API were present; no migration was added.
+Server, database, API E2E and browser/theme/locales were not tested.
 2026-10-18 | Codex | Added OS dashboard facet counts and interactive filters | backend assets layers, lib/api.ts, app/dashboard/os/page.tsx, backend/scripts/e2e_asset_dashboard.py, docs | Python AST (5 files) passed; tsc passed; build passed with 2 existing work-orders Hook warnings; API E2E not run | Run E2E against test API and review browser themes/mobile
 Cards use persisted asset type/status/status behavior and current section IDs; asset active/inactive is not represented as an asset field.
 Stats and list share query dimensions; master section scope is forced server-side.

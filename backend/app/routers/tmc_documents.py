@@ -23,6 +23,7 @@ async def get_tmc_documents(
     db: DatabaseSession,
     status_filter: Annotated[DocumentStatus | None, Query(alias="status")] = None,
     department_id: UUID | None = None,
+    work_order_id: UUID | None = None,
     limit: int = Query(default=50, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
 ) -> PaginatedResponse[TmcDocumentRead]:
@@ -31,6 +32,7 @@ async def get_tmc_documents(
         user,
         department_id=department_id,
         status_filter=status_filter,
+        work_order_id=work_order_id,
         limit=limit,
         offset=offset,
     )
