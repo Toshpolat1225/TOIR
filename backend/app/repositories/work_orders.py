@@ -1,12 +1,13 @@
 from collections import defaultdict
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Select, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.assets import FixedAsset
+from app.models.assets import FixedAsset, MileageHistory
 from app.models.identity import User
 from app.models.inventory import Nomenclature, NomenclatureNorm, WorkTypeTemplate
 from app.models.maintenance import WorkType
@@ -23,6 +24,19 @@ async def get_asset(db: AsyncSession, asset_id: UUID, *, lock: bool = False) -> 
     if lock:
         statement = statement.with_for_update()
     return (await db.execute(statement)).scalar_one_or_none()
+
+
+async def get_known_asset_mileage(db: AsyncSession, asset: FixedAsset) -> Decimal | None:
+    if asset.mileage != 0:
+        return asset.mileage
+    latest = await db.execute(
+        select(MileageHistory.mileage)
+        .where(MileageHistory.asset_id == asset.id)
+        .order_by(MileageHistory.recorded_at.desc(), MileageHistory.id.desc())
+        .limit(1)
+    )
+    recorded_mileage = latest.scalar_one_or_none()
+    return asset.mileage if recorded_mileage == asset.mileage else None
 
 
 async def get_section(db: AsyncSession, section_id: UUID) -> Section | None:

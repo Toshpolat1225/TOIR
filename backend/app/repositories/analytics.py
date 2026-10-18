@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -29,14 +30,15 @@ ANALYTICS_VIEWS = frozenset(
 REPORT_SQL: dict[str, tuple[str, str, tuple[str, ...]]] = {
     "work-orders": (
         """
-        SELECT number, unit, asset_inv_number, section, section_id, repair_kind AS work_type,
+        SELECT number, unit, asset_inv_number, current_mileage AS mileage_at_creation,
+               section, section_id, repair_kind AS work_type,
                status, priority, created_at, closed, tech, description,
                total_cost, total_norm_cost, cost_savings, avg_deviation_percent
         FROM executive_summary
         """,
         "SELECT count(*) FROM executive_summary",
         (
-            "number", "unit", "asset_inv_number", "section", "work_type", "status",
+            "number", "unit", "asset_inv_number", "mileage_at_creation", "section", "work_type", "status",
             "priority", "created_at", "closed", "tech", "description",
             "total_cost", "total_norm_cost", "cost_savings", "avg_deviation_percent",
         ),
@@ -269,6 +271,9 @@ async def list_report_rows(
     q: str | None,
     limit: int | None,
     offset: int = 0,
+    fixed_asset_id: UUID | None = None,
+    mileage_from: Decimal | None = None,
+    mileage_to: Decimal | None = None,
 ) -> tuple[list[dict[str, Any]], int, tuple[str, ...]]:
     if report not in REPORT_SQL:
         raise ValueError("Unsupported report")
@@ -304,9 +309,18 @@ async def list_report_rows(
     if asset_type is not None and report == "fixed-assets":
         filters.append("fa.asset_type = :asset_type")
         parameters["asset_type"] = asset_type
+    if fixed_asset_id is not None and report == "work-orders":
+        filters.append("asset_id = :fixed_asset_id")
+        parameters["fixed_asset_id"] = fixed_asset_id
+    if mileage_from is not None and report == "work-orders":
+        filters.append("current_mileage >= :mileage_from")
+        parameters["mileage_from"] = mileage_from
+    if mileage_to is not None and report == "work-orders":
+        filters.append("current_mileage <= :mileage_to")
+        parameters["mileage_to"] = mileage_to
     if q is not None and q.strip():
         if report == "work-orders":
-            filters.append("(number ILIKE :q OR unit ILIKE :q OR description ILIKE :q)")
+            filters.append("(number ILIKE :q OR unit ILIKE :q OR asset_inv_number ILIKE :q OR description ILIKE :q)")
         elif report == "fixed-assets":
             filters.append("(fa.name ILIKE :q OR fa.inv_number ILIKE :q OR fa.series ILIKE :q)")
         else:

@@ -52,6 +52,14 @@ function formatDate(d: Date, locale: string) {
   return d.toLocaleDateString(languageTag, { day: "2-digit", month: "2-digit", year: "numeric" })
 }
 
+function formatMileage(value: unknown, locale: string): string {
+  if (value === null || value === undefined || value === "") return "—"
+  const numericValue = Number(value)
+  if (!Number.isFinite(numericValue)) return "—"
+  const languageTag = locale === "uz-Latn" ? "uz-UZ" : locale === "uz-Cyrl" ? "uz-Cyrl-UZ" : "ru-RU"
+  return new Intl.NumberFormat(languageTag, { maximumFractionDigits: 2 }).format(numericValue)
+}
+
 function toIsoDate(value: string): string | undefined {
   const parsed = parseDateStr(value)
   if (!parsed) return undefined
@@ -73,6 +81,10 @@ export default function ReportsPage() {
   const [reportType, setReportType] = useState<ReportId>("work-orders")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+  const [workOrderStatus, setWorkOrderStatus] = useState("")
+  const [assetSearch, setAssetSearch] = useState("")
+  const [mileageFrom, setMileageFrom] = useState("")
+  const [mileageTo, setMileageTo] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [reportTotal, setReportTotal] = useState(0)
@@ -91,6 +103,10 @@ export default function ReportsPage() {
         section_id: sectionId,
         date_from: toIsoDate(dateFrom),
         date_to: toIsoDate(dateTo),
+        status: reportType === "work-orders" ? workOrderStatus || undefined : undefined,
+        q: reportType === "work-orders" ? assetSearch || undefined : undefined,
+        mileage_from: reportType === "work-orders" ? mileageFrom || undefined : undefined,
+        mileage_to: reportType === "work-orders" ? mileageTo || undefined : undefined,
       })
       setReportTotal(response.total)
       if (reportType === "work-orders") setWoData(response.items)
@@ -101,7 +117,7 @@ export default function ReportsPage() {
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, effectiveSection, reportType])
+  }, [assetSearch, dateFrom, dateTo, effectiveSection, mileageFrom, mileageTo, reportType, workOrderStatus])
 
   useEffect(() => {
     void loadReport()
@@ -125,6 +141,10 @@ export default function ReportsPage() {
         section_id: sectionId,
         date_from: toIsoDate(dateFrom),
         date_to: toIsoDate(dateTo),
+        status: report === "work-orders" ? workOrderStatus || undefined : undefined,
+        q: report === "work-orders" ? assetSearch || undefined : undefined,
+        mileage_from: report === "work-orders" ? mileageFrom || undefined : undefined,
+        mileage_to: report === "work-orders" ? mileageTo || undefined : undefined,
       })
       const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
@@ -225,7 +245,7 @@ export default function ReportsPage() {
           {/* Отчёт: Наряд-заказы */}
           {reportType === "work-orders" && (
             <div className="space-y-6">
-              <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
                 <div className="flex flex-wrap items-end gap-4">
                   <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-gray-500"/>
@@ -246,6 +266,14 @@ export default function ReportsPage() {
                     onChange={e => setDateTo(e.target.value)}
                     className="w-32 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800"
                   />
+                  <input type="search" value={assetSearch} onChange={e => setAssetSearch(e.target.value)} placeholder={locale === "uz-Latn" ? "Naryad yoki ОС" : locale === "uz-Cyrl" ? "Наряд ёки ОС" : "Наряд или ОС"} aria-label={locale === "ru" ? "Наряд или основное средство" : locale === "uz-Latn" ? "Naryad yoki asosiy vosita" : "Наряд ёки асосий восита"} className="w-44 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800" />
+                  <select value={workOrderStatus} onChange={e => setWorkOrderStatus(e.target.value)} aria-label={locale === "ru" ? "Статус наряда" : locale === "uz-Latn" ? "Naryad holati" : "Наряд ҳолати"} className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800">
+                    <option value="">{locale === "ru" ? "Все статусы" : locale === "uz-Latn" ? "Barcha holatlar" : "Барча ҳолатлар"}</option>
+                    <option value="pending">{t(WO_STATUS_LABEL.pending)}</option><option value="in_progress">{t(WO_STATUS_LABEL.in_progress)}</option><option value="completed">{t(WO_STATUS_LABEL.completed)}</option>
+                    <option value="cancelled">{locale === "ru" ? "Отменён" : locale === "uz-Latn" ? "Bekor qilingan" : "Бекор қилинган"}</option>
+                  </select>
+                  <input type="number" min="0" max="9999999999.99" step="0.01" value={mileageFrom} onChange={e => setMileageFrom(e.target.value)} placeholder={locale === "ru" ? "Пробег от, км" : locale === "uz-Latn" ? "Probegdan, km" : "Пробегдан, км"} aria-label={locale === "ru" ? "Пробег от, км" : locale === "uz-Latn" ? "Probegdan, km" : "Пробегдан, км"} className="w-32 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800" />
+                  <input type="number" min="0" max="9999999999.99" step="0.01" value={mileageTo} onChange={e => setMileageTo(e.target.value)} placeholder={locale === "ru" ? "Пробег до, км" : locale === "uz-Latn" ? "Probeggacha, km" : "Пробеггача, км"} aria-label={locale === "ru" ? "Пробег до, км" : locale === "uz-Latn" ? "Probeggacha, km" : "Пробеггача, км"} className="w-32 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800" />
                   <button
                     type="button"
                     onClick={setDefaultDates}
@@ -313,22 +341,26 @@ export default function ReportsPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 dark:bg-gray-800/50 sticky top-0">
                       <tr>
-                        <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">№</th>
-                        <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Единица</th>
-                        <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Участок</th>
-                        <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Вид работ</th>
-                        <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Статус</th>
-                        <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Дата создания</th>
-                      </tr>
+  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{locale === "ru" ? "Наряд-заказ" : locale === "uz-Latn" ? "Naryad raqami" : "Наряд рақами"}</th>
+  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{locale === "ru" ? "Основное средство" : locale === "uz-Latn" ? "Asosiy vosita" : "Асосий восита"}</th>
+  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{locale === "ru" ? "Инвентарный номер" : locale === "uz-Latn" ? "Inventar raqami" : "Инвентар рақами"}</th>
+  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{locale === "ru" ? "Пробег при открытии, км" : locale === "uz-Latn" ? "Ochilgan paytdagi probeg, km" : "Очилган вақтдаги пробег, км"}</th>
+  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{locale === "ru" ? "Участок" : locale === "uz-Latn" ? "Uchastka" : "Участка"}</th>
+  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{locale === "ru" ? "Вид работ" : locale === "uz-Latn" ? "Ish turi" : "Иш тури"}</th>
+  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{locale === "ru" ? "Статус" : locale === "uz-Latn" ? "Holat" : "Ҳолат"}</th>
+  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{locale === "ru" ? "Дата открытия" : locale === "uz-Latn" ? "Ochilgan sana" : "Очилган сана"}</th>
+</tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                       {filteredWo.slice(0, 100).map((row, i) => (
                         <tr key={(row.id as string) || i} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
                           <td className="px-4 py-2.5 font-mono text-gray-600 dark:text-gray-300">{(row.number as string) || (row.id as string)}</td>
                           <td className="px-4 py-2.5">{(row.unit as string) || "—"}</td>
+                          <td className="px-4 py-2.5">{(row.asset_inv_number as string) || "—"}</td>
+                          <td className="px-4 py-2.5 whitespace-nowrap">{formatMileage(row.mileage_at_creation, locale)}</td>
                           <td className="px-4 py-2.5">{row.section as string}</td>
                           <td className="px-4 py-2.5">{(row.work_type as string) || "—"}</td>
-                          <td className="px-4 py-2.5">{t(WO_STATUS_LABEL[row.status as string] || (row.status as string))}</td>
+                          <td className="px-4 py-2.5">{row.status === "cancelled" ? (locale === "ru" ? "Отменён" : locale === "uz-Latn" ? "Bekor qilingan" : "Бекор қилинган") : t(WO_STATUS_LABEL[row.status as string] || (row.status as string))}</td>
                           <td className="px-4 py-2.5">{(row.created_at as string) || "—"}</td>
                         </tr>
                       ))}

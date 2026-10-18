@@ -1295,6 +1295,9 @@ export type ReportParams = ListParams & {
   status?: string;
   asset_type?: string;
   q?: string;
+  fixed_asset_id?: string;
+  mileage_from?: number | string;
+  mileage_to?: number | string;
 };
 
 const reports = {

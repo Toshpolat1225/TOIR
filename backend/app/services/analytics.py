@@ -2,6 +2,7 @@ import csv
 import io
 from calendar import monthrange
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -136,7 +137,14 @@ async def get_report(
     q: str | None,
     limit: int,
     offset: int,
+    fixed_asset_id: UUID | None = None,
+    mileage_from: Decimal | None = None,
+    mileage_to: Decimal | None = None,
 ) -> dict[str, Any]:
+    if report != "work-orders" and any(value is not None for value in (fixed_asset_id, mileage_from, mileage_to)):
+        raise HTTPException(status_code=422, detail="Asset and mileage filters are only available for work-order reports")
+    if mileage_from is not None and mileage_to is not None and mileage_from > mileage_to:
+        raise HTTPException(status_code=422, detail="mileage_from must not be greater than mileage_to")
     effective_section = _effective_section(user, section_id)
     inclusive_end = date_to + timedelta(days=1) if date_to else None
     try:
@@ -151,6 +159,9 @@ async def get_report(
             q=q,
             limit=limit,
             offset=offset,
+            fixed_asset_id=fixed_asset_id,
+            mileage_from=mileage_from,
+            mileage_to=mileage_to,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail="Report not found") from exc
@@ -169,7 +180,14 @@ async def report_csv(
     status_filter: str | None,
     asset_type: str | None,
     q: str | None,
+    fixed_asset_id: UUID | None = None,
+    mileage_from: Decimal | None = None,
+    mileage_to: Decimal | None = None,
 ) -> tuple[str, str]:
+    if report != "work-orders" and any(value is not None for value in (fixed_asset_id, mileage_from, mileage_to)):
+        raise HTTPException(status_code=422, detail="Asset and mileage filters are only available for work-order reports")
+    if mileage_from is not None and mileage_to is not None and mileage_from > mileage_to:
+        raise HTTPException(status_code=422, detail="mileage_from must not be greater than mileage_to")
     effective_section = _effective_section(user, section_id)
     inclusive_end = date_to + timedelta(days=1) if date_to else None
     try:
@@ -183,6 +201,9 @@ async def report_csv(
             asset_type=asset_type,
             q=q,
             limit=None,
+            fixed_asset_id=fixed_asset_id,
+            mileage_from=mileage_from,
+            mileage_to=mileage_to,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail="Report not found") from exc
@@ -219,6 +240,7 @@ def _localized_report_headers(locale: Locale, columns: tuple[str, ...]) -> list[
             "number": "Номер наряда", "unit": "ОС", "asset_inv_number": "Инвентарный номер",
             "section": "Участок", "work_type": "Вид работ", "status": "Статус",
             "priority": "Приоритет", "created_at": "Создан", "closed": "Закрыт",
+            "mileage_at_creation": "Пробег на момент открытия, км",
             "tech": "Исполнитель", "description": "Описание", "total_cost": "Фактическая сумма",
             "total_norm_cost": "Сумма по норме", "cost_savings": "Экономия",
             "avg_deviation_percent": "Среднее отклонение, %", "id": "ID",
@@ -234,6 +256,7 @@ def _localized_report_headers(locale: Locale, columns: tuple[str, ...]) -> list[
             "number": "Naryad raqami", "unit": "Asosiy vosita", "asset_inv_number": "Inventar raqami",
             "section": "Uchastka", "work_type": "Ish turi", "status": "Holat",
             "priority": "Muhimlik", "created_at": "Yaratilgan", "closed": "Yopilgan",
+            "mileage_at_creation": "Ochilgan paytdagi probeg, km",
             "tech": "Ijrochi", "description": "Tavsif", "total_cost": "Amaldagi summa",
             "total_norm_cost": "Norma bo‘yicha summa", "cost_savings": "Tejamkorlik",
             "avg_deviation_percent": "O‘rtacha farq, %", "id": "ID", "inv_number": "Inventar raqami",
@@ -249,6 +272,7 @@ def _localized_report_headers(locale: Locale, columns: tuple[str, ...]) -> list[
             "number": "Наряд рақами", "unit": "Асосий восита", "asset_inv_number": "Инвентар рақами",
             "section": "Участка", "work_type": "Иш тури", "status": "Ҳолат",
             "priority": "Муҳимлик", "created_at": "Яратилган", "closed": "Ёпилган",
+            "mileage_at_creation": "Очилган вақтдаги пробег, км",
             "tech": "Ижрочи", "description": "Тавсиф", "total_cost": "Амалдаги сумма",
             "total_norm_cost": "Норма бўйича сумма", "cost_savings": "Тежамкорлик",
             "avg_deviation_percent": "Ўртача фарқ, %", "id": "ID", "inv_number": "Инвентар рақами",

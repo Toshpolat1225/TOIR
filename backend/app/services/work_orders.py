@@ -149,8 +149,8 @@ async def get_order(db: AsyncSession, user: User, order_id: UUID) -> WorkOrderRe
 
 async def _resolve_create_scope(
     db: AsyncSession, user: User, payload: WorkOrderCreate
-) -> tuple[UUID, UUID | None, Decimal]:
-    asset = await repository.get_asset(db, payload.fixed_asset_id)
+) -> tuple[UUID, UUID | None, Decimal | None]:
+    asset = await repository.get_asset(db, payload.fixed_asset_id, lock=True)
     if asset is None:
         raise HTTPException(status_code=422, detail="Fixed asset does not exist")
     target_section_id = payload.section_id or asset.section_id
@@ -167,7 +167,7 @@ async def _resolve_create_scope(
     department_id = payload.department_id or section.department_id
     if user.role == "master" and department_id != section.department_id:
         raise HTTPException(status_code=403, detail="Department is outside your section")
-    return target_section_id, department_id, asset.mileage
+    return target_section_id, department_id, await repository.get_known_asset_mileage(db, asset)
 
 
 async def create_order(
@@ -343,6 +343,8 @@ async def update_order(
     )
     if order is None:
         raise _not_found()
+    if "fixed_asset_id" in payload.model_fields_set and payload.fixed_asset_id != order.fixed_asset_id:
+        raise _conflict("The fixed asset cannot be changed after the work order is opened")
     if order.status in {"completed", "cancelled"}:
         raise _conflict("Completed or cancelled work orders cannot be modified")
     values = payload.model_dump(exclude_unset=True, exclude={"repairs"})
@@ -367,8 +369,6 @@ async def update_order(
             target_section = asset.section_id
         if user.role == "master" and asset.section_id != user.section_id:
             raise HTTPException(status_code=403, detail="Fixed asset is outside your section")
-        if "mileage_at_creation" not in values:
-            values["mileage_at_creation"] = asset.mileage
     if "section_id" in values:
         section = await repository.get_section(db, values["section_id"])
         if section is None:

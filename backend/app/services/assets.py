@@ -301,6 +301,11 @@ def parse_wialon_decimal(value: object, field_name: str) -> Decimal | None:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid {field_name} value",
         )
+    if field_name == "mileage" and parsed < 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Mileage must not be negative",
+        )
     max_integer_digits, max_decimal_places = (
         (10, 2) if field_name == "mileage" else (4, 2)
     )

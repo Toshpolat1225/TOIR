@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -70,6 +71,9 @@ async def _report_response(
     status_filter: str | None,
     asset_type: str | None,
     q: str | None,
+    fixed_asset_id: UUID | None,
+    mileage_from: Decimal | None,
+    mileage_to: Decimal | None,
     limit: int,
     offset: int,
     csv: bool,
@@ -86,6 +90,9 @@ async def _report_response(
         "status_filter": status_filter,
         "asset_type": asset_type,
         "q": q,
+        "fixed_asset_id": fixed_asset_id,
+        "mileage_from": mileage_from,
+        "mileage_to": mileage_to,
     }
     if csv:
         content, filename = await service.report_csv(db, user, locale=locale, **filters)
@@ -110,6 +117,9 @@ def _report_route(report: ReportName):
         status_filter: str | None = Query(default=None, alias="status", max_length=50),
         asset_type: str | None = None,
         q: str | None = Query(default=None, max_length=200),
+        fixed_asset_id: UUID | None = None,
+        mileage_from: Decimal | None = Query(default=None, ge=0, le=Decimal("9999999999.99"), multiple_of=Decimal("0.01")),
+        mileage_to: Decimal | None = Query(default=None, ge=0, le=Decimal("9999999999.99"), multiple_of=Decimal("0.01")),
         limit: int = Query(default=100, ge=1, le=1000),
         offset: int = Query(default=0, ge=0),
         format: Literal["json", "csv"] = "json",
@@ -127,6 +137,9 @@ def _report_route(report: ReportName):
             status_filter=status_filter,
             asset_type=asset_type,
             q=q,
+            fixed_asset_id=fixed_asset_id,
+            mileage_from=mileage_from,
+            mileage_to=mileage_to,
             limit=limit,
             offset=offset,
             csv=format == "csv",

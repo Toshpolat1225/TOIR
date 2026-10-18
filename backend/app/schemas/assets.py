@@ -28,7 +28,7 @@ class FixedAssetCreate(BaseModel):
     status: AssetStatus = "operational"
     comm_date: date | None = None
     year_built: int | None = None
-    mileage: Decimal = Field(default=Decimal("0"), max_digits=12, decimal_places=2)
+    mileage: Decimal = Field(default=Decimal("0"), ge=0, max_digits=12, decimal_places=2)
     last_maint_date: date | None = None
     next_maint_date: date | None = None
     initial_cost: Decimal | None = Field(default=None, max_digits=16, decimal_places=2)
@@ -59,7 +59,7 @@ class FixedAssetUpdate(PatchModel):
     status: AssetStatus | None = None
     comm_date: date | None = None
     year_built: int | None = None
-    mileage: Decimal | None = Field(default=None, max_digits=12, decimal_places=2)
+    mileage: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
     last_maint_date: date | None = None
     next_maint_date: date | None = None
     initial_cost: Decimal | None = Field(default=None, max_digits=16, decimal_places=2)
@@ -125,7 +125,7 @@ class FixedAssetStats(BaseModel):
 
 
 class MileageUpdate(BaseModel):
-    mileage: Decimal = Field(max_digits=12, decimal_places=2)
+    mileage: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
 
 
 class MileageHistoryRead(BaseModel):

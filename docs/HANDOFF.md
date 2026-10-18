@@ -374,3 +374,18 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 
 - Apply migration 0009 and run the new E2E script only against the intended test API; verify the user page in a browser.
 - Migration, API, database, E2E, and browser behavior are NOT TESTED. The E2E script will leave its temporary account inactive because there is no user-delete API.
+
+## Work-order opening mileage report (2026-10-18)
+
+### Verified
+
+- `work_orders.mileage_at_creation` already exists and is set by the server when opening an order. A client cannot provide this snapshot. The asset row is locked during creation so its current mileage does not change inside that transaction.
+- An asset's default mileage `0` is treated as unknown unless `mileage_history` confirms a recorded zero. Historical NULL snapshots remain NULL; they are never filled from today's asset mileage.
+- Reports and CSV now use the stored opening snapshot. The work-order report has an asset/order search, status filter, and mileage range; the displayed column names cover Russian, Uzbek Latin, and Uzbek Cyrillic.
+- Reassigning a work order to another asset after opening is rejected to preserve the snapshot's meaning. Negative manual and Wialon mileage is rejected. No schema or migration change was needed.
+- `backend/scripts/e2e_workorders.py` now covers known and unknown snapshots, snapshot immutability, reassignment rejection, negative readings, report filters, and CSV output. It was not run.
+- Python AST syntax check passed for the changed backend and E2E files. `npx.cmd tsc --noEmit` exited 0. `npm.cmd run build` exited 0 with two React Hook warnings in existing work-order files; no `node.exe` process was running before build.
+
+### Next task
+
+- Run `backend/scripts/e2e_workorders.py` against the intended test API, then check the report table and filters in a browser. Production server, database, API, E2E, and browser behavior are NOT TESTED. Snapshot source and exact measurement timestamp are not stored reliably, so the report shows the opening snapshot and km unit without claiming a source timestamp.
