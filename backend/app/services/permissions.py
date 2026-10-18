@@ -29,7 +29,7 @@ async def update_role(db: AsyncSession, role: str, granted: list[str], actor_id)
     requested = set(granted)
     if len(requested) != len(granted) or requested - PERMISSIONS.keys():
         raise HTTPException(status_code=422, detail="Unknown or duplicate permission")
-    elevated = {"permissions.manage_permissions", "users.manage_users", "asset_catalogs.manage_reference_data", "translations.manage_reference_data"}
+    elevated = {"permissions.manage_permissions", "users.manage_users", "users.set_active", "asset_catalogs.manage_reference_data", "translations.manage_reference_data"}
     if requested & elevated:
         raise HTTPException(status_code=403, detail="Protected permissions can only remain on the admin role")
     current = await get_role_grants(db, role)

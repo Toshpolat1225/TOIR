@@ -358,3 +358,19 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 - All current `admin` accounts are effectively highest-level administrators; repository has no distinct super-admin identity. Admin permissions are protected, and only initial setup may create new admins through the API path.
 - Existing maintenance schedule/plan master-scope issue documented in the earlier audit was not addressed here. Long-lived websocket subscriptions re-check permission every 30 seconds; this timing was not runtime-tested.
 - Next: review the default role matrix, then apply migration and run `backend/scripts/e2e_permissions.py` only against the intended test API. Afterwards verify page/action visibility and section scopes in browser/API.
+
+## User active/inactive management (2026-10-18)
+
+### Verified
+
+- `users.is_active` already existed with default `true`; login, refresh, HTTP access-token authentication, and WebSocket authentication already reject inactive users. No user-column schema migration was needed.
+- User status changes now require the dedicated `users.set_active` permission in addition to user-management access. Migration `0009_user_active_permission` adds the permission safely after RBAC migration 0008. Admin remains the only role eligible for this protected permission.
+- Deactivation rejects self-blocking, retains the account/history row, preserves the last-active-admin check, and revokes all active refresh tokens in the same database transaction. Existing access JWTs fail on the next authenticated HTTP request because the current active user is read from the database.
+- The admin user page displays/filter statuses and asks for confirmation before activation changes. No user-status audit rows existed; the page cannot show who made an earlier change or when.
+- Added `backend/scripts/e2e_user_status.py` for login, inactive access/refresh rejection, permission denial, last-admin/self protection, and account retention. The script was not run.
+- [CONFIRMED] Python AST syntax check passed for 6 backend/service/migration/E2E files. `npx.cmd tsc --noEmit` exited 0. `npm.cmd run build` exited 0 with two existing React Hook warnings in work-orders files; no `node.exe` process was running before build.
+
+### Next task
+
+- Apply migration 0009 and run the new E2E script only against the intended test API; verify the user page in a browser.
+- Migration, API, database, E2E, and browser behavior are NOT TESTED. The E2E script will leave its temporary account inactive because there is no user-delete API.

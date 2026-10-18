@@ -76,6 +76,7 @@ async def update_user(
     db: AsyncSession,
     user_id: UUID,
     payload: UserUpdate,
+    actor_id: UUID,
 ) -> User:
     await db.execute(select(func.pg_advisory_xact_lock(782134992)))
     user = await get_user(db, user_id)
@@ -88,6 +89,9 @@ async def update_user(
         await db.rollback()
         raise HTTPException(status_code=403, detail="Admin role assignment is protected")
     next_active = changes.get("is_active", user.is_active)
+    if user.id == actor_id and not next_active:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="You cannot deactivate your own account")
     if user.role == "admin" and (next_role != "admin" or not next_active):
         active_admins = await db.execute(
             select(func.count()).select_from(User).where(User.role == "admin", User.is_active.is_(True))
@@ -104,6 +108,12 @@ async def update_user(
 
     for field_name, value in changes.items():
         setattr(user, field_name, value)
+    if user.is_active is False:
+        await db.execute(
+            update(RefreshToken)
+            .where(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None))
+            .values(revoked_at=datetime.now(timezone.utc))
+        )
     try:
         await db.commit()
     except IntegrityError as exc:

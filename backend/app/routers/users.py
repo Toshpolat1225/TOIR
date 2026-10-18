@@ -1,11 +1,12 @@
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.permissions import require_permission
+from app.core.permissions import user_has_permission
 from app.models.identity import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.users import PasswordReset, UserCreate, UserRead, UserUpdate
@@ -62,10 +63,12 @@ async def post_user(
 async def patch_user(
     user_id: UUID,
     payload: UserUpdate,
-    _: AdminUser,
+    actor: AdminUser,
     db: DatabaseSession,
 ) -> User:
-    return await update_user(db, user_id, payload)
+    if "is_active" in payload.model_fields_set and not await user_has_permission(db, actor, "users.set_active"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    return await update_user(db, user_id, payload, actor.id)
 
 
 @router.post("/{user_id}/reset-password", status_code=status.HTTP_204_NO_CONTENT)

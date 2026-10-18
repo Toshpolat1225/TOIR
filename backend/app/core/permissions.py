@@ -39,6 +39,7 @@ PERMISSIONS: dict[str, tuple[str, str, str]] = {
     "analytics.view": ("analytics", "view", "Analytics"),
     "users.view": ("users", "view", "Users"),
     "users.manage_users": ("users", "manage_users", "Users"),
+    "users.set_active": ("users", "update", "Change user active status"),
     "permissions.manage_permissions": ("permissions", "manage_permissions", "Permissions"),
     "translations.view": ("translations", "view", "Translations"),
     "translations.manage_reference_data": ("translations", "manage_reference_data", "Translations"),
