@@ -17,6 +17,7 @@ from app.schemas.assets import (
     MileageHistoryList,
     MileageUpdate,
 )
+from app.schemas.asset_catalogs import AssetBehavior
 from app.schemas.common import PaginatedResponse
 from app.services import assets as service
 
@@ -38,10 +39,16 @@ def _master_section(user: User) -> UUID | None:
 
 @router.get("/stats", response_model=FixedAssetStats)
 async def get_fixed_asset_stats(
-    user: AuthenticatedUser, db: DatabaseSession
+    user: AuthenticatedUser, db: DatabaseSession,
+    asset_type: AssetType | None = None,
+    status_filter: Annotated[AssetStatus | None, Query(alias="status")] = None,
+    status_behavior: AssetBehavior | None = None, section_id: UUID | None = None,
+    depot: str | None = None, q: str | None = Query(default=None, max_length=200),
 ) -> FixedAssetStats:
     return await service.get_fixed_asset_stats(
-        db, master_section_id=_master_section(user)
+        db, master_section_id=_master_section(user), asset_type=asset_type,
+        asset_status=status_filter, status_behavior=status_behavior,
+        section_id=section_id, depot=depot, q=q,
     )
 
 
@@ -53,6 +60,7 @@ async def get_fixed_assets(
     status_filter: Annotated[
         AssetStatus | None, Query(alias="status")
     ] = None,
+    status_behavior: AssetBehavior | None = None,
     section_id: UUID | None = None,
     depot: str | None = None,
     q: str | None = Query(default=None, max_length=200),
@@ -65,6 +73,7 @@ async def get_fixed_assets(
         db,
         asset_type=asset_type,
         asset_status=status_filter,
+        status_behavior=status_behavior,
         section_id=section_id,
         master_section_id=_master_section(user),
         depot=depot,

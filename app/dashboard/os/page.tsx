@@ -8,6 +8,7 @@ import {
   type FixedAssetCreate,
   type FixedAssetUpdate,
   type AssetCatalogItem,
+  type FixedAssetStats,
 } from "@/lib/api"
 import { useSections } from "@/lib/use-sections"
 import {
@@ -518,12 +519,11 @@ function toRow(
 const PAGE_SIZE = 50
 
 export default function OsPage() {
-  const { sections, getSectionId } = useSections()
+  const { sections, sectionsData, getSectionId } = useSections()
   const [assetTypes, setAssetTypes] = useState<AssetCatalogItem[]>([])
   const [assetStatuses, setAssetStatuses] = useState<AssetCatalogItem[]>([])
   const [assets,    setAssets]    = useState<FixedAsset[]>([])
   const [total,     setTotal]     = useState(0)
-  const [counts,    setCounts]    = useState({ total:0, loco:0, wagon:0, operational:0, repair:0, retired:0 })
   const [page,      setPage]      = useState(0)
   const [loading,   setLoading]   = useState(true)
   const [selected,  setSelected]  = useState<FixedAsset | null>(null)
@@ -531,42 +531,48 @@ export default function OsPage() {
   const [search,    setSearch]    = useState("")
   const [fType,     setFType]     = useState<AssetType | "">("")
   const [fDepot,    setFDepot]    = useState("")
+  const [fSection,  setFSection]  = useState("")
   const [fStatus,   setFStatus]   = useState<AssetStatus | "">("")
+  const [fBehavior, setFBehavior] = useState("")
   const [allDepots, setAllDepots] = useState<string[]>([])
+  const [counts, setCounts] = useState<FixedAssetStats | null>(null)
+  const [loadError, setLoadError] = useState("")
+  const [statsError, setStatsError] = useState("")
   
   // Ref для фильтров в real-time подписке (чтобы не пересоздавать канал)
-  const filtersRef = useRef({ page: 0, search: "", fType: "" as AssetType | "", fDepot: "", fStatus: "" as AssetStatus | "" })
+  const filtersRef = useRef({ page: 0, search: "", fType: "" as AssetType | "", fDepot: "", fSection: "", fStatus: "" as AssetStatus | "", fBehavior: "" })
 
   // Загружаем счётчики и список депо один раз (оптимизированные запросы)
   const fetchCounts = useCallback(async () => {
     try {
-      const stats = await api.fixedAssets.stats()
-      setCounts({
-        total: stats.total,
-        loco: stats.by_asset_type.locomotive,
-        wagon: stats.by_asset_type.wagon,
-        operational: stats.by_status_behavior.operational || 0,
-        repair: (stats.by_status_behavior.maintenance || 0) + (stats.by_status_behavior.repair || 0),
-        retired: stats.by_status_behavior.out_of_service || 0,
-      });
-      const deps = [...new Set([...sections, ...stats.depots])].sort();
-      setAllDepots(deps);
+      const params: Parameters<typeof api.fixedAssets.stats>[0] = {};
+      if (search) params.q = search;
+      if (fType) params.asset_type = fType;
+      if (fStatus) params.status = fStatus;
+      if (fBehavior) params.status_behavior = fBehavior;
+      if (fSection) params.section_id = fSection;
+      if (fDepot) params.depot = fDepot;
+      const stats = await api.fixedAssets.stats(params);
+      setCounts(stats);
+      setAllDepots(stats.depots);
+      setStatsError("");
     } catch (error) {
       console.error("Failed to fetch asset counts:", error);
+      setStatsError("Не удалось загрузить статистику основных средств.");
     }
-  }, [sections])
+  }, [search, fType, fStatus, fBehavior, fSection, fDepot])
 
   useEffect(() => {
     void Promise.all([
-      api.fixedAssetCatalogs.list("types", { limit: 500, offset: 0, is_active: true }),
-      api.fixedAssetCatalogs.list("statuses", { limit: 500, offset: 0, is_active: true }),
+      api.fixedAssetCatalogs.list("types", { limit: 500, offset: 0 }),
+      api.fixedAssetCatalogs.list("statuses", { limit: 500, offset: 0 }),
     ]).then(([types, statuses]) => {
       setAssetTypes(types.items)
       setAssetStatuses(statuses.items)
     }).catch((error) => console.error("Failed to load asset catalogs:", error))
   }, [])
 
-  const fetchAssets = useCallback(async (pg: number, q: string, ft: string, fd: string, fs: string) => {
+  const fetchAssets = useCallback(async (pg: number, q: string, ft: string, fd: string, fs: string, section = fSection, behavior = fBehavior) => {
     setLoading(true)
     try {
       const params: Parameters<typeof api.fixedAssets.list>[0] = {
@@ -579,8 +585,8 @@ export default function OsPage() {
       if (ft) params.asset_type = ft as AssetType;
       if (fd) params.depot = fd;
       if (fs) params.status = fs as AssetStatus;
-      const selectedSectionId = fd ? getSectionId(fd) : undefined;
-      if (selectedSectionId) params.section_id = selectedSectionId;
+      if (section) params.section_id = section;
+      if (behavior) params.status_behavior = behavior;
 
       const response = await api.fixedAssets.list(params);
       
@@ -588,28 +594,30 @@ export default function OsPage() {
       // The `fromRow` function handles this conversion.
       setAssets(response.items.map(fromRow))
       setTotal(response.total);
+      setLoadError("");
 
     } catch (e) {
       console.error("Ошибка загрузки ОС:", e)
       setAssets([])
       setTotal(0)
+      setLoadError("Не удалось загрузить основные средства. Попробуйте обновить страницу.");
     } finally {
       setLoading(false)
     }
-  }, [getSectionId])
+  }, [fSection, fBehavior])
 
   useEffect(() => { fetchCounts() }, [fetchCounts])
 
   // Обновляем ref при изменении фильтров
   useEffect(() => {
-    filtersRef.current = { page, search, fType, fDepot, fStatus }
-  }, [page, search, fType, fDepot, fStatus])
+    filtersRef.current = { page, search, fType, fDepot, fSection, fStatus, fBehavior }
+  }, [page, search, fType, fDepot, fSection, fStatus, fBehavior])
 
   // New WebSocket-based real-time updates
   useRealtime(useCallback((event) => {
     if (event.resource === "fixed_assets") {
       console.log("Realtime [OS]: fixed_assets updated, refetching...");
-      fetchAssets(filtersRef.current.page, filtersRef.current.search, filtersRef.current.fType, filtersRef.current.fDepot, filtersRef.current.fStatus);
+      fetchAssets(filtersRef.current.page, filtersRef.current.search, filtersRef.current.fType, filtersRef.current.fDepot, filtersRef.current.fStatus, filtersRef.current.fSection, filtersRef.current.fBehavior);
       fetchCounts();
     }
   }, [fetchAssets, fetchCounts]), ["fixed_assets"]);
@@ -617,15 +625,17 @@ export default function OsPage() {
   // Сброс страницы при смене фильтров
   useEffect(() => {
     setPage(0)
-  }, [search, fType, fDepot, fStatus])
+  }, [search, fType, fDepot, fSection, fStatus, fBehavior])
 
   useEffect(() => {
-    fetchAssets(page, search, fType, fDepot, fStatus)
-  }, [fetchAssets, page, search, fType, fDepot, fStatus]);
+    fetchAssets(page, search, fType, fDepot, fStatus, fSection, fBehavior)
+  }, [fetchAssets, page, search, fType, fDepot, fSection, fStatus, fBehavior]);
 
   const totalPages    = Math.ceil(total / PAGE_SIZE)
-  const activeFilters = [fType, fDepot, fStatus].filter(Boolean).length
-  const clearFilters  = () => { setFType(""); setFDepot(""); setFStatus(""); setSearch("") }
+  const activeFilters = [fType, fDepot, fSection, fStatus, fBehavior, search].filter(Boolean).length
+  const clearFilters  = () => { setFType(""); setFDepot(""); setFSection(""); setFStatus(""); setFBehavior(""); setSearch("") }
+  const selectType = (code: string) => setFType((current) => current === code ? "" : code)
+  const selectBehavior = (code: string) => { setFStatus(""); setFBehavior((current) => current === code ? "" : code) }
   const filtered      = assets  // фильтрация на сервере
 
   const handleSave = async (updated: FixedAsset) => {
@@ -634,7 +644,7 @@ export default function OsPage() {
         ...toRow(updated),
         section_id: getSectionId(updated.depot) ?? updated.sectionId,
       });
-      fetchAssets(page, search, fType, fDepot, fStatus)
+      fetchAssets(page, search, fType, fDepot, fStatus, fSection, fBehavior)
       fetchCounts()
       setSelected(null)
     } catch (error) {
@@ -645,7 +655,7 @@ export default function OsPage() {
   const handleDelete = async (a: FixedAsset) => {
     try {
       await api.fixedAssets.remove(a.id);
-      fetchAssets(page, search, fType, fDepot, fStatus)
+      fetchAssets(page, search, fType, fDepot, fStatus, fSection, fBehavior)
       fetchCounts()
       setSelected(null)
     } catch (error) {
@@ -659,7 +669,7 @@ export default function OsPage() {
         ...toRow(a),
         section_id: getSectionId(a.depot) ?? null,
       });
-      fetchAssets(0, search, fType, fDepot, fStatus)
+      fetchAssets(0, search, fType, fDepot, fStatus, fSection, fBehavior)
       fetchCounts()
       setPage(0)
       setShowAdd(false)
@@ -694,23 +704,14 @@ export default function OsPage() {
       </div>
 
       {/* KPI карточки */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {[
-          { label:"Всего объектов",    value: counts.total,       color:"blue",   icon: Hash },
-          { label:"Локомотивы",        value: counts.loco,        color:"blue",   icon: Train },
-          { label:"Вагоны",            value: counts.wagon,       color:"purple", icon: Container },
-          { label:"В эксплуатации",    value: counts.operational, color:"green",  icon: CheckCircle },
-          { label:"На ТО / Ремонт",    value: counts.repair,      color:"amber",  icon: Wrench },
-          { label:"Выведены из ОС",    value: counts.retired,     color:"red",    icon: XCircle },
-        ].map(({ label, value, color, icon: Icon }) => (
-          <div key={label} className={`bg-${color}-50 dark:bg-${color}-950/30 rounded-xl border border-${color}-200 dark:border-${color}-800 p-4`}>
-            <div className="flex items-center justify-between mb-2">
-              <Icon className={`w-4 h-4 text-${color}-500`}/>
-              <span className={`text-2xl font-bold text-${color}-700 dark:text-${color}-300`}>{value}</span>
-            </div>
-            <p className={`text-xs font-medium text-${color}-600 dark:text-${color}-400 leading-tight`}>{label}</p>
-          </div>
-        ))}
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
+        <button type="button" aria-pressed={!fType && !fBehavior} onClick={() => { setFType(""); setFStatus(""); setFBehavior("") }} className={`text-left rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${!fType && !fBehavior ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-blue-400"}`}>
+          <div className="flex justify-between"><Hash className="w-4 h-4 text-blue-500"/><span className="text-2xl font-bold text-gray-900 dark:text-white">{counts?.total ?? "—"}</span></div><p className="mt-2 text-xs font-medium text-gray-600 dark:text-gray-300">Всего объектов</p>
+        </button>
+        {assetTypes.map((item) => <button type="button" key={item.code} aria-pressed={fType === item.code} onClick={() => selectType(item.code)} className={`text-left rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${fType === item.code ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400"}`}><div className="flex justify-between"><Train className="w-4 h-4 text-indigo-500"/><span className="text-2xl font-bold text-gray-900 dark:text-white">{counts?.by_asset_type[item.code] ?? 0}</span></div><p className="mt-2 text-xs font-medium text-gray-600 dark:text-gray-300">{item.names.ru || item.code}</p></button>)}
+        {[{code:"operational",label:"В эксплуатации",Icon:CheckCircle},{code:"maintenance",label:"На ТО",Icon:Wrench},{code:"repair",label:"В ремонте",Icon:Wrench},{code:"out_of_service",label:"Выведены из ОС",Icon:XCircle}].map(({code,label,Icon}) => <button type="button" key={code} aria-pressed={fBehavior === code} onClick={() => selectBehavior(code)} className={`text-left rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${fBehavior === code ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-emerald-400"}`}><div className="flex justify-between"><Icon className="w-4 h-4 text-emerald-600"/><span className="text-2xl font-bold text-gray-900 dark:text-white">{counts?.by_status_behavior[code] ?? 0}</span></div><p className="mt-2 text-xs font-medium text-gray-600 dark:text-gray-300">{label}</p></button>)}
+        {assetStatuses.map((item) => <button type="button" key={item.code} aria-pressed={fStatus === item.code} onClick={() => { setFBehavior(""); setFStatus((current) => current === item.code ? "" : item.code) }} className={`text-left rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${fStatus === item.code ? "border-violet-500 bg-violet-50 dark:bg-violet-950/40" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-violet-400"}`}><div className="flex justify-between"><CheckCircle className="w-4 h-4 text-violet-600"/><span className="text-2xl font-bold text-gray-900 dark:text-white">{counts?.by_status[item.code] ?? 0}</span></div><p className="mt-2 text-xs font-medium text-gray-600 dark:text-gray-300">{item.names.ru || item.code}</p></button>)}
+        {sectionsData.map((section) => <button type="button" key={section.id} aria-pressed={fSection === section.id} onClick={() => setFSection((current) => current === section.id ? "" : section.id)} className={`text-left rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${fSection === section.id ? "border-amber-500 bg-amber-50 dark:bg-amber-950/40" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-amber-400"}`}><div className="flex justify-between"><Building2 className="w-4 h-4 text-amber-600"/><span className="text-2xl font-bold text-gray-900 dark:text-white">{counts?.by_section[section.id] ?? 0}</span></div><p className="mt-2 truncate text-xs font-medium text-gray-600 dark:text-gray-300">{section.localized_name || section.name}</p></button>)}
       </div>
 
       {/* Фильтры */}
@@ -739,7 +740,14 @@ export default function OsPage() {
 
           {/* Депо */}
           <div className="relative">
-            <select value={fDepot} onChange={e => setFDepot(e.target.value)} className={selCls}>
+            <select aria-label="Участок" value={fSection} onChange={e => setFSection(e.target.value)} className={selCls}>
+              <option value="">Все участки</option>
+              {sectionsData.map(section => <option key={section.id} value={section.id}>{section.localized_name || section.name}</option>)}
+            </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
+          </div>
+          <div className="relative">
+            <select aria-label="Депо" value={fDepot} onChange={e => setFDepot(e.target.value)} className={selCls}>
               <option value="">Все депо</option>
               {allDepots.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
@@ -772,6 +780,7 @@ export default function OsPage() {
         </div>
       </div>
 
+      {(loadError || statsError) && <div role="alert" className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{loadError || statsError}</div>}
       {/* Таблица */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
         <table className="w-full">

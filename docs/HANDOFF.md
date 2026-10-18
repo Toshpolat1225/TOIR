@@ -299,3 +299,31 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 - Finish `docs/LOCALIZATION_INVENTORY.md` remaining pages and components: translate every visible string, validation/error/empty/loading state, accessibility label, filter, chart and permission screen; then make ordinary resource filtering/sorting and all exports locale-aware.
 - Add catalog activation/creation management and decide whether user locale should be stored on the profile. Verify migrations and the full UI/API/CRUD/export/fallback flows in an authorized test environment.
 - Current implementation is partial and is not ready to claim full three-language localization.
+
+## ОС dashboard cards (2026-10-18)
+
+### Verified
+
+- Asset list and dashboard stats now share server-side filters for type, exact status, status behavior, section, depot, and text search. Stats return facet counts for type, status, status behavior, section, and depots; masters are scoped to their assigned section in the query.
+- The OS page has clickable type, exact-status, behavior, and section cards, separate section/depot filters, visible API errors, and retains server pagination. Cards show only known catalog types/status behaviors; there is no active/inactive asset card because `fixed_assets` has no such field.
+- Added `backend/scripts/e2e_asset_dashboard.py`; it was not run. No migration or database change was made.
+- Python AST syntax check passed for 5 files. `npx.cmd tsc --noEmit` exited 0. `npm.cmd run build` exited 0; it reported two existing React Hook warnings in work-orders files. No `node.exe` process was present before build.
+- Browser interaction, visual/theme/mobile checks, API E2E, server, and database were not run.
+
+### Next task
+
+- Run `backend/scripts/e2e_asset_dashboard.py` only against the intended test API. Then review the OS cards in browser at desktop/mobile sizes and in both themes; verify master section scoping and filter combinations with actual test data.
+
+## Organizational hierarchy assessment (2026-10-18)
+
+### Verified
+
+- Repository schema has separate `departments` and `sections`; `sections.department_id` is optional. `backend/app/cli.py` defines four static department/section seed pairs, but the source text is mojibaked and does not confirm live organization names.
+- Existing section IDs are referenced by users, employees, fixed assets, work orders, TMC documents, maintenance logs, translations, and readiness snapshots. Their FK delete rules vary; work orders restrict deletion, while some history links become NULL.
+- Current section filters are generally exact-ID filters. Master scope is currently constrained to the assigned section in backend repositories. Section CRUD is admin/operator; there is no hierarchy, active flag, or archive flow.
+- No live database or server was accessed. Current production rows, actual IDs, migration revision, and parent relationships are unknown. No code, schema, or migration was changed in this assessment.
+
+### Next task
+
+- Await approval of the proposed additive `sections` tree plan: preserve every existing ID and FK, set all existing `parent_id` values to NULL (no guessed relationships), keep `departments` as the separate TMC/norm dimension, add translated names/category/activity/order, recursive cycle-safe moves, and archive instead of delete. Then implement the endpoint/UI and descendant filters, with master scope remaining the exact assigned unit pending an explicit business change.
+- Migration dry-run, live ID mapping, rollback feasibility after new hierarchy data is entered, E2E, and UI behavior remain NOT TESTED.

@@ -34,6 +34,30 @@ ASSET_SORT_FIELDS = frozenset(
 )
 
 
+def _asset_filters(
+    *, asset_type: str | None, status: str | None, status_behavior: str | None,
+    section_id: UUID | None, depot: str | None, q: str | None,
+    omit: frozenset[str] = frozenset(),
+) -> list[Any]:
+    filters: list[Any] = []
+    if section_id is not None and "section_id" not in omit:
+        filters.append(FixedAsset.section_id == section_id)
+    if asset_type is not None and "asset_type" not in omit:
+        filters.append(FixedAsset.asset_type == asset_type)
+    if status is not None and "status" not in omit:
+        filters.append(FixedAsset.status == status)
+    if status_behavior is not None and "status_behavior" not in omit:
+        filters.append(FixedAsset.status.in_(
+            select(FixedAssetStatus.code).where(FixedAssetStatus.behavior == status_behavior)
+        ))
+    if depot is not None and "depot" not in omit:
+        filters.append(FixedAsset.depot == depot)
+    if q:
+        pattern = f"%{q.strip()}%"
+        filters.append(or_(FixedAsset.name.ilike(pattern), FixedAsset.inv_number.ilike(pattern), FixedAsset.series.ilike(pattern)))
+    return filters
+
+
 async def active_catalog_value_exists(db: AsyncSession, *, kind: str, code: str) -> bool:
     model = FixedAssetType if kind == "types" else FixedAssetStatus
     return (await db.execute(select(model.code).where(model.code == code, model.is_active.is_(True)))).scalar_one_or_none() is not None
@@ -44,6 +68,7 @@ async def list_assets(
     *,
     asset_type: str | None,
     status: str | None,
+    status_behavior: str | None,
     section_id: UUID | None,
     depot: str | None,
     q: str | None,
@@ -54,24 +79,8 @@ async def list_assets(
 ) -> tuple[list[FixedAsset], int]:
     if sort_by not in ASSET_SORT_FIELDS:
         raise ValueError("Unsupported sort field")
-    filters: list[Any] = []
-    if asset_type is not None:
-        filters.append(FixedAsset.asset_type == asset_type)
-    if status is not None:
-        filters.append(FixedAsset.status == status)
-    if section_id is not None:
-        filters.append(FixedAsset.section_id == section_id)
-    if depot is not None:
-        filters.append(FixedAsset.depot == depot)
-    if q:
-        pattern = f"%{q.strip()}%"
-        filters.append(
-            or_(
-                FixedAsset.name.ilike(pattern),
-                FixedAsset.inv_number.ilike(pattern),
-                FixedAsset.series.ilike(pattern),
-            )
-        )
+    filters = _asset_filters(asset_type=asset_type, status=status, status_behavior=status_behavior,
+                             section_id=section_id, depot=depot, q=q)
 
     count_query = select(func.count()).select_from(FixedAsset)
     rows_query: Select[tuple[FixedAsset]] = select(FixedAsset)
@@ -97,35 +106,41 @@ async def get_asset(
 
 
 async def asset_stats(
-    db: AsyncSession, *, master_section_id: UUID | None
-) -> tuple[int, dict[str, int], dict[str, int], dict[str, int], list[str]]:
-    filters = (
-        [FixedAsset.section_id == master_section_id]
-        if master_section_id is not None
-        else []
-    )
+    db: AsyncSession, *, master_section_id: UUID | None, asset_type: str | None = None,
+    status: str | None = None, status_behavior: str | None = None,
+    section_id: UUID | None = None, depot: str | None = None, q: str | None = None,
+) -> tuple[int, dict[str, int], dict[str, int], dict[str, int], dict[str, int], list[str]]:
+    scoped_section_id = master_section_id if master_section_id is not None else section_id
+    common = dict(asset_type=asset_type, status=status, status_behavior=status_behavior,
+                  section_id=scoped_section_id, depot=depot, q=q)
+    filters = _asset_filters(**common)
     total = (
         await db.execute(select(func.count()).select_from(FixedAsset).where(*filters))
     ).scalar_one()
     type_result = await db.execute(
         select(FixedAsset.asset_type, func.count(FixedAsset.id))
-        .where(*filters)
+        .where(*_asset_filters(**common, omit=frozenset({"asset_type"})))
         .group_by(FixedAsset.asset_type)
     )
     status_result = await db.execute(
         select(FixedAsset.status, func.count(FixedAsset.id))
-        .where(*filters)
+        .where(*_asset_filters(**common, omit=frozenset({"status", "status_behavior"})))
         .group_by(FixedAsset.status)
     )
     behavior_result = await db.execute(
         select(FixedAssetStatus.behavior, func.count(FixedAsset.id))
         .join(FixedAsset, FixedAsset.status == FixedAssetStatus.code)
-        .where(*filters)
+        .where(*_asset_filters(**common, omit=frozenset({"status", "status_behavior"})))
         .group_by(FixedAssetStatus.behavior)
+    )
+    section_result = await db.execute(
+        select(FixedAsset.section_id, func.count(FixedAsset.id))
+        .where(*_asset_filters(**common, omit=frozenset({"section_id"})), FixedAsset.section_id.is_not(None))
+        .group_by(FixedAsset.section_id)
     )
     depot_result = await db.execute(
         select(FixedAsset.depot)
-        .where(*filters, FixedAsset.depot.is_not(None))
+        .where(*_asset_filters(**common, omit=frozenset({"depot"})), FixedAsset.depot.is_not(None))
         .distinct()
         .order_by(FixedAsset.depot.asc())
     )
@@ -134,6 +149,7 @@ async def asset_stats(
         dict(type_result.all()),
         dict(status_result.all()),
         dict(behavior_result.all()),
+        {str(section_id): count for section_id, count in section_result.all()},
         list(depot_result.scalars().all()),
     )
 

@@ -522,6 +522,7 @@ export type FixedAssetListParams = ListParams & {
   q?: string;
   asset_type?: string;
   status?: string;
+  status_behavior?: string;
   section_id?: string;
   depot?: string;
 };
@@ -531,6 +532,7 @@ export type FixedAssetStats = {
   by_asset_type: Record<string, number>;
   by_status: Record<string, number>;
   by_status_behavior: Record<string, number>;
+  by_section: Record<string, number>;
   depots: string[];
 };
 
@@ -558,8 +560,8 @@ const fixedAssets = {
   async get(id: string): Promise<FixedAsset> {
     return request<FixedAsset>({ method: "GET", path: `/fixed-assets/${id}` });
   },
-  async stats(): Promise<FixedAssetStats> {
-    return request<FixedAssetStats>({ method: "GET", path: "/fixed-assets/stats" });
+  async stats(params: Omit<FixedAssetListParams, "limit" | "offset" | "sort_by" | "sort_order"> = {}): Promise<FixedAssetStats> {
+    return request<FixedAssetStats>({ method: "GET", path: "/fixed-assets/stats", params });
   },
   async mileageHistory(id: string, params: { days?: number; limit?: number } = {}): Promise<{
     items: MileageHistory[];

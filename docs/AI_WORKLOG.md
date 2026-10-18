@@ -18,3 +18,11 @@ Format:
 Status codes keep their existing meaning through an explicit behavior group; active catalog values are checked for new asset writes.
 Used catalog entries return a conflict on delete and display their fixed-asset usage count.
 Next: inspect/run the new API E2E and migration only against the intended test environment.
+2026-10-18 | Codex | Mapped current organization schema, foreign keys, section CRUD and master scope for Stage 3 | docs/HANDOFF.md, docs/AI_WORKLOG.md | Repository/schema read only; no database connection or code test | Await approval of additive sections hierarchy plan
+Existing section IDs feed users, employees, assets, work orders, TMC documents, maintenance logs, translations and readiness snapshots; live values were not inspected.
+Proposed mapping preserves each old section ID and leaves existing parent IDs NULL; no parent is inferred from the static seed pairs.
+Next: after approval, implement migration dry-run/mapping and backend hierarchy rules before updating consumers.
+2026-10-18 | Codex | Added OS dashboard facet counts and interactive filters | backend assets layers, lib/api.ts, app/dashboard/os/page.tsx, backend/scripts/e2e_asset_dashboard.py, docs | Python AST (5 files) passed; tsc passed; build passed with 2 existing work-orders Hook warnings; API E2E not run | Run E2E against test API and review browser themes/mobile
+Cards use persisted asset type/status/status behavior and current section IDs; asset active/inactive is not represented as an asset field.
+Stats and list share query dimensions; master section scope is forced server-side.
+No migration, server, database, browser, theme, mobile, or interaction test was run.

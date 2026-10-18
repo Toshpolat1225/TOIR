@@ -62,6 +62,7 @@ async def list_fixed_assets(
     *,
     asset_type: AssetType | None,
     asset_status: AssetStatus | None,
+    status_behavior: str | None,
     section_id: UUID | None,
     master_section_id: UUID | None,
     depot: str | None,
@@ -79,6 +80,7 @@ async def list_fixed_assets(
             db,
             asset_type=asset_type,
             status=asset_status,
+            status_behavior=status_behavior,
             section_id=effective_section_id,
             depot=depot,
             q=q,
@@ -102,16 +104,20 @@ async def get_fixed_asset(
 
 
 async def get_fixed_asset_stats(
-    db: AsyncSession, *, master_section_id: UUID | None
+    db: AsyncSession, *, master_section_id: UUID | None, asset_type: str | None = None,
+    asset_status: str | None = None, status_behavior: str | None = None,
+    section_id: UUID | None = None, depot: str | None = None, q: str | None = None,
 ) -> FixedAssetStats:
-    total, type_counts, status_counts, behavior_counts, depots = await repository.asset_stats(
-        db, master_section_id=master_section_id
+    total, type_counts, status_counts, behavior_counts, section_counts, depots = await repository.asset_stats(
+        db, master_section_id=master_section_id, asset_type=asset_type, status=asset_status,
+        status_behavior=status_behavior, section_id=section_id, depot=depot, q=q,
     )
     return FixedAssetStats(
         total=total,
         by_asset_type=type_counts,
         by_status=status_counts,
         by_status_behavior=behavior_counts,
+        by_section=section_counts,
         depots=depots,
     )
 

@@ -120,6 +120,7 @@ class FixedAssetStats(BaseModel):
     by_asset_type: dict[str, int]
     by_status: dict[str, int]
     by_status_behavior: dict[str, int]
+    by_section: dict[str, int]
     depots: list[str]
 
 
