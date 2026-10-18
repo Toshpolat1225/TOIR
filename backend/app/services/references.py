@@ -227,6 +227,8 @@ async def list_employees(
     offset: int,
     sort_by: str,
     sort_order: str,
+    q: str | None = None,
+    is_active: bool | None = None,
 ) -> tuple[list[Employee], int]:
     try:
         return await repository.list_employees(
@@ -237,6 +239,8 @@ async def list_employees(
             offset=offset,
             sort_by=sort_by,
             sort_order=sort_order,
+            q=q,
+            is_active=is_active,
         )
     except ValueError as exc:
         raise _unsupported_sort() from exc
@@ -313,6 +317,7 @@ async def list_work_types(
     offset: int,
     sort_by: str,
     sort_order: str,
+    q: str | None = None,
 ) -> tuple[list[WorkTypeRead], int]:
     try:
         rows, total = await repository.list_work_types(
@@ -322,6 +327,7 @@ async def list_work_types(
             offset=offset,
             sort_by=sort_by,
             sort_order=sort_order,
+            q=q,
         )
     except ValueError as exc:
         raise _unsupported_sort() from exc

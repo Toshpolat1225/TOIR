@@ -1,7 +1,8 @@
+from datetime import date
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assets import FixedAsset
@@ -9,6 +10,8 @@ from app.models.maintenance import WorkType
 from app.models.organization import Section
 from app.models.tmc import TmcDocument, TmcDocumentItem
 from app.models.work_orders import WorkOrder
+
+SORT_FIELDS = frozenset({"doc_no", "doc_date", "status", "created_at", "updated_at"})
 
 
 async def list_documents(
@@ -20,7 +23,14 @@ async def list_documents(
     work_order_id: UUID | None,
     limit: int,
     offset: int,
+    q: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
 ) -> tuple[list[dict[str, Any]], int]:
+    if sort_by not in SORT_FIELDS:
+        raise ValueError("Unsupported sort field")
     filters = []
     if section_id is not None and work_order_id is None:
         filters.append(TmcDocument.section_id == section_id)
@@ -32,6 +42,29 @@ async def list_documents(
         )
     if status_filter is not None:
         filters.append(TmcDocument.status == status_filter)
+    if date_from is not None:
+        filters.append(TmcDocument.doc_date >= date_from)
+    if date_to is not None:
+        filters.append(TmcDocument.doc_date <= date_to)
+    if q and q.strip():
+        term = f"%{q.strip()}%"
+        filters.append(or_(
+            TmcDocument.doc_no.ilike(term),
+            TmcDocument.warehouse.ilike(term),
+            TmcDocument.issued_by.ilike(term),
+            TmcDocument.accepted_by.ilike(term),
+            TmcDocument.chief.ilike(term),
+            exists(select(WorkOrder.id).select_from(WorkOrder).outerjoin(
+                FixedAsset, FixedAsset.id == WorkOrder.fixed_asset_id
+            ).where(
+                WorkOrder.id == TmcDocument.work_order_id,
+                or_(WorkOrder.number.ilike(term), FixedAsset.name.ilike(term), FixedAsset.inv_number.ilike(term)),
+            )),
+            exists(select(TmcDocumentItem.id).where(
+                TmcDocumentItem.document_id == TmcDocument.id,
+                or_(TmcDocumentItem.name.ilike(term), TmcDocumentItem.inv_no.ilike(term)),
+            )),
+        ))
     if work_order_id is not None:
         filters.append(TmcDocument.work_order_id == work_order_id)
         if section_id is not None:
@@ -56,7 +89,10 @@ async def list_documents(
             .outerjoin(WorkType, WorkType.id == TmcDocument.work_type_id)
             .outerjoin(Section, Section.id == TmcDocument.section_id)
             .where(*filters)
-            .order_by(TmcDocument.created_at.desc(), TmcDocument.id.desc())
+            .order_by(
+                (getattr(TmcDocument, sort_by).desc() if sort_order == "desc" else getattr(TmcDocument, sort_by).asc()),
+                TmcDocument.id.desc(),
+            )
             .limit(limit)
             .offset(offset)
         )

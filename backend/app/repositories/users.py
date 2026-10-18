@@ -1,9 +1,10 @@
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.identity import User
+from app.models.organization import Section
 
 USER_SORT_FIELDS = frozenset(
     {"email", "full_name", "role", "created_at", "updated_at", "last_login_at"}
@@ -17,15 +18,27 @@ async def list_users(
     offset: int,
     sort_by: str,
     descending: bool,
+    q: str | None = None,
+    is_active: bool | None = None,
 ) -> tuple[list[User], int]:
     if sort_by not in USER_SORT_FIELDS:
         raise ValueError("Unsupported user sort field")
     sort_column = getattr(User, sort_by)
     order_column = sort_column.desc() if descending else sort_column.asc()
-    count_result = await db.execute(select(func.count()).select_from(User))
+    filters = []
+    if q and q.strip():
+        pattern = f"%{q.strip()}%"
+        filters.append(or_(
+            User.email.ilike(pattern), User.full_name.ilike(pattern),
+            select(Section.id).where(Section.id == User.section_id, Section.name.ilike(pattern)).exists(),
+        ))
+    if is_active is not None:
+        filters.append(User.is_active.is_(is_active))
+    count_result = await db.execute(select(func.count()).select_from(User).where(*filters))
     total = count_result.scalar_one()
     users_result = await db.execute(
         select(User)
+        .where(*filters)
         .order_by(order_column, User.id.asc())
         .limit(limit)
         .offset(offset)

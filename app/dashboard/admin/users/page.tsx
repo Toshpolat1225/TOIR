@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { Users, Plus, X, Save, Pencil, ShieldCheck, Shield, HardHat, Eye, EyeOff } from "@/components/ui/icons"
 import { api } from "@/lib/api"
+import { useDebouncedValue } from "@/lib/use-debounced-value"
 import { useAuth, type Profile, type UserRole } from "@/lib/auth-context"
 import { useSections, type SectionData } from "@/lib/use-sections"
 import { useRealtime } from "@/lib/use-realtime"
@@ -261,12 +262,15 @@ export default function AdminUsersPage() {
   const { profile: myProfile } = useAuth()
   const { sectionsData } = useSections()
   const [users,     setUsers]     = useState<Profile[]>([])
+  const [usersTotal, setUsersTotal] = useState(0)
+  const [usersOffset, setUsersOffset] = useState(0)
   const [loading,   setLoading]   = useState(true)
   const [loadError, setLoadError] = useState("")
   const [showCreate, setShowCreate] = useState(false)
   const [editing,    setEditing]   = useState<Profile | null>(null)
   const [search,     setSearch]    = useState("")
   const [activeFilter, setActiveFilter] = useState("all")
+  const debouncedSearch = useDebouncedValue(search.trim())
   const [statusError, setStatusError] = useState("")
 
   const fetchUsers = useCallback(async () => {
@@ -274,18 +278,21 @@ export default function AdminUsersPage() {
     setLoadError("")
     try {
       const response = await api.users.list({
-        limit: 1000,
-        offset: 0,
+        limit: 50,
+        offset: usersOffset,
         sort_by: "created_at",
         sort_order: "asc",
+        q: debouncedSearch || undefined,
+        is_active: activeFilter === "all" ? undefined : activeFilter === "true",
       })
       setUsers(response.items)
+      setUsersTotal(response.total)
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "Не удалось загрузить пользователей.")
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [activeFilter, debouncedSearch, usersOffset])
 
   useEffect(() => { fetchUsers() }, [fetchUsers])
   useRealtime(
@@ -322,7 +329,7 @@ export default function AdminUsersPage() {
   }
 
   const counts = {
-    total:    users.length,
+    total:    usersTotal,
     admin:    users.filter(u => u.role === "admin").length,
     operator: users.filter(u => u.role === "operator").length,
     master:   users.filter(u => u.role === "master").length,
@@ -355,9 +362,9 @@ export default function AdminUsersPage() {
       <div className="grid grid-cols-4 gap-4">
         {[
           { label: "Всего",           value: counts.total,    cls: "border-gray-200 dark:border-gray-700", Icon: Users       },
-          { label: "Администраторы",  value: counts.admin,    cls: "border-purple-200 dark:border-purple-800", Icon: ShieldCheck },
-          { label: "Операторы",       value: counts.operator, cls: "border-blue-200   dark:border-blue-800",   Icon: Shield      },
-          { label: "Мастера",         value: counts.master,   cls: "border-amber-200  dark:border-amber-800",  Icon: HardHat     },
+          { label: "На странице: администраторы", value: counts.admin, cls: "border-purple-200 dark:border-purple-800", Icon: ShieldCheck },
+          { label: "На странице: операторы", value: counts.operator, cls: "border-blue-200 dark:border-blue-800", Icon: Shield },
+          { label: "На странице: мастера", value: counts.master, cls: "border-amber-200 dark:border-amber-800", Icon: HardHat },
         ].map(card => (
           <div key={card.label} className={`bg-white dark:bg-gray-900 rounded-xl border ${card.cls} p-4`}>
             <div className="flex items-center justify-between">
@@ -373,11 +380,11 @@ export default function AdminUsersPage() {
       <div className="flex items-center gap-3 flex-wrap">
         <input
           value={search}
-          onChange={e=>setSearch(e.target.value)}
+          onChange={e=>{setSearch(e.target.value);setUsersOffset(0)}}
           placeholder="Поиск по имени, email, участку..."
           className="flex-1 max-w-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-        <select aria-label="Фильтр по статусу" value={activeFilter} onChange={e=>setActiveFilter(e.target.value)} className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+        <select aria-label="Фильтр по статусу" value={activeFilter} onChange={e=>{setActiveFilter(e.target.value);setUsersOffset(0)}} className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
           <option value="all">Все статусы</option><option value="true">Активные</option><option value="false">Неактивные</option>
         </select>
         {search && <button onClick={()=>setSearch("")} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4"/></button>}
@@ -451,6 +458,14 @@ export default function AdminUsersPage() {
             </tbody>
           </table>
         )}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-gray-500">
+        <span>Показано {usersTotal === 0 ? 0 : usersOffset + 1}–{Math.min(usersOffset + users.length, usersTotal)} из {usersTotal}</span>
+        <div className="flex gap-2">
+          <Button variant="outline" disabled={usersOffset === 0} onClick={() => setUsersOffset(Math.max(0, usersOffset - 50))}>Назад</Button>
+          <Button variant="outline" disabled={usersOffset + 50 >= usersTotal} onClick={() => setUsersOffset(usersOffset + 50)}>Далее</Button>
+        </div>
       </div>
 
       <p className="text-xs text-gray-400 dark:text-gray-600">

@@ -12,6 +12,7 @@ import {
   type WorkType as ApiWorkType,
   type WorkTypeTemplate,
 } from "@/lib/api"
+import { useDebouncedValue } from "@/lib/use-debounced-value"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
@@ -714,6 +715,7 @@ export default function WorkTypesPage() {
   const [apiError, setApiError] = useState("")
   const [showAdd, setShowAdd] = useState(false)
   const [search, setSearch] = useState("")
+  const debouncedSearch = useDebouncedValue(search.trim())
   const [filterUnitType, setFilterUnitType] = useState("")
 
   const fetchNomenclature = useCallback(async () => {
@@ -734,38 +736,44 @@ export default function WorkTypesPage() {
     setLoading(true)
     setApiError("")
     try {
-      const [workTypeResponse, templateResponse] = await Promise.all([
-        api.workTypes.list({ limit: 1000, sort_by: "sort_order", sort_order: "asc" }),
-        api.workTypeTemplates.list({ limit: 1000, sort_by: "name", sort_order: "asc" }),
-      ])
+      const workTypeResponse = await api.workTypes.list({ limit: 1000, sort_by: "sort_order", sort_order: "asc", q: debouncedSearch || undefined })
       setWorkTypes(workTypeResponse.items)
 
       const stMap: Record<string, WorkSubtask[]> = {}
       for (const workType of workTypeResponse.items) {
         stMap[workType.id] = workType.subtasks
       }
-      const tMap: Record<string, WorkTypeTmc[]> = {}
-      templateResponse.items.forEach((template, index) => {
-        const workTypeItems = tMap[template.work_type_id] ?? []
-        workTypeItems.push(toWorkTypeTmc(template, index))
-        tMap[template.work_type_id] = workTypeItems
-      })
-      setTmcMap(tMap)
       setSubtasksMap(stMap)
     } catch (err) {
       setApiError(err instanceof Error ? err.message : "Не удалось загрузить виды работ")
       setWorkTypes([])
       setSubtasksMap({})
-      setTmcMap({})
     } finally {
       setLoading(false)
+    }
+  }, [debouncedSearch])
+
+  const fetchTemplates = useCallback(async () => {
+    try {
+      const response = await api.workTypeTemplates.list({ limit: 1000, sort_by: "name", sort_order: "asc" })
+      const tMap: Record<string, WorkTypeTmc[]> = {}
+      response.items.forEach((template, index) => {
+        const workTypeItems = tMap[template.work_type_id] ?? []
+        workTypeItems.push(toWorkTypeTmc(template, index))
+        tMap[template.work_type_id] = workTypeItems
+      })
+      setTmcMap(tMap)
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : "Не удалось загрузить шаблоны материалов")
+      setTmcMap({})
     }
   }, [])
 
   useEffect(() => {
     fetchData()
+    fetchTemplates()
     fetchNomenclature()
-  }, [fetchData, fetchNomenclature])
+  }, [fetchData, fetchTemplates, fetchNomenclature])
 
   const handleDelete = async (id: string) => {
     if (!confirm("Удалить этот вид работ? Все подзадачи и ТМЦ будут удалены.")) return

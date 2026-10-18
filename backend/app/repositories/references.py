@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assets import FixedAsset
@@ -123,6 +123,8 @@ async def list_employees(
     offset: int,
     sort_by: str,
     sort_order: str,
+    q: str | None = None,
+    is_active: bool | None = None,
 ) -> tuple[list[Employee], int]:
     scoped_section_id = (
         master_section_id if master_section_id is not None else section_id
@@ -132,6 +134,15 @@ async def list_employees(
         if scoped_section_id is not None
         else []
     )
+    if q and q.strip():
+        pattern = f"%{q.strip()}%"
+        filters.append(or_(
+            Employee.tab_number.ilike(pattern), Employee.full_name.ilike(pattern),
+            Employee.position.ilike(pattern),
+            select(Section.id).where(Section.id == Employee.section_id, Section.name.ilike(pattern)).exists(),
+        ))
+    if is_active is not None:
+        filters.append(Employee.is_active.is_(is_active))
     return await list_page(
         db,
         Employee,
@@ -164,8 +175,12 @@ async def list_work_types(
     offset: int,
     sort_by: str,
     sort_order: str,
+    q: str | None = None,
 ) -> tuple[list[tuple[WorkType, list[WorkSubtask]]], int]:
     filters = [WorkType.unit_type == unit_type] if unit_type is not None else []
+    if q and q.strip():
+        pattern = f"%{q.strip()}%"
+        filters.append(or_(WorkType.code.ilike(pattern), WorkType.name.ilike(pattern)))
     work_types, total = await list_page(
         db,
         WorkType,

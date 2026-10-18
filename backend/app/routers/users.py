@@ -30,6 +30,8 @@ async def get_users(
     offset: int = Query(default=0, ge=0),
     sort_by: str = Query(default="created_at"),
     sort_order: Literal["asc", "desc"] = "desc",
+    q: str | None = Query(default=None, max_length=200),
+    is_active: bool | None = None,
 ) -> PaginatedResponse[UserRead]:
     users, total = await list_users_page(
         db,
@@ -37,6 +39,8 @@ async def get_users(
         offset=offset,
         sort_by=sort_by,
         sort_order=sort_order,
+        q=q,
+        is_active=is_active,
     )
     return PaginatedResponse[UserRead](
         items=users,

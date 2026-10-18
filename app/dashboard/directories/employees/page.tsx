@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { Users, Plus, X, Save, Pencil, Trash2, Search, ArrowLeft, MapPin, Briefcase, Hash } from "@/components/ui/icons"
 import Link from "next/link"
 import { api, type Employee as ApiEmployee, type Section } from "@/lib/api"
+import { useDebouncedValue } from "@/lib/use-debounced-value"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
@@ -278,9 +279,12 @@ function EditEmployeeModal({
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([])
+  const [employeeTotal, setEmployeeTotal] = useState(0)
+  const [employeeOffset, setEmployeeOffset] = useState(0)
   const [sections, setSections] = useState<Section[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
+  const debouncedSearch = useDebouncedValue(search.trim())
   const [filterSectionId, setFilterSectionId] = useState("")
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<Employee | null>(null)
@@ -304,18 +308,22 @@ export default function EmployeesPage() {
     setLoading(true)
     setError("")
     try {
-      const [emps, sectionResponse] = await Promise.all([
-        api.fetchAllPaginated<Employee>(api.employees.list, {
+      const [employeeResponse, sectionResponse] = await Promise.all([
+        api.employees.list({
+          limit: 50,
+          offset: employeeOffset,
           section_id: filterSectionId || undefined,
+          q: debouncedSearch || undefined,
           sort_by: "full_name",
           sort_order: "asc",
         }),
         api.sections.list({ limit: 1000, sort_by: "name", sort_order: "asc" }),
       ])
+      setEmployeeTotal(employeeResponse.total)
       const secMap = new Map(sectionResponse.items.map((section) => [section.id, section.name]))
 
       setEmployees(
-        emps.map((e) => ({
+        employeeResponse.items.map((e) => ({
           ...e,
           section_name: e.section_id ? secMap.get(e.section_id) || "" : "",
           location_name: e.location_id ? secMap.get(e.location_id) || "" : "",
@@ -327,7 +335,7 @@ export default function EmployeesPage() {
     } finally {
       setLoading(false)
     }
-  }, [filterSectionId])
+  }, [debouncedSearch, employeeOffset, filterSectionId])
 
   useEffect(() => {
     fetchSections()
@@ -402,7 +410,7 @@ export default function EmployeesPage() {
             <p className="text-sm text-gray-500 dark:text-gray-400">Всего работников</p>
             <Users className="w-4 h-4 text-gray-400" />
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white mt-2">{employees.length}</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white mt-2">{employeeTotal}</p>
         </div>
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
           <div className="flex items-center justify-between">
@@ -436,14 +444,14 @@ export default function EmployeesPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setEmployeeOffset(0) }}
             placeholder="Поиск по таб. номеру, ФИО, должности..."
             className="pl-9"
           />
         </div>
         <select
           value={filterSectionId}
-          onChange={(e) => setFilterSectionId(e.target.value)}
+          onChange={(e) => { setFilterSectionId(e.target.value); setEmployeeOffset(0) }}
           className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">Все участки</option>
@@ -458,6 +466,7 @@ export default function EmployeesPage() {
             onClick={() => {
               setSearch("")
               setFilterSectionId("")
+              setEmployeeOffset(0)
             }}
             className="text-gray-400 hover:text-gray-600"
           >
@@ -566,11 +575,15 @@ export default function EmployeesPage() {
       </div>
 
       <p className="text-xs text-gray-400 dark:text-gray-600">
-        Показано {filtered.length} из {employees.length} работников
+        Показано {employeeTotal === 0 ? 0 : employeeOffset + 1}–{Math.min(employeeOffset + employees.length, employeeTotal)} из {employeeTotal} работников
         {filterSectionId && sections.find((s) => s.id === filterSectionId)
           ? ` (фильтр: ${sections.find((s) => s.id === filterSectionId)?.name})`
           : ""}
       </p>
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" disabled={employeeOffset === 0} onClick={() => setEmployeeOffset(Math.max(0, employeeOffset - 50))}>Назад</Button>
+        <Button variant="outline" disabled={employeeOffset + 50 >= employeeTotal} onClick={() => setEmployeeOffset(employeeOffset + 50)}>Далее</Button>
+      </div>
     </div>
   )
 }

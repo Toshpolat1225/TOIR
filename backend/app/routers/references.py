@@ -181,6 +181,8 @@ async def get_employees(
     current_user: AuthenticatedUser,
     db: DatabaseSession,
     section_id: UUID | None = None,
+    q: str | None = Query(default=None, max_length=200),
+    is_active: bool | None = None,
     limit: int = Query(default=50, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     sort_by: str = Query(default="full_name"),
@@ -194,6 +196,8 @@ async def get_employees(
         offset=offset,
         sort_by=sort_by,
         sort_order=sort_order,
+        q=q,
+        is_active=is_active,
     )
     return PaginatedResponse[EmployeeRead](
         items=items, total=total, limit=limit, offset=offset
@@ -243,6 +247,7 @@ async def get_work_types(
     _: AuthenticatedUser,
     db: DatabaseSession,
     unit_type: Literal["locomotive", "wagon"] | None = None,
+    q: str | None = Query(default=None, max_length=200),
     limit: int = Query(default=50, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     sort_by: str = Query(default="sort_order"),
@@ -255,6 +260,7 @@ async def get_work_types(
         offset=offset,
         sort_by=sort_by,
         sort_order=sort_order,
+        q=q,
     )
     return PaginatedResponse[WorkTypeRead](
         items=items, total=total, limit=limit, offset=offset

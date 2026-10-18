@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { api, type ReportName } from "@/lib/api"
+import { useDebouncedValue } from "@/lib/use-debounced-value"
 import { useSectionView } from "@/lib/section-view-context"
 import { useLocale } from "@/lib/i18n"
 import {
@@ -83,6 +84,7 @@ export default function ReportsPage() {
   const [dateTo, setDateTo] = useState("")
   const [workOrderStatus, setWorkOrderStatus] = useState("")
   const [assetSearch, setAssetSearch] = useState("")
+  const debouncedAssetSearch = useDebouncedValue(assetSearch.trim())
   const [mileageFrom, setMileageFrom] = useState("")
   const [mileageTo, setMileageTo] = useState("")
   const [loading, setLoading] = useState(false)
@@ -104,7 +106,7 @@ export default function ReportsPage() {
         date_from: toIsoDate(dateFrom),
         date_to: toIsoDate(dateTo),
         status: reportType === "work-orders" ? workOrderStatus || undefined : undefined,
-        q: reportType === "work-orders" ? assetSearch || undefined : undefined,
+        q: reportType === "work-orders" ? debouncedAssetSearch || undefined : undefined,
         mileage_from: reportType === "work-orders" ? mileageFrom || undefined : undefined,
         mileage_to: reportType === "work-orders" ? mileageTo || undefined : undefined,
       })
@@ -117,7 +119,7 @@ export default function ReportsPage() {
     } finally {
       setLoading(false)
     }
-  }, [assetSearch, dateFrom, dateTo, effectiveSection, mileageFrom, mileageTo, reportType, workOrderStatus])
+  }, [debouncedAssetSearch, dateFrom, dateTo, effectiveSection, mileageFrom, mileageTo, reportType, workOrderStatus])
 
   useEffect(() => {
     void loadReport()
@@ -142,7 +144,7 @@ export default function ReportsPage() {
         date_from: toIsoDate(dateFrom),
         date_to: toIsoDate(dateTo),
         status: report === "work-orders" ? workOrderStatus || undefined : undefined,
-        q: report === "work-orders" ? assetSearch || undefined : undefined,
+        q: report === "work-orders" ? debouncedAssetSearch || undefined : undefined,
         mileage_from: report === "work-orders" ? mileageFrom || undefined : undefined,
         mileage_to: report === "work-orders" ? mileageTo || undefined : undefined,
       })

@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useSectionView } from "@/lib/section-view-context"
 import { api } from "@/lib/api"
+import { useDebouncedValue } from "@/lib/use-debounced-value"
 import { Package, Plus, Printer, Eye, CheckCircle, Clock, FileText, List, Search, X, Save, Pencil, Trash2 } from "@/components/ui/icons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -493,12 +494,20 @@ function fromRow(r: any): TmcDoc {
 export default function TmcPage() {
   const { effectiveSection } = useSectionView()
   const [docs,     setDocs]     = useState<TmcDoc[]>([])
+  const [docsTotal, setDocsTotal] = useState(0)
+  const [docsOffset, setDocsOffset] = useState(0)
+  const [docsSearch, setDocsSearch] = useState("")
+  const [docsStatus, setDocsStatus] = useState<"" | "draft" | "issued" | "closed">("")
+  const [docsDateFrom, setDocsDateFrom] = useState("")
+  const [docsDateTo, setDocsDateTo] = useState("")
+  const debouncedDocsSearch = useDebouncedValue(docsSearch.trim())
   const [docsError, setDocsError] = useState<string | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [selected, setSelected] = useState<TmcDoc | null>(null)
   const [nomenclature, setNomenclature] = useState<NomenclatureRow[]>([])
   const [nomenclatureLoading, setNomenclatureLoading] = useState(true)
   const [nomenclatureSearch, setNomenclatureSearch] = useState("")
+  const debouncedNomenclatureSearch = useDebouncedValue(nomenclatureSearch.trim())
   const [addNomenclatureOpen, setAddNomenclatureOpen] = useState(false)
   const [sections, setSections] = useState<{ id: string; name: string; department_id: string | null }[]>([])
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
@@ -510,8 +519,18 @@ export default function TmcPage() {
   const fetchDocs = useCallback(async () => {
     setLoading(true)
     try {
-      const response = await api.tmcDocuments.list({ limit: 200, sort_by: "created_at", sort_order: "desc" });
+      const response = await api.tmcDocuments.list({
+        limit: 50,
+        offset: docsOffset,
+        sort_by: "created_at",
+        sort_order: "desc",
+        q: debouncedDocsSearch || undefined,
+        status: docsStatus || undefined,
+        date_from: docsDateFrom || undefined,
+        date_to: docsDateTo || undefined,
+      });
       setDocs(response.items.map(fromRow));
+      setDocsTotal(response.total)
       setDocsError(null)
     } catch (error) {
       setDocsError(error instanceof Error ? error.message : "Не удалось загрузить документы ТМЦ")
@@ -519,7 +538,7 @@ export default function TmcPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [debouncedDocsSearch, docsDateFrom, docsDateTo, docsOffset, docsStatus])
 
   const fetchNomenclature = useCallback(async () => {
     setNomenclatureLoading(true)
@@ -528,7 +547,7 @@ export default function TmcPage() {
         limit: 1000,
         sort_by: "name",
         sort_order: "asc",
-        q: nomenclatureSearch.trim() || undefined,
+        q: debouncedNomenclatureSearch || undefined,
       }
       if (filterDepartmentId) {
         params.department_id = filterDepartmentId
@@ -550,7 +569,7 @@ export default function TmcPage() {
     } finally {
       setNomenclatureLoading(false)
     }
-  }, [effectiveSection, filterDepartmentId, nomenclatureSearch, sections])
+  }, [debouncedNomenclatureSearch, effectiveSection, filterDepartmentId, sections])
 
   const fetchDepartments = useCallback(async () => {
     try {
@@ -621,6 +640,7 @@ export default function TmcPage() {
       </div>
 
       {/* Summary cards */}
+      <p className="text-xs text-gray-500">Статусные карточки показывают результаты текущей страницы списка.</p>
       <div className="grid grid-cols-3 gap-4">
         {(["draft", "issued", "closed"] as const).map((s) => {
           const cfg = statusConfig[s]
@@ -644,12 +664,22 @@ export default function TmcPage() {
       </div>
 
       {/* Documents list */}
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+        <Input type="search" maxLength={200} value={docsSearch} onChange={(event) => { setDocsSearch(event.target.value); setDocsOffset(0) }} placeholder="Поиск по номеру, наряду, ОС или материалу" aria-label="Поиск документов ТМЦ" className="min-w-56 flex-1" />
+        <select value={docsStatus} onChange={(event) => { setDocsStatus(event.target.value as typeof docsStatus); setDocsOffset(0) }} aria-label="Статус документа ТМЦ" className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-800">
+          <option value="">Все статусы</option><option value="draft">Черновик</option><option value="issued">Выдан</option><option value="closed">Закрыт</option>
+        </select>
+        <label className="text-xs text-gray-500">С даты<input type="date" value={docsDateFrom} onChange={(event) => { setDocsDateFrom(event.target.value); setDocsOffset(0) }} className="ml-2 rounded border border-gray-200 bg-white px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-800" /></label>
+        <label className="text-xs text-gray-500">По дату<input type="date" value={docsDateTo} onChange={(event) => { setDocsDateTo(event.target.value); setDocsOffset(0) }} className="ml-2 rounded border border-gray-200 bg-white px-2 py-1 text-sm dark:border-gray-700 dark:bg-gray-800" /></label>
+        {(docsSearch || docsStatus || docsDateFrom || docsDateTo) && <button type="button" onClick={() => { setDocsSearch(""); setDocsStatus(""); setDocsDateFrom(""); setDocsDateTo(""); setDocsOffset(0) }} className="text-sm text-blue-600 hover:underline">Сбросить фильтры</button>}
+        <span className="text-xs text-gray-500">Найдено: {docsTotal}</span>
+      </div>
       {docsError && (
         <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
           Не удалось загрузить документы ТМЦ: {docsError}
         </div>
       )}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
@@ -661,7 +691,7 @@ export default function TmcPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-            {docs.map((doc) => {
+            {docs.length === 0 ? <tr><td colSpan={9} className="px-5 py-12 text-center text-sm text-gray-500">{docsError ? "Не удалось загрузить документы" : "Документы не найдены"}</td></tr> : docs.map((doc) => {
               const cfg = statusConfig[doc.status]
               const total = doc.items.reduce((s, i) => s + i.qty * i.price, 0)
               return (
@@ -708,8 +738,14 @@ export default function TmcPage() {
             })}
           </tbody>
         </table>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 px-5 py-3 text-sm text-gray-500 dark:border-gray-800">
+          <span>Показано {docsTotal === 0 ? 0 : docsOffset + 1}–{Math.min(docsOffset + docs.length, docsTotal)} из {docsTotal}</span>
+          <div className="flex gap-2">
+            <Button variant="outline" disabled={docsOffset === 0} onClick={() => setDocsOffset(Math.max(0, docsOffset - 50))}>Назад</Button>
+            <Button variant="outline" disabled={docsOffset + 50 >= docsTotal} onClick={() => setDocsOffset(docsOffset + 50)}>Далее</Button>
+          </div>
+        </div>
       </div>
-
       {/* Справочник номенклатуры ТМЦ (из импорта по участкам) */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 border-b border-gray-200 dark:border-gray-800">

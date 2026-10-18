@@ -10,6 +10,7 @@ import secrets
 import sys
 import uuid
 from typing import Any
+from urllib.parse import urlencode
 
 from e2e_smoke import (
     ApiSession,
@@ -324,6 +325,18 @@ def main() -> int:
             bearer=operator_token,
         )
         require_status(checks, "List employees", employee_list, 200)
+        employee_search = request(
+            "GET",
+            f"/api/v1/employees?{urlencode({'section_id': section_id, 'q': f'REF-{suffix}', 'is_active': 'true'})}",
+            bearer=operator_token,
+        )
+        employee_search_items = parse_object(employee_search).get("items", []) if employee_search.status == 200 else []
+        check_condition(
+            checks,
+            "Employee search, section, and active filters combine server-side",
+            employee_search.status == 200 and len(employee_search_items) == 1 and employee_search_items[0].get("id") == employee_id,
+            "Only the matching active employee is returned" if employee_search.status == 200 else f"HTTP {employee_search.status}",
+        )
         employee_get = request(
             "GET", f"/api/v1/employees/{employee_id}", bearer=operator_token
         )
@@ -426,6 +439,16 @@ def main() -> int:
             checks, resources, "Create work type", work_type_response, "/api/v1/work-types"
         )
         work_type_code = parse_object(work_type_response)["code"]
+        work_type_search = request(
+            "GET", f"/api/v1/work-types?{urlencode({'q': work_type_code})}", bearer=operator_token
+        )
+        work_type_items = parse_object(work_type_search).get("items", []) if work_type_search.status == 200 else []
+        check_condition(
+            checks,
+            "Work-type code search is server-side",
+            work_type_search.status == 200 and len(work_type_items) == 1 and work_type_items[0].get("id") == work_type_id,
+            "Matching work type returned" if work_type_search.status == 200 else f"HTTP {work_type_search.status}",
+        )
         check_status(
             checks,
             "List work types",

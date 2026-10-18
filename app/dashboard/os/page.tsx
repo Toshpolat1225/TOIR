@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRealtime } from "@/lib/use-realtime"
+import { useDebouncedValue } from "@/lib/use-debounced-value"
 import {
   api,
   type FixedAsset as ApiFixedAsset,
@@ -529,6 +530,7 @@ export default function OsPage() {
   const [selected,  setSelected]  = useState<FixedAsset | null>(null)
   const [showAdd,   setShowAdd]   = useState(false)
   const [search,    setSearch]    = useState("")
+  const debouncedSearch = useDebouncedValue(search.trim())
   const [fType,     setFType]     = useState<AssetType | "">("")
   const [fDepot,    setFDepot]    = useState("")
   const [fSection,  setFSection]  = useState("")
@@ -546,7 +548,7 @@ export default function OsPage() {
   const fetchCounts = useCallback(async () => {
     try {
       const params: Parameters<typeof api.fixedAssets.stats>[0] = {};
-      if (search) params.q = search;
+      if (debouncedSearch) params.q = debouncedSearch;
       if (fType) params.asset_type = fType;
       if (fStatus) params.status = fStatus;
       if (fBehavior) params.status_behavior = fBehavior;
@@ -560,7 +562,7 @@ export default function OsPage() {
       console.error("Failed to fetch asset counts:", error);
       setStatsError("Не удалось загрузить статистику основных средств.");
     }
-  }, [search, fType, fStatus, fBehavior, fSection, fDepot])
+  }, [debouncedSearch, fType, fStatus, fBehavior, fSection, fDepot])
 
   useEffect(() => {
     void Promise.all([
@@ -610,8 +612,8 @@ export default function OsPage() {
 
   // Обновляем ref при изменении фильтров
   useEffect(() => {
-    filtersRef.current = { page, search, fType, fDepot, fSection, fStatus, fBehavior }
-  }, [page, search, fType, fDepot, fSection, fStatus, fBehavior])
+    filtersRef.current = { page, search: debouncedSearch, fType, fDepot, fSection, fStatus, fBehavior }
+  }, [page, debouncedSearch, fType, fDepot, fSection, fStatus, fBehavior])
 
   // New WebSocket-based real-time updates
   useRealtime(useCallback((event) => {
@@ -628,8 +630,8 @@ export default function OsPage() {
   }, [search, fType, fDepot, fSection, fStatus, fBehavior])
 
   useEffect(() => {
-    fetchAssets(page, search, fType, fDepot, fStatus, fSection, fBehavior)
-  }, [fetchAssets, page, search, fType, fDepot, fSection, fStatus, fBehavior]);
+    fetchAssets(page, debouncedSearch, fType, fDepot, fStatus, fSection, fBehavior)
+  }, [fetchAssets, page, debouncedSearch, fType, fDepot, fSection, fStatus, fBehavior]);
 
   const totalPages    = Math.ceil(total / PAGE_SIZE)
   const activeFilters = [fType, fDepot, fSection, fStatus, fBehavior, search].filter(Boolean).length

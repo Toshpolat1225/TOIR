@@ -38,3 +38,6 @@ No migration, server, database, browser, theme, mobile, or interaction test was 
 Snapshot uses existing mileage_at_creation; historical NULLs are not backfilled, and no migration was needed.
 Server derives snapshot on create, locks asset row, and rejects later asset reassignment; unknown default zero remains NULL without history evidence.
 Production server/database, API, E2E, CSV runtime and browser behavior are NOT TESTED; source and exact sample timestamp are unavailable in schema.
+2026-10-18 | Codex | Added server-side filters for employee, user, work-type and TMC lists; paged employee/user/TMC views and debounced searches | backend references/users/TMC layers, lib/api.ts, list pages, E2E scripts, docs | AST 12 files, tsc exit 0, build exit 0 with 2 React Hook warnings; E2E NOT RUN | Run E2E against intended test API and review browser/mobile filters
+Existing OS/work-order/report/nomenclature filters were audited; common indexes exist, but substring search index plans were not evaluated.
+No schema or migration changed; URL filter persistence and several reference-list search controls remain for follow-up.

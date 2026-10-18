@@ -226,6 +226,7 @@ const auth = {
 };
 
 type UserRole = CurrentUser["role"];
+type UserListParams = ListParams & { q?: string; is_active?: boolean };
 type UserCreate = {
   email: string;
   full_name: string;
@@ -241,7 +242,7 @@ type UserUpdate = {
 };
 
 const users = {
-  async list(params: ListParams = {}): Promise<Paginated<CurrentUser>> {
+  async list(params: UserListParams = {}): Promise<Paginated<CurrentUser>> {
     return request<Paginated<CurrentUser>>({
       method: "GET",
       path: "/users",
@@ -400,7 +401,7 @@ export type Employee = {
   updated_at: string;
 };
 
-type EmployeeListParams = ListParams & { section_id?: string };
+type EmployeeListParams = ListParams & { section_id?: string; q?: string; is_active?: boolean };
 type EmployeeCreate = Pick<Employee, "tab_number" | "full_name"> &
   Partial<Pick<Employee, "position" | "section_id" | "location_id" | "is_active">>;
 type EmployeeUpdate = Partial<EmployeeCreate>;
@@ -1066,7 +1067,7 @@ export type WorkType = {
   subtasks: WorkSubtask[];
 };
 
-type WorkTypeListParams = ListParams & { unit_type?: WorkType["unit_type"] };
+type WorkTypeListParams = ListParams & { unit_type?: WorkType["unit_type"]; q?: string };
 type WorkTypeCreate = Pick<WorkType, "code" | "name" | "unit_type"> &
   Partial<Pick<WorkType, "description" | "sort_order">>;
 type WorkTypeUpdate = Partial<WorkTypeCreate>;
@@ -1200,6 +1201,9 @@ type TmcDocumentListParams = ListParams & {
   status?: "draft" | "issued" | "closed";
   department_id?: string;
   work_order_id?: string;
+  q?: string;
+  date_from?: string;
+  date_to?: string;
 };
 
 const tmcDocuments = {

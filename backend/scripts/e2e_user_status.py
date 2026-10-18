@@ -6,6 +6,7 @@ import getpass
 import secrets
 import sys
 import uuid
+from urllib.parse import urlencode
 
 from e2e_smoke import ApiSession, SmokeError, parse_object, request
 
@@ -35,6 +36,13 @@ def main() -> int:
         expect("Unauthenticated status change denied", request("PATCH", f"/api/v1/users/{admin['id']}", payload={"is_active": False}), 401, results)
         admin_list = request("GET", "/api/v1/users?limit=1000", bearer=admin_token)
         expect("Admin list available for last-admin check", admin_list, 200, results)
+        filtered_admin_list = request(
+            "GET", f"/api/v1/users?{urlencode({'q': admin_email, 'is_active': 'true', 'limit': 1000})}", bearer=admin_token
+        )
+        expect("User email and active filters", filtered_admin_list, 200, results)
+        if not any(item.get("id") == admin.get("id") for item in parse_object(filtered_admin_list).get("items", [])):
+            raise SmokeError("Active user search did not return the matching admin")
+        results.append("PASS Active user search returns the matching record")
         active_admins = [item for item in parse_object(admin_list).get("items", []) if item.get("role") == "admin" and item.get("is_active")]
         if len(active_admins) == 1:
             expect("Last active admin cannot be deactivated", request("PATCH", f"/api/v1/users/{admin['id']}", bearer=admin_token, payload={"is_active": False}), 409, results)

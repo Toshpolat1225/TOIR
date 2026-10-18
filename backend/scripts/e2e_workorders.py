@@ -542,6 +542,12 @@ def main() -> int:
             parse_object(tmc_for_primary).get("total") == 0,
             "No linked TMC documents returned for the new fixture",
         )
+        invalid_tmc_range = request(
+            "GET",
+            f"/api/v1/tmc-documents?{urlencode({'date_from': '2026-12-31', 'date_to': '2026-01-01'})}",
+            bearer=operator_token,
+        )
+        check_status(checks, "TMC document date range must be ordered", invalid_tmc_range, 422)
         check_status(
             checks,
             "List by multiple statuses and date range",

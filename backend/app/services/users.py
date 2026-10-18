@@ -27,6 +27,8 @@ async def list_users_page(
     offset: int,
     sort_by: str,
     sort_order: str,
+    q: str | None = None,
+    is_active: bool | None = None,
 ) -> tuple[list[User], int]:
     if sort_by not in USER_SORT_FIELDS:
         raise HTTPException(
@@ -39,6 +41,8 @@ async def list_users_page(
         offset=offset,
         sort_by=sort_by,
         descending=sort_order == "desc",
+        q=q,
+        is_active=is_active,
     )
 
 

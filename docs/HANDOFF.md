@@ -389,3 +389,19 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Run `backend/scripts/e2e_workorders.py` against the intended test API, then check the report table and filters in a browser. Production server, database, API, E2E, and browser behavior are NOT TESTED. Snapshot source and exact measurement timestamp are not stored reliably, so the report shows the opening snapshot and km unit without claiming a source timestamp.
+
+## Global list filters (2026-10-18)
+
+### Verified
+
+- List-page audit: fixed assets already use server-side search/facets with pagination; work orders already use server-side date, status, asset, section, executor, work type, and material filters with pagination and a sort whitelist. Nomenclature already supports server-side name/code and department filters. Reports use server-side query filters and CSV, but the report page requests up to 1000 rows. Section/department/work-type/reference pages commonly request up to 1000 rows; maintenance planning is a schedule view, not a conventional paginated list.
+- Added server-side `q` and active status filters for employees; `q` for work types; `q` and active status for users; and search, status, and document-date filters for TMC documents. Employee, user, and TMC document screens now request 50-row pages and show result totals/navigation. Search inputs use a shared debounce helper on the updated pages.
+- Existing master scope remains in the repository query for employees and TMC documents; user access remains admin-permission protected. Filter values are bound through SQLAlchemy expressions and query string lengths are capped at 200; TMC date ranges reject reversed dates.
+- Added E2E assertions to `e2e_refs.py`, `e2e_user_status.py`, and `e2e_workorders.py`. Python AST syntax check passed for 12 backend/script files. `npx.cmd tsc --noEmit` exited 0. `npm.cmd run build` exited 0 with two React Hook warnings in work-orders files.
+- `postgres/schema.sql` has indexes for common section/status/date and relation filters, but no trigram index for substring `ILIKE` search. No index, schema, or migration was added because no database `EXPLAIN` was run. No server, DB, API, E2E, or browser test was performed.
+- `git status` could not be read because Git CLI is unavailable in this PC environment; pre-existing working-tree changes are UNKNOWN.
+
+### Gaps and next task
+
+- URL query state was not added. Department, section, maintenance-interval, translation, and catalog list screens were not all given new search controls; work-type/template and report screens retain existing high page limits. TMC status summary cards count the currently loaded page, as now disclosed in the UI.
+- Run the updated E2E scripts against the intended test API, then review filter combinations, scopes, pagination and mobile/browser behavior. Before adding search indexes, inspect representative PostgreSQL plans and data size. These runtime checks remain NOT TESTED.
