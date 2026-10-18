@@ -405,3 +405,17 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 
 - URL query state was not added. Department, section, maintenance-interval, translation, and catalog list screens were not all given new search controls; work-type/template and report screens retain existing high page limits. TMC status summary cards count the currently loaded page, as now disclosed in the UI.
 - Run the updated E2E scripts against the intended test API, then review filter combinations, scopes, pagination and mobile/browser behavior. Before adding search indexes, inspect representative PostgreSQL plans and data size. These runtime checks remain NOT TESTED.
+
+## Stage 10 integration and security audit (2026-10-18)
+
+### Verified
+
+- Static review found migrations linked in order from `0001_baseline` through `0009_user_active_permission`; model declarations include the translation, catalog, permission, active-user, maintenance-plan, TMC, and work-order mileage entities. No live database or migration was accessed, so deployed revision and live schema alignment are unknown.
+- `npx.cmd tsc --noEmit` exited 0. `npm.cmd run build` exited 0 with two React Hook warnings. `npm.cmd run lint` exited 1 because ESLint rejects the triple-slash reference in `next-env.d.ts`; it also reports those two warnings. Python AST syntax parsing exited 0 for 116 backend Python files using Python 3.14.7.
+- Static security review found maintenance schedule/plan listing and plan update repositories/services do not apply master section scope. User update logic can demote an admin when more than one active admin exists, despite the recorded immutable-admin policy.
+- The work-order report aliases `executive_summary.current_mileage` as `mileage_at_creation`; the view definition derives that value from `work_orders.mileage_at_creation`, and the range filter uses the same snapshot value. TMC documents currently expose only a GET route. Localization inventory confirms broad Russian hardcoded UI remains; locale API handling uses `Accept-Language` and a validated browser cookie, without profile storage.
+- Git status/diff could not be checked because Git CLI is unavailable. Dev-server process and port checks returned no listener before build. No code, schema, database, API, production server, E2E, or browser test was run.
+
+### Next task
+
+- Resolve and add regression coverage for master scope on maintenance schedule/plans and immutable admin role changes. Then run E2E only against an authorized test API and review report output, localization, and UI gaps. Git diff, live migration/schema alignment, API behavior, and production readiness remain NOT TESTED.

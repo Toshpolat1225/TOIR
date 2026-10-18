@@ -41,3 +41,5 @@ Production server/database, API, E2E, CSV runtime and browser behavior are NOT T
 2026-10-18 | Codex | Added server-side filters for employee, user, work-type and TMC lists; paged employee/user/TMC views and debounced searches | backend references/users/TMC layers, lib/api.ts, list pages, E2E scripts, docs | AST 12 files, tsc exit 0, build exit 0 with 2 React Hook warnings; E2E NOT RUN | Run E2E against intended test API and review browser/mobile filters
 Existing OS/work-order/report/nomenclature filters were audited; common indexes exist, but substring search index plans were not evaluated.
 No schema or migration changed; URL filter persistence and several reference-list search controls remain for follow-up.
+
+2026-10-18 | Codex | Stage 10 static integration/security audit; no application code changed | docs/HANDOFF.md, docs/AI_WORKLOG.md | tsc and build exit 0; lint exit 1; Python AST 116 files passed; API/DB/E2E/browser NOT TESTED | Fix audited maintenance master-scope and admin-role-demotion risks, then verify on authorized test API
