@@ -8,6 +8,7 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assets import FixedAsset, MileageHistory
+from app.models.localization import FixedAssetStatus, FixedAssetType
 from app.models.work_orders import WorkOrder
 
 ASSET_SORT_FIELDS = frozenset(
@@ -31,6 +32,11 @@ ASSET_SORT_FIELDS = frozenset(
         "updated_at",
     }
 )
+
+
+async def active_catalog_value_exists(db: AsyncSession, *, kind: str, code: str) -> bool:
+    model = FixedAssetType if kind == "types" else FixedAssetStatus
+    return (await db.execute(select(model.code).where(model.code == code, model.is_active.is_(True)))).scalar_one_or_none() is not None
 
 
 async def list_assets(
@@ -92,7 +98,7 @@ async def get_asset(
 
 async def asset_stats(
     db: AsyncSession, *, master_section_id: UUID | None
-) -> tuple[int, dict[str, int], dict[str, int], list[str]]:
+) -> tuple[int, dict[str, int], dict[str, int], dict[str, int], list[str]]:
     filters = (
         [FixedAsset.section_id == master_section_id]
         if master_section_id is not None
@@ -111,6 +117,12 @@ async def asset_stats(
         .where(*filters)
         .group_by(FixedAsset.status)
     )
+    behavior_result = await db.execute(
+        select(FixedAssetStatus.behavior, func.count(FixedAsset.id))
+        .join(FixedAsset, FixedAsset.status == FixedAssetStatus.code)
+        .where(*filters)
+        .group_by(FixedAssetStatus.behavior)
+    )
     depot_result = await db.execute(
         select(FixedAsset.depot)
         .where(*filters, FixedAsset.depot.is_not(None))
@@ -121,6 +133,7 @@ async def asset_stats(
         total,
         dict(type_result.all()),
         dict(status_result.all()),
+        dict(behavior_result.all()),
         list(depot_result.scalars().all()),
     )
 

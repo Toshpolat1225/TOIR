@@ -5,8 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-AssetType = Literal["locomotive", "diesel", "wagon"]
-AssetStatus = Literal["operational", "maintenance", "repair", "out_of_service"]
+AssetType = str
+AssetStatus = str
 MileageSource = Literal["manual", "wialon"]
 
 
@@ -117,8 +117,9 @@ class FixedAssetRead(BaseModel):
 
 class FixedAssetStats(BaseModel):
     total: int
-    by_asset_type: dict[AssetType, int]
-    by_status: dict[AssetStatus, int]
+    by_asset_type: dict[str, int]
+    by_status: dict[str, int]
+    by_status_behavior: dict[str, int]
     depots: list[str]
 
 

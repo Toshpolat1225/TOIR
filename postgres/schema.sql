@@ -95,16 +95,20 @@ CREATE INDEX ix_employees_section ON employees(section_id);
 -- =====================================================================
 CREATE TABLE fixed_asset_types (
     code       text PRIMARY KEY,
-    is_active  boolean NOT NULL DEFAULT true
+    is_active  boolean NOT NULL DEFAULT true,
+    color      text NOT NULL DEFAULT 'blue' CHECK (color IN ('blue','green','amber','orange','red','gray','purple'))
 );
 INSERT INTO fixed_asset_types(code) VALUES ('locomotive'), ('diesel'), ('wagon');
 
 CREATE TABLE fixed_asset_statuses (
     code       text PRIMARY KEY,
-    is_active  boolean NOT NULL DEFAULT true
+    is_active  boolean NOT NULL DEFAULT true,
+    behavior   text NOT NULL DEFAULT 'operational' CHECK (behavior IN ('operational','maintenance','repair','out_of_service')),
+    color      text NOT NULL DEFAULT 'green' CHECK (color IN ('blue','green','amber','orange','red','gray','purple'))
 );
 INSERT INTO fixed_asset_statuses(code)
 VALUES ('operational'), ('maintenance'), ('repair'), ('out_of_service');
+UPDATE fixed_asset_statuses SET behavior = code, color = CASE code WHEN 'operational' THEN 'green' WHEN 'maintenance' THEN 'amber' WHEN 'repair' THEN 'orange' ELSE 'gray' END;
 
 CREATE TABLE fixed_assets (
     id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -462,6 +466,8 @@ CREATE TABLE fixed_asset_status_translations (
     name text NOT NULL,
     CONSTRAINT uq_fixed_asset_status_translation_locale UNIQUE (status_code, locale)
 );
+CREATE UNIQUE INDEX uq_fixed_asset_type_translation_name ON fixed_asset_type_translations(locale, lower(name));
+CREATE UNIQUE INDEX uq_fixed_asset_status_translation_name ON fixed_asset_status_translations(locale, lower(name));
 
 INSERT INTO fixed_asset_type_translations(type_code, locale, name) VALUES
     ('locomotive', 'ru', 'Локомотив'), ('locomotive', 'uz-Latn', 'Lokomotiv'), ('locomotive', 'uz-Cyrl', 'Локомотив'),

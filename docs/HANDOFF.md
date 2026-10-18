@@ -268,6 +268,21 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 
 - Confirm the browser Network tab's request URL and CORS/HTTP result for the maintenance call; deploy the TMC GET route before expecting it on a remote API. TMC write routes are not implemented.
 
+## Asset catalog management (2026-10-16)
+
+### Verified
+
+- Added an authenticated API for listing asset types/statuses and admin-only create/update/delete operations. Usage counts are returned; DELETE rejects referenced values with HTTP 409. Status behavior cannot be changed while assets use that status.
+- Added admin page `/dashboard/admin/asset-catalogs` for three-language labels, active state, behavior and color, search/filter, usage display, and CRUD.
+- Fixed-asset create/update validation now checks that selected catalog values are active. Status summaries and readiness snapshots use the status behavior group.
+- Added Alembic `0007_asset_catalog_management` and updated `postgres/schema.sql`; migration was not run. Added `backend/scripts/e2e_asset_catalogs.py`; it was not run.
+- Python AST syntax check passed for 12 changed Python files; `npx.cmd tsc --noEmit` exited 0; `npm.cmd run build` exited 0 with two existing React Hook warnings in work-orders files.
+- No server, database, migration, API E2E, browser, or visual check was run.
+
+### Next task
+
+- Review the migration and catalog page, then run `e2e_asset_catalogs.py` and migration/API checks only in the intended test environment. Production migration remains a manual user-controlled step.
+
 ## Localization implementation status (2026-10-16)
 
 ### Verified

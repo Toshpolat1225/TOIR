@@ -12,6 +12,7 @@ class FixedAssetType(Base):
 
     code: Mapped[str] = mapped_column(Text, primary_key=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    color: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'blue'"))
 
 
 class FixedAssetStatus(Base):
@@ -19,6 +20,8 @@ class FixedAssetStatus(Base):
 
     code: Mapped[str] = mapped_column(Text, primary_key=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    behavior: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'operational'"))
+    color: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'green'"))
 
 
 class DepartmentTranslation(Base):

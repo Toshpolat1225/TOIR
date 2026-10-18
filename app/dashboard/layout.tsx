@@ -26,6 +26,7 @@ const ALL_NAV = [
   { href: "/dashboard/directories", label: "Справочники",    icon: FolderOpen,      roles: ["admin","operator"]                    },
   { href: "/dashboard/admin/users",    label: "Пользователи", icon: Users,      roles: ["admin"] },
   { href: "/dashboard/admin/translations", label: "Переводы", icon: Package, roles: ["admin"] },
+  { href: "/dashboard/admin/asset-catalogs", label: "Справочники ОС", icon: Package, roles: ["admin"] },
 ]
 
 const ROLE_BADGE: Record<string, { label: string; cls: string }> = {

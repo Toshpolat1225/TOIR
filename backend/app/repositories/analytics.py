@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.analytics import DailyReadinessSnapshot
 from app.models.assets import FixedAsset
 from app.models.identity import User
+from app.models.localization import FixedAssetStatus
 from app.models.organization import Section
 from app.models.work_orders import WorkOrder
 
@@ -173,8 +174,8 @@ async def save_daily_readiness_snapshots(
     db: AsyncSession, *, snapshot_date: date, master_section_id: UUID | None
 ) -> None:
     asset_query = select(
-        FixedAsset.id, FixedAsset.section_id, FixedAsset.status
-    ).order_by(FixedAsset.id)
+        FixedAsset.id, FixedAsset.section_id, FixedAssetStatus.behavior
+    ).join(FixedAssetStatus, FixedAsset.status == FixedAssetStatus.code).order_by(FixedAsset.id)
     if master_section_id is not None:
         asset_query = asset_query.where(FixedAsset.section_id == master_section_id)
     assets = (await db.execute(asset_query)).all()

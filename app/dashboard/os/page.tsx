@@ -7,6 +7,7 @@ import {
   type FixedAsset as ApiFixedAsset,
   type FixedAssetCreate,
   type FixedAssetUpdate,
+  type AssetCatalogItem,
 } from "@/lib/api"
 import { useSections } from "@/lib/use-sections"
 import {
@@ -20,8 +21,8 @@ import { Input } from "@/components/ui/input"
 /* ════════════════════════════════════════
    ТИПЫ
 ════════════════════════════════════════ */
-type AssetType = "locomotive" | "wagon" | "diesel"
-type AssetStatus = "operational" | "maintenance" | "repair" | "out_of_service"
+type AssetType = string
+type AssetStatus = string
 
 type FixedAsset = {
   id:           string
@@ -50,7 +51,7 @@ type FixedAsset = {
 /* ════════════════════════════════════════
    СПРАВОЧНИКИ
 ════════════════════════════════════════ */
-const statusConfig: Record<AssetStatus, { label: string; icon: React.ElementType; cls: string; dot: string }> = {
+const statusConfig: Record<string, { label: string; icon: React.ElementType; cls: string; dot: string }> = {
   operational:    { label: "В эксплуатации", icon: CheckCircle,   cls: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400",   dot: "bg-green-500" },
   maintenance:    { label: "На ТО",          icon: Wrench,        cls: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400",   dot: "bg-amber-500" },
   repair:         { label: "Ремонт",         icon: AlertTriangle, cls: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-400", dot: "bg-orange-500" },
@@ -64,12 +65,13 @@ const statusConfig: Record<AssetStatus, { label: string; icon: React.ElementType
 /* ════════════════════════════════════════
    МОДАЛ ПРОСМОТРА / РЕДАКТИРОВАНИЯ
 ════════════════════════════════════════ */
-function AssetModal({ asset, onClose, onSave, onDelete, sections }: {
+function AssetModal({ asset, onClose, onSave, onDelete, sections, statuses }: {
   asset: FixedAsset
   onClose: () => void
   onSave: (a: FixedAsset) => void
   onDelete?: (a: FixedAsset) => void
   sections: string[]
+  statuses: AssetCatalogItem[]
 }) {
   const [editing,      setEditing]      = useState(false)
   const [commDate,     setCommDate]     = useState(asset.commDate)
@@ -81,7 +83,7 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections }: {
   const [initialCost,  setInitialCost]  = useState(asset.initialCost)
   const [owner,        setOwner]        = useState(asset.owner)
 
-  const st = statusConfig[status]
+  const st = statusConfig[status] || { label: asset.statusLabel || status, icon: CheckCircle, cls: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300", dot: "bg-blue-500" }
   const typeLabels: Record<string, { label: string; gradient: string; Icon: React.ElementType }> = {
     locomotive: { label: "Локомотив", gradient: "bg-gradient-to-r from-blue-600 to-blue-700", Icon: Train },
     diesel:     { label: "Тепловоз",  gradient: "bg-gradient-to-r from-orange-600 to-orange-700", Icon: Train },
@@ -168,11 +170,11 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections }: {
               {editing ? (
                 <div className="relative">
                   <select value={status} onChange={e => setStatus(e.target.value as AssetStatus)} className={selCls}>
-                    <option value="operational">В эксплуатации</option>
-                    <option value="maintenance">На ТО</option>
-                    <option value="repair">Ремонт</option>
-                    <option value="out_of_service">Выведен</option>
-                  </select>
+                    
+                    
+                    
+                    
+                  {statuses.map((item) => <option key={item.code} value={item.code}>{item.names.ru || item.code}</option>)}</select>
                   <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"/>
                 </div>
               ) : (
@@ -291,8 +293,8 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections }: {
 /* ════════════════════════════════════════
    МОДАЛ ДОБАВЛЕНИЯ НОВОГО ОС
 ════════════════════════════════════════ */
-function AddAssetModal({ onClose, onSave, sections }: { onClose: () => void; onSave: (a: FixedAsset) => void; sections: string[] }) {
-  const [assetType,   setAssetType]   = useState<AssetType>("locomotive")
+function AddAssetModal({ onClose, onSave, sections, types, statuses }: { onClose: () => void; onSave: (a: FixedAsset) => void; sections: string[]; types: AssetCatalogItem[]; statuses: AssetCatalogItem[] }) {
+  const [assetType,   setAssetType]   = useState<AssetType>(types[0]?.code || "locomotive")
   const [name,        setName]        = useState("")  // Номер/Наименование (основное поле)
   const [series,      setSeries]      = useState("")
   const [depot,       setDepot]       = useState(sections[0] ?? "")
@@ -302,6 +304,10 @@ function AddAssetModal({ onClose, onSave, sections }: { onClose: () => void; onS
   const [invNumber,   setInvNumber]   = useState("")  // Инвентарный номер
   const [owner,       setOwner]       = useState("РЖД")
   const [error,       setError]       = useState("")
+
+  useEffect(() => {
+    if (types.length && !types.some((item) => item.code === assetType)) setAssetType(types[0].code)
+  }, [types, assetType])
 
   const handleSave = () => {
     if (!name.trim() || !invNumber.trim() || !commDate.trim()) {
@@ -317,7 +323,7 @@ function AddAssetModal({ onClose, onSave, sections }: { onClose: () => void; onS
       series,
       depot,
       sectionId: null,
-      status: "operational",
+      status: statuses.find((item) => item.behavior === "operational")?.code || statuses[0]?.code || "operational",
       commDate: commDate.trim(),
       yearBuilt,
       mileage: "0",
@@ -357,6 +363,9 @@ function AddAssetModal({ onClose, onSave, sections }: { onClose: () => void; onS
           {/* Тип */}
           <div>
             <p className={lbl}>Тип объекта</p>
+            <select value={assetType} onChange={(event) => setAssetType(event.target.value)} className={sel}>
+              {types.map((item) => <option key={item.code} value={item.code}>{item.names.ru || item.code}</option>)}
+            </select>
             <div className="flex gap-2">
               <button onClick={() => setAssetType("locomotive")}
                 className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold border-2 transition-all ${
@@ -510,6 +519,8 @@ const PAGE_SIZE = 50
 
 export default function OsPage() {
   const { sections, getSectionId } = useSections()
+  const [assetTypes, setAssetTypes] = useState<AssetCatalogItem[]>([])
+  const [assetStatuses, setAssetStatuses] = useState<AssetCatalogItem[]>([])
   const [assets,    setAssets]    = useState<FixedAsset[]>([])
   const [total,     setTotal]     = useState(0)
   const [counts,    setCounts]    = useState({ total:0, loco:0, wagon:0, operational:0, repair:0, retired:0 })
@@ -534,9 +545,9 @@ export default function OsPage() {
         total: stats.total,
         loco: stats.by_asset_type.locomotive,
         wagon: stats.by_asset_type.wagon,
-        operational: stats.by_status.operational,
-        repair: stats.by_status.maintenance + stats.by_status.repair,
-        retired: stats.by_status.out_of_service,
+        operational: stats.by_status_behavior.operational || 0,
+        repair: (stats.by_status_behavior.maintenance || 0) + (stats.by_status_behavior.repair || 0),
+        retired: stats.by_status_behavior.out_of_service || 0,
       });
       const deps = [...new Set([...sections, ...stats.depots])].sort();
       setAllDepots(deps);
@@ -544,6 +555,16 @@ export default function OsPage() {
       console.error("Failed to fetch asset counts:", error);
     }
   }, [sections])
+
+  useEffect(() => {
+    void Promise.all([
+      api.fixedAssetCatalogs.list("types", { limit: 500, offset: 0, is_active: true }),
+      api.fixedAssetCatalogs.list("statuses", { limit: 500, offset: 0, is_active: true }),
+    ]).then(([types, statuses]) => {
+      setAssetTypes(types.items)
+      setAssetStatuses(statuses.items)
+    }).catch((error) => console.error("Failed to load asset catalogs:", error))
+  }, [])
 
   const fetchAssets = useCallback(async (pg: number, q: string, ft: string, fd: string, fs: string) => {
     setLoading(true)
@@ -658,8 +679,8 @@ export default function OsPage() {
 
   return (
     <div className="p-8 space-y-6">
-      {selected  && <AssetModal asset={selected}  onClose={() => setSelected(null)} onSave={handleSave} onDelete={handleDelete} sections={sections}/>}
-      {showAdd   && <AddAssetModal onClose={() => setShowAdd(false)} onSave={handleAdd} sections={sections}/>}
+      {selected  && <AssetModal asset={selected}  onClose={() => setSelected(null)} onSave={handleSave} onDelete={handleDelete} sections={sections} statuses={assetStatuses}/>}
+      {showAdd   && <AddAssetModal onClose={() => setShowAdd(false)} onSave={handleAdd} sections={sections} types={assetTypes} statuses={assetStatuses}/>}
 
       {/* Заголовок */}
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -708,10 +729,10 @@ export default function OsPage() {
           <div className="relative">
             <select value={fType} onChange={e => setFType(e.target.value as AssetType | "")} className={selCls}>
               <option value="">Все типы</option>
-              <option value="locomotive">Локомотивы</option>
-              <option value="diesel">Тепловозы</option>
-              <option value="wagon">Вагоны</option>
-            </select>
+              
+              
+              
+            {assetTypes.map((item) => <option key={item.code} value={item.code}>{item.names.ru || item.code}</option>)}</select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
             {fType && <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600 rounded-full text-[9px] text-white flex items-center justify-center font-bold">✓</span>}
           </div>
@@ -730,11 +751,11 @@ export default function OsPage() {
           <div className="relative">
             <select value={fStatus} onChange={e => setFStatus(e.target.value as AssetStatus | "")} className={selCls}>
               <option value="">Все статусы</option>
-              <option value="operational">В эксплуатации</option>
-              <option value="maintenance">На ТО</option>
-              <option value="repair">Ремонт</option>
-              <option value="out_of_service">Выведен</option>
-            </select>
+              
+              
+              
+              
+            {assetStatuses.map((item) => <option key={item.code} value={item.code}>{item.names.ru || item.code}</option>)}</select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
             {fStatus && <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600 rounded-full text-[9px] text-white flex items-center justify-center font-bold">✓</span>}
           </div>
@@ -769,13 +790,13 @@ export default function OsPage() {
               </td></tr>
             )}
             {filtered.map(a => {
-              const st = statusConfig[a.status]
-              const typeConfig = {
+              const st = statusConfig[a.status] || { label: a.statusLabel || a.status, icon: CheckCircle, cls: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300", dot: "bg-blue-500" }
+              const typeConfig: Record<string, { label: string; cls: string; Icon: React.ElementType }> = {
                 locomotive: { label: "Локомотив", cls: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300", Icon: Train },
                 diesel:     { label: "Тепловоз",  cls: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300", Icon: Train },
                 wagon:      { label: "Вагон",     cls: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300", Icon: Container },
               }
-              const tc = typeConfig[a.assetType] || typeConfig.locomotive
+              const tc = typeConfig[a.assetType] || { label: a.assetTypeLabel || a.assetType, cls: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300", Icon: Container }
               return (
                 <tr key={a.id} onClick={() => setSelected(a)}
                   className="hover:bg-blue-50/40 dark:hover:bg-blue-950/20 cursor-pointer transition-colors">

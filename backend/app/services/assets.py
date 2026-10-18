@@ -104,20 +104,14 @@ async def get_fixed_asset(
 async def get_fixed_asset_stats(
     db: AsyncSession, *, master_section_id: UUID | None
 ) -> FixedAssetStats:
-    total, type_counts, status_counts, depots = await repository.asset_stats(
+    total, type_counts, status_counts, behavior_counts, depots = await repository.asset_stats(
         db, master_section_id=master_section_id
-    )
-    asset_types: tuple[AssetType, ...] = ("locomotive", "diesel", "wagon")
-    statuses: tuple[AssetStatus, ...] = (
-        "operational",
-        "maintenance",
-        "repair",
-        "out_of_service",
     )
     return FixedAssetStats(
         total=total,
-        by_asset_type={key: type_counts.get(key, 0) for key in asset_types},
-        by_status={key: status_counts.get(key, 0) for key in statuses},
+        by_asset_type=type_counts,
+        by_status=status_counts,
+        by_status_behavior=behavior_counts,
         depots=depots,
     )
 
@@ -125,6 +119,10 @@ async def get_fixed_asset_stats(
 async def create_fixed_asset(
     db: AsyncSession, payload: FixedAssetCreate
 ):
+    if not await repository.active_catalog_value_exists(db, kind="types", code=payload.asset_type):
+        raise HTTPException(status_code=422, detail="Asset type is unavailable")
+    if not await repository.active_catalog_value_exists(db, kind="statuses", code=payload.status):
+        raise HTTPException(status_code=422, detail="Asset status is unavailable")
     asset = FixedAsset(**payload.model_dump())
     await repository.add_asset(db, asset)
     await _commit(db, "Inventory number or Wialon ID already exists, or section is invalid")
@@ -155,6 +153,10 @@ async def update_fixed_asset(
 ):
     asset = await _get_scoped_asset(db, asset_id, master_section_id)
     changes = payload.model_dump(exclude_unset=True)
+    if "asset_type" in changes and not await repository.active_catalog_value_exists(db, kind="types", code=changes["asset_type"]):
+        raise HTTPException(status_code=422, detail="Asset type is unavailable")
+    if "status" in changes and not await repository.active_catalog_value_exists(db, kind="statuses", code=changes["status"]):
+        raise HTTPException(status_code=422, detail="Asset status is unavailable")
     mileage = changes.pop("mileage", None)
     for field_name, value in changes.items():
         setattr(asset, field_name, value)

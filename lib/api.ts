@@ -494,11 +494,11 @@ export type FixedAsset = {
   asset_status_label?: string;
   asset_type_translation_missing?: boolean;
   asset_status_translation_missing?: boolean;
-  asset_type: "locomotive" | "wagon" | "diesel";
+  asset_type: string;
   series: string | null;
   depot: string | null;
   section_id: string | null;
-  status: "operational" | "maintenance" | "repair" | "out_of_service";
+  status: string;
   comm_date: string | null;
   year_built: number | null;
   mileage: number | string;
@@ -520,16 +520,17 @@ export type FixedAsset = {
 
 export type FixedAssetListParams = ListParams & {
   q?: string;
-  asset_type?: FixedAsset["asset_type"];
-  status?: FixedAsset["status"];
+  asset_type?: string;
+  status?: string;
   section_id?: string;
   depot?: string;
 };
 
 export type FixedAssetStats = {
   total: number;
-  by_asset_type: Record<FixedAsset["asset_type"], number>;
-  by_status: Record<FixedAsset["status"], number>;
+  by_asset_type: Record<string, number>;
+  by_status: Record<string, number>;
+  by_status_behavior: Record<string, number>;
   depots: string[];
 };
 
@@ -583,6 +584,32 @@ const fixedAssets = {
   },
   async remove(id: string): Promise<void> {
     await request<null>({ method: "DELETE", path: `/fixed-assets/${id}` });
+  },
+};
+
+export type AssetCatalogKind = "types" | "statuses";
+export type AssetCatalogColor = "blue" | "green" | "amber" | "orange" | "red" | "gray" | "purple";
+export type AssetCatalogBehavior = "operational" | "maintenance" | "repair" | "out_of_service";
+export type AssetCatalogItem = {
+  code: string; name: string; names: Partial<Record<TranslationLocale, string>>;
+  is_active: boolean; usage_count: number; behavior: AssetCatalogBehavior | null; color: AssetCatalogColor;
+};
+export type AssetCatalogWrite = {
+  code?: string; names: Record<TranslationLocale, string>; is_active: boolean;
+  behavior?: AssetCatalogBehavior; color: AssetCatalogColor;
+};
+const fixedAssetCatalogs = {
+  async list(kind: AssetCatalogKind, params: ListParams & { q?: string; is_active?: boolean } = {}): Promise<Paginated<AssetCatalogItem>> {
+    return request({ method: "GET", path: `/fixed-asset-catalogs/${kind}`, params });
+  },
+  async create(kind: AssetCatalogKind, payload: AssetCatalogWrite): Promise<AssetCatalogItem> {
+    return request({ method: "POST", path: `/fixed-asset-catalogs/${kind}`, body: payload });
+  },
+  async update(kind: AssetCatalogKind, code: string, payload: AssetCatalogWrite): Promise<AssetCatalogItem> {
+    return request({ method: "PUT", path: `/fixed-asset-catalogs/${kind}/${encodeURIComponent(code)}`, body: payload });
+  },
+  async remove(kind: AssetCatalogKind, code: string): Promise<void> {
+    return request({ method: "DELETE", path: `/fixed-asset-catalogs/${kind}/${encodeURIComponent(code)}` });
   },
 };
 
@@ -1411,6 +1438,7 @@ export const api = {
   departments,
   nomenclature,
   fixedAssets,
+  fixedAssetCatalogs,
   workOrders,
   tmcDocuments,
   nomenclatureNorms,

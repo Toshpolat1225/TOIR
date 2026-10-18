@@ -20,6 +20,7 @@ from app.routers.dashboard import router as dashboard_router
 from app.routers.health import router as health_router
 from app.routers.maintenance import router as maintenance_router
 from app.routers.localization import router as localization_router
+from app.routers.asset_catalogs import router as asset_catalogs_router
 from app.routers.ml import router as ml_router
 from app.routers.nomenclature import router as nomenclature_router
 from app.routers.references import router as references_router
@@ -149,6 +150,7 @@ app.include_router(wialon_router, prefix="/api/v1")
 app.include_router(work_orders_router, prefix="/api/v1")
 app.include_router(maintenance_router, prefix="/api/v1")
 app.include_router(localization_router, prefix="/api/v1")
+app.include_router(asset_catalogs_router, prefix="/api/v1")
 app.include_router(ml_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(tmc_documents_router, prefix="/api/v1")
