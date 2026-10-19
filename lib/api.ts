@@ -1210,15 +1210,6 @@ const tmcDocuments = {
   async list(params: TmcDocumentListParams): Promise<Paginated<TmcDocument>> {
     return request<Paginated<TmcDocument>>({ method: "GET", path: "/tmc-documents", params, suppress404Log: true });
   },
-  async create(data: Partial<TmcDocument>): Promise<TmcDocument> {
-    return request<TmcDocument>({ method: "POST", path: "/tmc-documents", body: data });
-  },
-  async update(id: string, data: Partial<TmcDocument>): Promise<TmcDocument> {
-    return request<TmcDocument>({ method: "PATCH", path: `/tmc-documents/${id}`, body: data });
-  },
-  async remove(id: string): Promise<void> {
-    await request<null>({ method: "DELETE", path: `/tmc-documents/${id}` });
-  },
 };
 
 // --- Dashboard Module ---

@@ -52,3 +52,7 @@ No schema or migration change was made.
 2026-10-19 | Codex | Excluded cancelled work orders from monthly readiness and changed dashboard asset matching to IDs | backend dashboard/analytics repository, dashboard schema, lib/api.ts, app/dashboard/page.tsx, backend/tests/test_dashboard_regressions.py | Python AST 6 files passed; tsc exit 0; build exit 0 with 2 existing work-orders Hook warnings; backend tests/API/E2E NOT TESTED | Run mock dashboard regressions in a safe local test setup and verify API/UI behavior
 Monthly trend keeps its existing historical closed_at logic for non-cancelled statuses; daily readiness snapshots were not edited.
 Dashboard order responses now carry fixed_asset_id end-to-end, preventing duplicate display names from merging assets.
+2026-10-19 | Codex | Aligned TMC document client with read-only UI/API and added contract coverage | lib/api.ts, backend/app/repositories/tmc_documents.py, backend/tests/test_tmc_documents_contract.py, docs/HANDOFF.md, docs/AI_WORKLOG.md | Python AST 6 files passed; tsc exit 0; build exit 0 with 2 existing work-orders Hook warnings; tests/API/E2E NOT TESTED | Run TMC contract tests in a safe local setup
+Only TMC document list/read/print is used by UI; work-order material edits use work-order endpoints and nomenclature edits use inventory endpoints.
+Removed unsupported TMC document create/update/delete client methods; no API, permission, migration, or schema was added.
+Fixed missing SQLAlchemy exists import in the TMC repository search query.

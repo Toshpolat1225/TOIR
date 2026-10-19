@@ -55,7 +55,8 @@ chiqarma.
   `backend/scripts/e2e_*.py` ichida.
 - [UPDATED] TMC hujjatlari uchun GET ro'yxat route'i `backend/app/routers/tmc_documents.py`
   orqali ulandi; mahalliy manba kodi bu route'ni taqdim etadi. Backend runtime/deployment
-  tekshirilmagan. TMC create/update/delete route'lari hanuz yo'q.
+  tekshirilmagan. Keyingi UI tekshiruvida hujjatlar faqat ko'rish/chop etish uchun; hozircha
+  create/update/delete endpoint talab qilinmaydi.
 - [REPORTED] Oldingi sessiyada `npx tsc --noEmit`, `npm run lint`, `npm run build` muvaffaqiyatli
   bo'lgani xabar qilingan; lint/build'da 2 ta React Hook dependency warning bo'lgan. Bu auditda
   build qayta bajarilmadi.
@@ -194,8 +195,8 @@ production tayyorligi degani emas.
 1. Git CLI bor muhitda `git status`, `git diff`, `.env.local` va backup tracking holatini aniqlash;
    Git history secret scan'ni maxfiy qiymatlarni chiqarmasdan o'tkazish.
 2. Master maintenance GET schedule va GET plan uchun server-side section scope qo'shish.
-3. TMC create/update/delete route'larini amalga oshirish; GET list route'ini API muhitida
-   tasdiqlash.
+3. TMC GET list route'ini xavfsiz test API muhitida tasdiqlash. Hujjat create/update/delete
+   faqat UI talabi tasdiqlansa alohida rejalashtiriladi.
 4. Amaldagi Next/PostCSS/xlsx audit holatini lockfile bilan qayta tekshirish; tasdiqsiz
    `--force` major upgrade qilmaslik.
 5. `PROJECT.md`ni production arxitekturasi bilan moslashtirish.
@@ -413,12 +414,12 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 - Static review found migrations linked in order from `0001_baseline` through `0009_user_active_permission`; model declarations include the translation, catalog, permission, active-user, maintenance-plan, TMC, and work-order mileage entities. No live database or migration was accessed, so deployed revision and live schema alignment are unknown.
 - `npx.cmd tsc --noEmit`, `npm.cmd run lint`, `npm.cmd run build`, and Python AST parsing for 116 backend files exited 0. Lint and build reported two React Hook warnings. `.eslintignore` now excludes Next.js-generated `next-env.d.ts` from standalone ESLint; build ran after no node listener was found.
 - Static security review found maintenance schedule/plan listing and plan update repositories/services did not apply master section scope. User update logic could demote an admin when more than one active admin existed, despite the recorded immutable-admin policy; see the later maintenance security task for code changes.
-- Organization units remain flat `departments`/`sections` without a parent relationship. TMC document router implements GET only although the frontend API client also declares create/update calls. Dashboard readiness is calculated from created/closed dates, but counts cancelled orders with NULL `closed_at` as open; dashboard order-to-asset rule matches names instead of stable asset IDs. Localization inventory confirms broad Russian hardcoded UI remains.
+- Organization units remain flat `departments`/`sections` without a parent relationship. At audit time, the frontend declared unsupported TMC document create/update calls; see the later TMC contract task. Dashboard issues were corrected in the later dashboard task. Localization inventory confirms broad Russian hardcoded UI remains.
 - Work-order report uses the opening snapshot through `executive_summary.current_mileage`, which derives from `work_orders.mileage_at_creation`. At audit time, dashboard readiness counted cancelled orders with NULL `closed_at` as open and matched orders to assets by name; see the later dashboard correction task. Git status/diff could not be checked because Git CLI is unavailable. No database, migration, API, production server, E2E, backend unit test, or browser test was run.
 
 ### Next task
 
-- TMC create/update contract remains a follow-up item. Git diff, live migration/schema alignment, API behavior, and production readiness remain NOT TESTED.
+- Git diff, live migration/schema alignment, API behavior, and production readiness remain NOT TESTED.
 
 ## Maintenance scope and admin role protection (2026-10-19)
 
@@ -445,3 +446,16 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Have the user run the dashboard regression tests against a safe local test setup and confirm master scoping and duplicate-name asset matching through the API/UI. Production server/database and runtime behavior remain NOT TESTED.
+
+## TMC document API contract (2026-10-19)
+
+### Verified
+
+- TMC document UI uses GET list to show and print existing documents. Work-order detail also uses GET list for linked warehouse documents; its TMC draft editor updates work-order repair items through work-order create/update. No UI calls TMC document create, update, or delete. Nomenclature CRUD on the TMC page uses separate inventory endpoints.
+- Backend TMC document router exposes GET only; service applies master section scope and checks a requested work order before querying linked documents. `tmc.view` is the only TMC permission. Document statuses are constrained to `draft`, `issued`, and `closed`; item rows belong to documents. No document history/audit model was found.
+- Removed unused TMC document create/update/delete client methods. No endpoint, permission, migration, or schema change was added. Added contract tests for read-only routes and master section behavior. Fixed the TMC repository's missing SQLAlchemy `exists` import used by search.
+- Python AST syntax check passed for 6 TMC/backend test files. `npx.cmd tsc --noEmit` exited 0. `npm.cmd run build` exited 0 with two React Hook warnings in work-orders files. Backend tests, API, E2E, database, and browser behavior are NOT TESTED.
+
+### Next task
+
+- Have the user run the TMC contract tests in a safe local test setup. If document creation or editing becomes a UI requirement, first define stock movement, status transitions, audit/history, scope, granular permissions, and migration plan; do not add hard-delete behavior.
