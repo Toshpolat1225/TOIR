@@ -25,8 +25,7 @@ Next.js 15 frontend + FastAPI backend + PostgreSQL 16 in Docker Compose.
 - Backend layers: `routers -> services -> repositories -> schemas` in `backend/app/`. List response `{items,total,limit,offset}`; errors `{"detail": ...}`; delete returns 204; `sort_by` only from a whitelist.
 - Roles: admin, operator, master, management. A **master sees only his own section**. Enforce it on the SERVER inside the DB query, return **404** for other sections' records, and do it BEFORE any status or conflict checks.
 - Frontend: call the backend only through `api.<resource>.<method>()` in `lib/api.ts`. Do not add direct database clients to browser code. UI text stays Russian.
-- Python 3.12 (Docker image). Frontend dev: `npm run dev -- -H 127.0.0.1`. If styles break: stop the dev server, delete the `.next` folder, start again.
-
+- Python 3.12 (Docker image). Frontend dev: **npm run dev -- -H 127.0.0.1**. If styles break: stop the dev server, delete the `.next` folder, start again.
 ## Checks before saying "done"
 - Frontend: `npx tsc --noEmit` and `npm run build` (never while the dev server is running).
 - Backend: locally only a syntax check. Real tests are the e2e scripts in `backend/scripts/` that the user runs on the server. Write e2e checks for every new endpoint in the same style, but never claim they passed.
@@ -36,3 +35,4 @@ Next.js 15 frontend + FastAPI backend + PostgreSQL 16 in Docker Compose.
 - Add 3-5 lines to `docs/AI_WORKLOG.md` (date, task, changed files, tested or not, next step).
 - New decision: add to `docs/DECISIONS.md`.
 - Tell the user: changed files, what was NOT tested, and the first step of the next task.
+
