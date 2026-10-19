@@ -1242,6 +1242,7 @@ export type DashboardSummary = {
   orders: Array<{
     id: string;
     number: string;
+    fixed_asset_id: string;
     unit: string;
     section: string;
     section_id: string;

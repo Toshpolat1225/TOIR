@@ -412,13 +412,13 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 
 - Static review found migrations linked in order from `0001_baseline` through `0009_user_active_permission`; model declarations include the translation, catalog, permission, active-user, maintenance-plan, TMC, and work-order mileage entities. No live database or migration was accessed, so deployed revision and live schema alignment are unknown.
 - `npx.cmd tsc --noEmit`, `npm.cmd run lint`, `npm.cmd run build`, and Python AST parsing for 116 backend files exited 0. Lint and build reported two React Hook warnings. `.eslintignore` now excludes Next.js-generated `next-env.d.ts` from standalone ESLint; build ran after no node listener was found.
-- Static security review found maintenance schedule/plan listing and plan update repositories/services do not apply master section scope. User update logic can demote an admin when more than one active admin exists, despite the recorded immutable-admin policy.
+- Static security review found maintenance schedule/plan listing and plan update repositories/services did not apply master section scope. User update logic could demote an admin when more than one active admin existed, despite the recorded immutable-admin policy; see the later maintenance security task for code changes.
 - Organization units remain flat `departments`/`sections` without a parent relationship. TMC document router implements GET only although the frontend API client also declares create/update calls. Dashboard readiness is calculated from created/closed dates, but counts cancelled orders with NULL `closed_at` as open; dashboard order-to-asset rule matches names instead of stable asset IDs. Localization inventory confirms broad Russian hardcoded UI remains.
-- Work-order report uses the opening snapshot through `executive_summary.current_mileage`, which derives from `work_orders.mileage_at_creation`. Git status/diff could not be checked because Git CLI is unavailable. No database, migration, API, production server, E2E, backend unit test, or browser test was run.
+- Work-order report uses the opening snapshot through `executive_summary.current_mileage`, which derives from `work_orders.mileage_at_creation`. At audit time, dashboard readiness counted cancelled orders with NULL `closed_at` as open and matched orders to assets by name; see the later dashboard correction task. Git status/diff could not be checked because Git CLI is unavailable. No database, migration, API, production server, E2E, backend unit test, or browser test was run.
 
 ### Next task
 
-- Dashboard cancelled-order/asset-ID handling and TMC create/update contract remain separate follow-up items. Git diff, live migration/schema alignment, API behavior, and production readiness remain NOT TESTED.
+- TMC create/update contract remains a follow-up item. Git diff, live migration/schema alignment, API behavior, and production readiness remain NOT TESTED.
 
 ## Maintenance scope and admin role protection (2026-10-19)
 
@@ -432,3 +432,16 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Have the user run the mock regression tests in the local test environment and any API E2E only against the intended test API. Do not use production server or database. Test execution and runtime authorization remain NOT TESTED.
+
+## Dashboard calculation corrections (2026-10-19)
+
+### Verified
+
+- Business status rules confirm `pending -> in_progress -> completed | cancelled`; only `completed` requires `closed_at`, and the update service writes `closed_at` when completing an order. Monthly readiness trend now excludes `cancelled` orders while preserving the existing historical close-date predicate for the other statuses.
+- Dashboard work-order rows now include `fixed_asset_id` in the SQL response, API schema, and TypeScript type. Dashboard availability cards match open orders to assets by ID instead of display name. Daily readiness snapshot code was not changed.
+- Added backend mock regression tests for cancelled exclusion and retained close-date logic, master section scope, and distinct asset IDs when names match. Python AST syntax check passed for 6 files. `npx.cmd tsc --noEmit` exited 0. `npm.cmd run build` exited 0; it reported two React Hook warnings in work-orders files.
+- Backend tests, database query results, API response at runtime, E2E, and browser behavior are NOT TESTED.
+
+### Next task
+
+- Have the user run the dashboard regression tests against a safe local test setup and confirm master scoping and duplicate-name asset matching through the API/UI. Production server/database and runtime behavior remain NOT TESTED.

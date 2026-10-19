@@ -49,3 +49,6 @@ No schema or migration changed; URL filter persistence and several reference-lis
 Master scope is derived from authenticated User.section_id and applied to schedule assets, orders, plans, plan updates, and linked work-order checks.
 Admin demotion is blocked even with multiple admins; the last-active-admin and self-deactivation guards remain.
 No schema or migration change was made.
+2026-10-19 | Codex | Excluded cancelled work orders from monthly readiness and changed dashboard asset matching to IDs | backend dashboard/analytics repository, dashboard schema, lib/api.ts, app/dashboard/page.tsx, backend/tests/test_dashboard_regressions.py | Python AST 6 files passed; tsc exit 0; build exit 0 with 2 existing work-orders Hook warnings; backend tests/API/E2E NOT TESTED | Run mock dashboard regressions in a safe local test setup and verify API/UI behavior
+Monthly trend keeps its existing historical closed_at logic for non-cancelled statuses; daily readiness snapshots were not edited.
+Dashboard order responses now carry fixed_asset_id end-to-end, preventing duplicate display names from merging assets.

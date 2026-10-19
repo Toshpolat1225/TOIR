@@ -128,7 +128,7 @@ async def dashboard_assets_and_orders(
     order_query = (
         text(
             """
-            SELECT wo.id, wo.number, fa.name AS unit, s.name AS section,
+            SELECT wo.id, wo.number, wo.fixed_asset_id, fa.name AS unit, s.name AS section,
                    wo.section_id, wo.status, wo.priority, wo.description,
                    wo.created_at, wo.date_start, e.full_name AS tech,
                    types.work_types AS repair_kind,

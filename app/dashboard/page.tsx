@@ -127,9 +127,9 @@ export default function DashboardPage() {
   const filteredAssets = assets
 
   /* Единицы с открытыми нарядами (ожидание или в работе) — считаем их «на ТО» */
-  const unitsWithOpenOrder = useMemo(() => {
+  const assetsWithOpenOrder = useMemo(() => {
     const open = filteredOrders.filter((o: { status?: string }) => o.status === "pending" || o.status === "in_progress")
-    return new Set(open.map((o: { unit?: string }) => (o.unit ?? "").trim()))
+    return new Set(open.map((o) => o.fixed_asset_id))
   }, [filteredOrders])
 
   /* ── Счётчики активов (по отфильтрованным) + учёт открытых нарядов ── */
@@ -138,17 +138,17 @@ export default function DashboardPage() {
   const wagonCount   = filteredAssets.filter((a: { asset_type?: string }) => a.asset_type === "wagon").length
   /* В эксплуатации: статус operational и нет открытого наряда */
   const operational  = useMemo(() => 
-    filteredAssets.filter((a: { status?: string; name?: string }) => 
-      a.status === "operational" && !unitsWithOpenOrder.has((a.name ?? "").trim())
+    filteredAssets.filter((a) => 
+      a.status === "operational" && !assetsWithOpenOrder.has(a.id)
     ).length,
-    [filteredAssets, unitsWithOpenOrder]
+    [filteredAssets, assetsWithOpenOrder]
   )
   /* На ТО: статус maintenance ИЛИ есть открытый наряд при статусе operational */
   const onMaint      = useMemo(() =>
-    filteredAssets.filter((a: { status?: string; name?: string }) =>
-      a.status === "maintenance" || (a.status === "operational" && unitsWithOpenOrder.has((a.name ?? "").trim()))
+    filteredAssets.filter((a) =>
+      a.status === "maintenance" || (a.status === "operational" && assetsWithOpenOrder.has(a.id))
     ).length,
-    [filteredAssets, unitsWithOpenOrder]
+    [filteredAssets, assetsWithOpenOrder]
   )
   const onRepair     = filteredAssets.filter((a: { status?: string }) => a.status === "repair").length
   const outOfService = filteredAssets.filter((a: { status?: string }) => a.status === "out_of_service").length

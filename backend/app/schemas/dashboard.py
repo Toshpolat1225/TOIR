@@ -21,6 +21,7 @@ class DashboardAsset(BaseModel):
 class DashboardOrder(BaseModel):
     id: UUID
     number: str
+    fixed_asset_id: UUID
     unit: str
     section: str
     section_id: UUID

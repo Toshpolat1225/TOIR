@@ -41,7 +41,8 @@ async def dashboard_summary(
                 FROM month_ends me
                 JOIN work_orders wo ON wo.created_at::date <= me.month_end
                 JOIN fixed_assets fa ON fa.id = wo.fixed_asset_id
-                WHERE (wo.closed_at IS NULL OR wo.closed_at::date > me.month_end)
+                WHERE wo.status <> 'cancelled'
+                  AND (wo.closed_at IS NULL OR wo.closed_at::date > me.month_end)
                   {scope_sql}
                 GROUP BY me.month_end
             )
