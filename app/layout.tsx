@@ -5,6 +5,7 @@ import { cookies } from 'next/headers'
 import { DEFAULT_LOCALE, isLocale, LOCALE_COOKIE } from '@/lib/locale'
 import './globals.css'
 
+
 export const metadata: Metadata = {
   title: 'STTB — Система ТО',
   description: 'Система управления техническим обслуживанием STTB',
