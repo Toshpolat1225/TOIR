@@ -91,8 +91,11 @@ async def list_sections(
     offset: int,
     sort_by: str,
     sort_order: str,
+    q: str | None = None,
 ) -> tuple[list[Section], int]:
     filters = [Section.id == master_section_id] if master_section_id is not None else []
+    if q and q.strip():
+        filters.append(Section.name.ilike(f"%{q.strip()}%"))
     return await list_page(
         db,
         Section,

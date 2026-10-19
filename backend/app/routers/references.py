@@ -118,6 +118,7 @@ async def get_sections(
     offset: int = Query(default=0, ge=0),
     sort_by: str = Query(default="name"),
     sort_order: SortOrder = Query(default="asc"),
+    q: str | None = Query(default=None, max_length=200),
 ) -> PaginatedResponse[SectionRead]:
     items, total = await service.list_sections(
         db,
@@ -128,6 +129,7 @@ async def get_sections(
         offset=offset,
         sort_by=sort_by,
         sort_order=sort_order,
+        q=q,
     )
     return PaginatedResponse[SectionRead](
         items=items, total=total, limit=limit, offset=offset

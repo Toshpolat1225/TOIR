@@ -312,7 +312,7 @@ type ListParams = {
 };
 
 const sections = {
-  async list(params: ListParams = { limit: 100, offset: 0 }): Promise<Paginated<Section>> {
+  async list(params: ListParams & { q?: string } = { limit: 100, offset: 0 }): Promise<Paginated<Section>> {
     return request<Paginated<Section>>({
       method: "GET",
       path: "/sections",

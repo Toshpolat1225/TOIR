@@ -159,6 +159,7 @@ async def list_sections(
     offset: int,
     sort_by: str,
     sort_order: str,
+    q: str | None = None,
 ) -> tuple[list[Section], int]:
     try:
         return await repository.list_sections(
@@ -168,6 +169,7 @@ async def list_sections(
             offset=offset,
             sort_by=sort_by,
             sort_order=sort_order,
+            q=q,
         )
     except ValueError as exc:
         raise _unsupported_sort() from exc

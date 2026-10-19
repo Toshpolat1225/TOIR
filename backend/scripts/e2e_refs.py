@@ -249,6 +249,21 @@ def main() -> int:
             payload={"name": f"REF-UPD-{suffix[:8]}"},
         )
         check_status(checks, "Update section", section_update, 200)
+        section_search = request(
+            "GET",
+            f"/api/v1/sections?limit=25&q=REF-UPD-{suffix[:8]}",
+            bearer=operator_token,
+        )
+        section_search_items = parse_object(section_search).get("items", [])
+        check_condition(
+            checks,
+            "Section search is server-side and paginated",
+            section_search.status == 200
+            and parse_object(section_search).get("total") == 1
+            and len(section_search_items) == 1
+            and section_search_items[0].get("id") == section_id,
+            f"HTTP {section_search.status}; total and matching row checked",
+        )
         master_sections = request(
             "GET", "/api/v1/sections?limit=1000", bearer=master_token
         )
@@ -262,6 +277,19 @@ def main() -> int:
             if master_sections.status == 200
             and [item.get("id") for item in master_section_items] == [section_id]
             else f"HTTP {master_sections.status}; section scope was not enforced",
+        )
+        master_filtered_sections = request(
+            "GET",
+            f"/api/v1/sections?limit=25&q=REF-UPD-{suffix[:8]}",
+            bearer=master_token,
+        )
+        master_filtered_items = parse_object(master_filtered_sections).get("items", [])
+        check_condition(
+            checks,
+            "Master search retains assigned-section scope",
+            master_filtered_sections.status == 200
+            and [item.get("id") for item in master_filtered_items] == [section_id],
+            f"HTTP {master_filtered_sections.status}; only assigned section returned",
         )
         check_status(
             checks,

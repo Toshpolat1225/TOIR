@@ -5,12 +5,18 @@ import { Building2, Plus, Trash2, ArrowLeft } from "@/components/ui/icons"
 import Link from "next/link"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
+import { useDebouncedValue } from "@/lib/use-debounced-value"
 
 type SectionRow = { id: string; name: string }
 
 export default function SectionsPage() {
   const [list, setList] = useState<SectionRow[]>([])
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState("")
+  const [offset, setOffset] = useState(0)
+  const debouncedSearch = useDebouncedValue(search.trim())
+  const pageSize = 25
   const [newName, setNewName] = useState("")
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState("")
@@ -18,18 +24,21 @@ export default function SectionsPage() {
   const fetchSections = useCallback(async () => {
     setLoading(true)
     try {
-      const response = await api.sections.list({ limit: 1000, sort_by: "name", sort_order: "asc" })
+      const response = await api.sections.list({ limit: pageSize, offset, sort_by: "name", sort_order: "asc", q: debouncedSearch || undefined })
       setList(response.items)
+      setTotal(response.total)
     } catch (err) {
       console.error("Failed to fetch sections:", err)
       setError(err instanceof Error ? err.message : "Failed to load data")
       setList([])
+      setTotal(0)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [debouncedSearch, offset])
 
   useEffect(() => { fetchSections() }, [fetchSections])
+  useEffect(() => { setOffset(0) }, [debouncedSearch])
 
   const handleAdd = async () => {
     const name = newName.trim()
@@ -108,7 +117,12 @@ export default function SectionsPage() {
         <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center gap-2">
           <Building2 className="w-4 h-4 text-gray-500"/>
           <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Список участков</span>
-          <span className="text-xs text-gray-400 ml-2">({list.length})</span>
+          <span className="text-xs text-gray-400 ml-2">({total})</span>
+        </div>
+        <div className="border-b border-gray-200 dark:border-gray-800 p-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <input type="search" maxLength={200} value={search} onChange={(event) => { setSearch(event.target.value); setOffset(0) }} placeholder="Участок номи бўйича қидириш" aria-label="Участок номи бўйича қидириш" className="w-full sm:max-w-md border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
+          {search && <Button variant="outline" onClick={() => { setSearch(""); setOffset(0) }}>Тозалаш</Button>}
+          <span className="text-xs text-gray-500 dark:text-gray-400 sm:ml-auto">Натижа: {total}</span>
         </div>
         {loading ? (
           <div className="flex items-center justify-center py-12 text-gray-400 text-sm gap-2">
@@ -135,6 +149,15 @@ export default function SectionsPage() {
               </li>
             ))}
           </ul>
+        )}
+        {!loading && total > pageSize && (
+          <div className="flex flex-col gap-3 border-t border-gray-200 px-5 py-4 text-sm dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-gray-500 dark:text-gray-400">{offset + 1}–{Math.min(offset + pageSize, total)} / {total}</span>
+            <div className="flex gap-2">
+              <Button variant="outline" disabled={offset === 0} onClick={() => setOffset((value) => Math.max(0, value - pageSize))}>Олдинги</Button>
+              <Button variant="outline" disabled={offset + pageSize >= total} onClick={() => setOffset((value) => value + pageSize)}>Кейинги</Button>
+            </div>
+          </div>
         )}
       </div>
     </div>
