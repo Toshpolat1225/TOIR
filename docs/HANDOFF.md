@@ -418,4 +418,17 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 
 ### Next task
 
-- Fix the master-scope and admin-demotion defects, correct dashboard cancelled-order/asset-ID handling, and reconcile unused TMC create/update client methods with the backend contract. Add regression tests, then run them only against the authorized test environment. Git diff, live migration/schema alignment, API behavior, and production readiness remain NOT TESTED.
+- Dashboard cancelled-order/asset-ID handling and TMC create/update contract remain separate follow-up items. Git diff, live migration/schema alignment, API behavior, and production readiness remain NOT TESTED.
+
+## Maintenance scope and admin role protection (2026-10-19)
+
+### Verified
+
+- Static source review confirmed the schedule route did not pass the authenticated user into the service; maintenance schedule and plan queries were not consistently section-scoped. `update_plan` looked up plans without a section filter before status checks. Work-order creation also looked up a supplied maintenance plan without master scope.
+- Maintenance services now derive master scope only from authenticated `User.section_id`, reject a master with no section, and pass that scope to schedule asset/order/plan queries, plan listing, plan update lookup, and linked work-order lookups. Repository queries filter assets/plans/orders in SQL. Out-of-scope plans and linked work orders return 404 before status/conflict checks.
+- Admin demotion is rejected server-side even when multiple active admins exist; the last-active-admin guard runs first and retains its 409 protection. Existing self-deactivation protection remains in place. Added mock-only regression tests for master scope, missing section, cross-section update/link, admin demotion/last admin, and ordinary role update.
+- No schema or migration was changed. Python syntax, unit behavior, API behavior, database scope, E2E, and browser behavior are NOT TESTED yet.
+
+### Next task
+
+- Have the user run the mock regression tests in the local test environment and any API E2E only against the intended test API. Do not use production server or database. Test execution and runtime authorization remain NOT TESTED.

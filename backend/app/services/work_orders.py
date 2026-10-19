@@ -173,17 +173,29 @@ async def _resolve_create_scope(
 async def create_order(
     db: AsyncSession, user: User, payload: WorkOrderCreate
 ) -> WorkOrderRead:
-    section_id, department_id, mileage = await _resolve_create_scope(db, user, payload)
-    user_id = user.id
+    master_section_id = user.section_id if user.role == "master" else None
+    if user.role == "master" and master_section_id is None:
+        raise HTTPException(status_code=403, detail="Master user must be assigned to a section")
     maintenance_plan_id = payload.maintenance_plan_id
     maintenance_interval_id = payload.maintenance_interval_id
+    plan = None
     if maintenance_plan_id is not None:
-        plan = await maintenance_repository.get_plan(db, maintenance_plan_id)
+        plan = await maintenance_repository.get_plan(
+            db,
+            maintenance_plan_id,
+            master_section_id=master_section_id,
+        )
+        if plan is None and master_section_id is not None:
+            raise _not_found()
         if plan is None or plan.asset_id != payload.fixed_asset_id:
             raise HTTPException(
                 status_code=422,
                 detail="Maintenance plan must exist and belong to the selected fixed asset",
             )
+    section_id, department_id, mileage = await _resolve_create_scope(db, user, payload)
+    user_id = user.id
+    if maintenance_plan_id is not None:
+        assert plan is not None
         if plan.work_order_id is not None:
             raise _conflict(
                 "Maintenance plan is already linked to a work order"
@@ -271,7 +283,10 @@ async def create_order(
                     )
                     if maintenance_plan_id is not None:
                         plan = await maintenance_repository.get_plan(
-                            db, maintenance_plan_id, lock=True
+                            db,
+                            maintenance_plan_id,
+                            master_section_id=master_section_id,
+                            lock=True,
                         )
                     else:
                         plan = await maintenance_repository.get_plan_for_trigger(
@@ -279,6 +294,7 @@ async def create_order(
                             payload.fixed_asset_id,
                             maintenance_interval_id,
                             payload.maintenance_trigger_mileage,
+                            master_section_id=master_section_id,
                         )
                         if plan is None:
                             plan = MaintenancePlan(
@@ -294,6 +310,8 @@ async def create_order(
                             )
                             db.add(plan)
                             await db.flush()
+                    if plan is None and master_section_id is not None:
+                        raise _not_found()
                     if plan is None or plan.asset_id != payload.fixed_asset_id:
                         raise HTTPException(
                             status_code=422,

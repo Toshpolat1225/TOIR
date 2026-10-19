@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assets import FixedAsset
+from app.models.identity import User
 from app.models.maintenance import MaintenanceInterval, MaintenancePlan
 from app.repositories import maintenance as repository
 from app.schemas.maintenance import (
@@ -30,6 +31,17 @@ def _not_found() -> HTTPException:
 
 def _conflict(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
+def _master_section_scope(user: User) -> UUID | None:
+    if user.role != "master":
+        return None
+    if user.section_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Master user must be assigned to a section",
+        )
+    return user.section_id
 
 
 def _ceil_days(distance_km: Decimal, daily_average_km: Decimal) -> int:
@@ -194,6 +206,7 @@ def _plan_read(row: dict[str, Any]) -> MaintenancePlanRead:
 
 async def list_plans(
     db: AsyncSession,
+    user: User,
     *,
     asset_id: UUID | None,
     status_filter: str | None,
@@ -201,6 +214,7 @@ async def list_plans(
     limit: int,
     offset: int,
 ) -> tuple[list[MaintenancePlanRead], int]:
+    master_section_id = _master_section_scope(user)
     month_start: date | None = None
     month_end: date | None = None
     if month is not None:
@@ -219,6 +233,7 @@ async def list_plans(
         status_filter=status_filter,
         month_start=month_start,
         month_end=month_end,
+        master_section_id=master_section_id,
         limit=limit,
         offset=offset,
     )
@@ -226,12 +241,36 @@ async def list_plans(
 
 
 async def update_plan(
-    db: AsyncSession, plan_id: UUID, payload: MaintenancePlanUpdate
+    db: AsyncSession, user: User, plan_id: UUID, payload: MaintenancePlanUpdate
 ) -> MaintenancePlanRead:
-    plan = await repository.get_plan(db, plan_id, lock=True)
+    master_section_id = _master_section_scope(user)
+    plan = await repository.get_plan(
+        db, plan_id, master_section_id=master_section_id, lock=True
+    )
     if plan is None:
         raise _not_found()
     values = payload.model_dump(exclude_unset=True)
+    if values.get("work_order_id") is not None:
+        from app.repositories import work_orders as work_order_repository
+
+        order = await work_order_repository.get_order(
+            db,
+            values["work_order_id"],
+            master_section_id=master_section_id,
+        )
+        if order is None:
+            if master_section_id is not None:
+                raise _not_found()
+            raise HTTPException(
+                status_code=422,
+                detail="Linked work order must exist and use the same fixed asset",
+            )
+        if order.fixed_asset_id != plan.asset_id:
+            raise HTTPException(
+                status_code=422,
+                detail="Linked work order must exist and use the same fixed asset",
+            )
+
     requested_status = values.get("status")
     if requested_status is not None and requested_status != plan.status:
         allowed = {
@@ -244,15 +283,6 @@ async def update_plan(
             )
     if requested_status == "completed" and "completed_date" not in values:
         values["completed_date"] = date.today()
-    if values.get("work_order_id") is not None:
-        from app.repositories import work_orders as work_order_repository
-
-        order = await work_order_repository.get_order(db, values["work_order_id"])
-        if order is None or order.fixed_asset_id != plan.asset_id:
-            raise HTTPException(
-                status_code=422,
-                detail="Linked work order must exist and use the same fixed asset",
-            )
     for field, value in values.items():
         setattr(plan, field, value)
     plan.updated_at = datetime.now(timezone.utc)
@@ -261,14 +291,18 @@ async def update_plan(
     except IntegrityError as exc:
         await db.rollback()
         raise _conflict("Maintenance plan references an invalid record") from exc
-    fresh = await repository.get_plan(db, plan_id)
+    fresh = await repository.get_plan(
+        db, plan_id, master_section_id=master_section_id
+    )
     if fresh is None:
         raise _not_found()
     rows, _ = await repository.list_plans(
         db,
         asset_id=fresh.asset_id,
         status_filter=None,
-        month=None,
+        month_start=None,
+        month_end=None,
+        master_section_id=master_section_id,
         limit=1000,
         offset=0,
     )
@@ -312,8 +346,9 @@ async def _interval_target(
 
 
 async def get_schedule(
-    db: AsyncSession, month: str
+    db: AsyncSession, user: User, month: str
 ) -> MaintenanceScheduleRead:
+    master_section_id = _master_section_scope(user)
     try:
         month_start = datetime.strptime(month, "%Y-%m").date().replace(day=1)
     except ValueError as exc:
@@ -325,7 +360,10 @@ async def get_schedule(
     daily_average_km = await get_daily_average_km(db)
     schedule: list[MaintenanceScheduleItem] = []
     work_orders = await repository.list_work_orders_for_schedule(
-        db, start=month_start, end=month_end
+        db,
+        start=month_start,
+        end=month_end,
+        master_section_id=master_section_id,
     )
     for row in work_orders:
         order = row["order"]
@@ -369,11 +407,15 @@ async def get_schedule(
         db,
         asset_id=None,
         status_filter=None,
-        month=None,
+        month_start=None,
+        month_end=None,
+        master_section_id=master_section_id,
         limit=10000,
         offset=0,
     )
-    plans_by_key = await repository.list_asset_interval_plans(db)
+    plans_by_key = await repository.list_asset_interval_plans(
+        db, master_section_id=master_section_id
+    )
     for row in plan_rows:
         plan = row["plan"]
         if plan.status == "cancelled":
@@ -409,7 +451,9 @@ async def get_schedule(
         )
 
     today = date.today()
-    assets = await repository.list_schedule_assets(db)
+    assets = await repository.list_schedule_assets(
+        db, master_section_id=master_section_id
+    )
     for asset in assets:
         intervals = await repository.list_active_intervals(db, asset.asset_type)
         for interval in intervals:

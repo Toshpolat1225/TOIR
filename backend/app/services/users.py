@@ -103,6 +103,9 @@ async def update_user(
         if active_admins.scalar_one() <= 1:
             await db.rollback()
             raise HTTPException(status_code=409, detail="The last active admin cannot be demoted or deactivated")
+    if user.role == "admin" and next_role != "admin":
+        await db.rollback()
+        raise HTTPException(status_code=403, detail="The admin role is protected")
     next_section_id = changes.get("section_id", user.section_id)
     if next_role == "master" and next_section_id is None:
         raise HTTPException(

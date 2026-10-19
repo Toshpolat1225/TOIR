@@ -43,18 +43,18 @@ async def patch_maintenance_settings(
 
 @router.get("/maintenance-schedule", response_model=MaintenanceScheduleRead)
 async def read_maintenance_schedule(
-    _: AuthenticatedUser,
+    current_user: AuthenticatedUser,
     db: DatabaseSession,
     month: str = Query(pattern=r"^\d{4}-\d{2}$"),
 ) -> MaintenanceScheduleRead:
-    return await service.get_schedule(db, month)
+    return await service.get_schedule(db, current_user, month)
 
 
 @router.get(
     "/maintenance-plan", response_model=PaginatedResponse[MaintenancePlanRead]
 )
 async def read_maintenance_plans(
-    _: AuthenticatedUser,
+    current_user: AuthenticatedUser,
     db: DatabaseSession,
     asset_id: UUID | None = None,
     status_filter: Annotated[PlanStatus | None, Query(alias="status")] = None,
@@ -64,6 +64,7 @@ async def read_maintenance_plans(
 ) -> PaginatedResponse[MaintenancePlanRead]:
     items, total = await service.list_plans(
         db,
+        current_user,
         asset_id=asset_id,
         status_filter=status_filter,
         month=month,
@@ -79,7 +80,7 @@ async def read_maintenance_plans(
 async def patch_maintenance_plan(
     plan_id: UUID,
     payload: MaintenancePlanUpdate,
-    _: MaintenanceConfigurator,
+    current_user: MaintenanceConfigurator,
     db: DatabaseSession,
 ) -> MaintenancePlanRead:
-    return await service.update_plan(db, plan_id, payload)
+    return await service.update_plan(db, current_user, plan_id, payload)
