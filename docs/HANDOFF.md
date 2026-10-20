@@ -459,3 +459,29 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Have the user run the TMC contract tests in a safe local test setup. If document creation or editing becomes a UI requirement, first define stock movement, status transitions, audit/history, scope, granular permissions, and migration plan; do not add hard-delete behavior.
+
+## Read-only system analysis (2026-10-19)
+
+### Verified
+
+- Read `docs/HANDOFF.md`, `PROJECT.md`, `docs/DECISIONS.md`, `README.md`, `docker-compose.yml`, `backend/app/main.py`, schema `CREATE TABLE` list, router/model/service/repository listings, frontend page list, and `docs/AI_WORKLOG.md` tail. No application code was changed.
+- `git status --short --branch`: clean working tree, `main` in sync with `origin/main`; recent commits `8090d7e server refresh`, `ddfd342 local error`, `6817aa3` PROMPT F, `9418179` PROMPT E, `dbcb306` PROMPT C. Section 2 git notes above are outdated.
+- No server, database, API, tests, builds, or browser checks were run.
+
+### Next task
+
+- Unchanged from the pending items above: the user runs the mock regression tests (maintenance scope, dashboard, TMC contract) and the E2E scripts only against the intended test API; migrations 0006–0009 must be applied before that code is deployed.
+
+## Full audit report (2026-10-19)
+
+### Verified
+
+- Full 6-section audit written to `docs/AUDIT_2026-10-19.md` (secrets/git history, auth/RBAC, backend/DB, frontend, deploy, tests). Research was static and read-only via 4 parallel agents plus direct checks; no application code changed.
+- Git history: no secret-like file ever added; secret markers (`BEGIN PRIVATE KEY`, `ghp_`, `AKIA`, `xoxb-`, `Bearer ey`) absent from history; only `.env.example` (CHANGE_ME placeholders) tracked. Tracked files contain no real server addresses (only 127.0.0.1/0.0.0.0/192.0.2.x test IPs).
+- `backups/` is missing from `.gitignore` [MEDIUM]. `postgres/schema.sql` lacks the 0008 permission tables [MEDIUM]. `server/deploy.sh` referenced in DECISIONS.md does not exist in the repo [MEDIUM]. Dashboard page swallows API errors [MEDIUM]. Unit tests (48 in 10 files) and 12 E2E scripts remain unexecuted.
+- Updated vs earlier notes: `GET /dashboard/summary` is now read-only; the snapshot writer `save_daily_readiness_snapshots` is unrouted dead code, so `daily_readiness_snapshots` has no active writer while `monthly_readiness` reads it.
+- Backend liveness through the user's SSH tunnel confirmed: `GET /health` returned `{"status":"ok","service":"toir-backend"}`. No other server calls made. gh CLI unavailable, so latest CI result is UNKNOWN.
+
+### Next task
+
+- Data-generation project (user-requested): generate ~2 years of history (1000 wagons, 100 electric locomotives, 50 diesel locomotives, small + major repairs) via the API for full visual/functional testing. Scale, production-DB confirmation, and admin access method were asked of the user; awaiting answers. API constraints found: `closed_at` is always set to server now() on completion; `MileageUpdate` accepts only a value (no date), so `mileage_history.recorded_at` cannot be backdated via the API; work-order `date_start`/`date_end` accept past dates.
