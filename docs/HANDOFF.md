@@ -485,3 +485,20 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Data-generation project (user-requested): generate ~2 years of history (1000 wagons, 100 electric locomotives, 50 diesel locomotives, small + major repairs) via the API for full visual/functional testing. Scale, production-DB confirmation, and admin access method were asked of the user; awaiting answers. API constraints found: `closed_at` is always set to server now() on completion; `MileageUpdate` accepts only a value (no date), so `mileage_history.recorded_at` cannot be backdated via the API; work-order `date_start`/`date_end` accept past dates.
+
+## History data generator for full-scale UI testing (2026-10-20)
+
+### Verified
+
+- Added `backend/scripts/seed_history.py`: API-only generator for two years of marked history (defaults: 1000 wagons, 100 electric locomotives, 50 diesel locomotives; 100 small + 2–3 major repairs per asset, about 118 000 work orders). Rows use `GT-HIST` / `GT-` markers; progress is resumable through a state file in the system temp directory; the access token refreshes automatically; mileage is posted monthly so `mileage_at_creation` varies.
+- Added `backend/scripts/sql/fix_history_dates.sql`: backdates `work_orders.created_at/updated_at/closed_at`, rebuilds historical order numbers, and spreads `mileage_history.recorded_at` over two years.
+- Static checks: `python -m py_compile backend/scripts/seed_history.py` passed. Offline plan test with 9 synthetic assets produced 923 orders (100 small + 2–3 major each), all four statuses, unique descriptions, positive quantities, completed ends in the past, open ends in the future; shifting "now" by one day reproduced identical descriptions and content (resume determinism).
+- NOT TESTED: any real API call, login, creation, status transition, production database write, SQL execution, and browser UI. The generator has not been run.
+
+### Next task
+
+- The user runs the generator on the PC through the SSH tunnel (admin credentials are typed into the terminal, never into chat). From the repo root:
+  - [PC] `$env:TOIR_API_BASE_URL="http://localhost:8010"`
+  - [PC] `python backend/scripts/seed_history.py`
+- Small smoke run first: [PC] `python backend/scripts/seed_history.py --wagons 2 --electric 1 --diesel 1`
+- After the run, execute `backend/scripts/sql/fix_history_dates.sql` with the usual server psql/docker access, then perform browser visual/functional testing (dashboard KPIs/graphs, asset pagination, work-order filters, reports/CSV, analytics, master scope). Full scale is about 118 000 orders and roughly 280 000 API calls, so runtime depends on tunnel/server throughput.
