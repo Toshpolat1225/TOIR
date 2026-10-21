@@ -80,6 +80,10 @@ NOT TESTED: unit tests blocked by missing FastAPI; DB, migration, E2E, browser, 
 Evidence: worktree changes are uncommitted; local built API URL is localhost:8010; production Compose uses DOMAIN URL; API/tree route wiring and one-head Alembic graph are statically confirmed.
 NOT RUN: shared browser, live frontend/backend process, DB schema/data, live API/tree response, migration, and production server. No service was restarted.
 Next: review/publish the changes, test migration and CRUD on an isolated DB copy, then deploy only with explicit user-controlled authorization.
+2026-10-21 | Copilot SDK | Fixed SQLAlchemy JSONB typing causing translation-list 500.
+Changed: backend/app/repositories/localization.py.
+PASS: py_compile; PostgreSQL dialect SQL compile for all 7 translation entity types; source confirmed existing PUT/DELETE routes.
+NOT RUN: database execution, authenticated API/browser test, migration, production. Next: verify on an authorized isolated PostgreSQL/API.
 2026-10-21 | Copilot SDK | Isolated hierarchy verification; production not contacted.
 Changed: backend ML next-point forecast and two backend unit-test harness fixes; HANDOFF verification notes.
 PASS: isolated venv, 61 backend unit tests, tsc, isolated frontend build, offline Alembic SQL + PostgreSQL grammar parsing.

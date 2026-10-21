@@ -535,3 +535,17 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 - Do not use a downgrade command yet. Migration 0008 downgrade can fail if duplicate section names exist; migration 0007 downgrade drops parent/type/code/archive/sort columns and therefore loses hierarchy data. The 0010 merge also joins the permission branch, so a branch-aware rollback plan must first be rehearsed against a disposable DB copy.
 - To make the feature visible in a production browser, the user must first review and publish these uncommitted repository changes, validate the full migration chain on an isolated database copy, then deploy the frontend/backend build using the existing domain-based Compose API URL. Confirm the live frontend/API only after the user authorizes that server operation; it was not done here.
 - Next: provision a clearly isolated disposable PostgreSQL database, apply migrations there, inspect schema/FKs and run the hierarchy API E2E; then test the released build in a shared browser. Do not treat offline SQL parsing or mocked unit tests as database/API/browser verification.
+
+## Translation list PostgreSQL JSONB typing (2026-10-21)
+
+### Verified
+
+- The reported authenticated `GET /api/v1/translations/section` 500 was traced to SQLAlchemy typing: `jsonb_object_agg(...)` had no explicit result type, so the subquery column did not support `[locale].astext`.
+- `backend/app/repositories/localization.py` now declares the aggregate result as PostgreSQL `JSONB`. This fixes the shared localized-name expression used for all seven supported translation entity types.
+- `python3 -m py_compile backend/app/repositories/localization.py` passed. PostgreSQL-dialect compilation emitted the JSON `->>` operator for department, section, work_type, work_subtask, nomenclature, asset_type, and asset_status.
+- The page's existing write API is `PUT /translations/{entity}/{id}/{locale}` (upsert) and `DELETE` for a locale; both router operations exist. The page does not call POST/PATCH.
+- No database query, live authenticated request, browser test, or production/server action was performed.
+
+### Next task
+
+- Verify the list and translation upsert/delete against an authorized isolated PostgreSQL/API environment. Check rendered values and permissions there; do not infer live success from SQL compilation alone.

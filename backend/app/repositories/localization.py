@@ -3,6 +3,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import false, func, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.inventory import Nomenclature
@@ -85,7 +86,7 @@ async def list_entities(
         select(
             translation_key.label("entity_key"),
             func.jsonb_object_agg(
-                config.translation_model.locale, translation_name
+                config.translation_model.locale, translation_name, type_=JSONB
             ).label("translations"),
         )
         .group_by(translation_key)
