@@ -2,7 +2,7 @@ from functools import cached_property
 from typing import Self
 from urllib.parse import urlsplit
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
@@ -28,6 +28,47 @@ class Settings(BaseSettings):
     cors_origins: str
     api_docs_enabled: bool = True
     wialon_ingest_token: SecretStr | None = None
+    wialon_host: str | None = "https://gps.agmk.uz"
+    wialon_token: SecretStr | None = None
+    wialon_sync_interval_minutes: int = Field(default=2, ge=1, le=1440)
+    wialon_sync_enabled: bool = False
+
+    @field_validator("wialon_host", mode="before")
+    @classmethod
+    def normalize_wialon_host(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        host = str(value).strip().rstrip("/")
+        if not host:
+            return None
+        parsed = urlsplit(host)
+        if (
+            parsed.scheme != "https"
+            or not parsed.netloc
+            or parsed.query
+            or parsed.fragment
+            or parsed.username
+            or parsed.password
+        ):
+            raise ValueError("WIALON_HOST must be an HTTPS base URL without credentials or query")
+        return host
+
+    @field_validator("wialon_token", mode="before")
+    @classmethod
+    def normalize_wialon_token(cls, value: object) -> object:
+        if value is None or not str(value).strip():
+            return None
+        return str(value).strip()
+
+    @field_validator("wialon_sync_interval_minutes", mode="before")
+    @classmethod
+    def default_empty_wialon_interval(cls, value: object) -> object:
+        return 2 if value is None or not str(value).strip() else value
+
+    @field_validator("wialon_sync_enabled", mode="before")
+    @classmethod
+    def default_empty_wialon_enabled(cls, value: object) -> object:
+        return False if value is None or not str(value).strip() else value
 
     @field_validator("jwt_secret")
     @classmethod
@@ -68,6 +109,15 @@ class Settings(BaseSettings):
     @property
     def allowed_cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def wialon_pull_enabled(self) -> bool:
+        return (
+            self.wialon_sync_enabled
+            and self.wialon_host is not None
+            and self.wialon_token is not None
+            and bool(self.wialon_token.get_secret_value())
+        )
 
     @cached_property
     def sqlalchemy_database_url(self) -> URL:

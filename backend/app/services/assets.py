@@ -278,6 +278,8 @@ async def receive_wialon_update(
     unit_name: str | None,
     mileage: Decimal | None,
     speed: Decimal | None,
+    online: bool = True,
+    allow_zero_mileage: bool = False,
 ) -> dict[str, object]:
     asset = await find_wialon_asset(db, unit_id=unit_id, unit_name=unit_name)
     if asset is None:
@@ -288,8 +290,8 @@ async def receive_wialon_update(
     asset.updated_at = now
     if speed is not None:
         asset.wialon_speed = speed
-    asset.wialon_online = True
-    if mileage is not None and mileage > 0:
+    asset.wialon_online = online
+    if mileage is not None and (mileage > 0 or allow_zero_mileage):
         await _save_mileage_change(db, asset, mileage, "wialon")
     await _commit(db, "Could not save Wialon update")
     return {
@@ -297,7 +299,7 @@ async def receive_wialon_update(
         "asset_id": str(asset.id),
         "name": asset.name,
         "mileage": str(asset.mileage),
-        "wialon_online": True,
+        "wialon_online": online,
     }
 
 

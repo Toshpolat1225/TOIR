@@ -34,6 +34,10 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS in .env}
       API_DOCS_ENABLED: ${API_DOCS_ENABLED:-false}
       WIALON_INGEST_TOKEN: ${WIALON_INGEST_TOKEN:-}
+      WIALON_HOST: ${WIALON_HOST:-}
+      WIALON_TOKEN: ${WIALON_TOKEN:-}
+      WIALON_SYNC_INTERVAL_MINUTES: ${WIALON_SYNC_INTERVAL_MINUTES:-2}
+      WIALON_SYNC_ENABLED: ${WIALON_SYNC_ENABLED:-false}
     networks: [internal]
     depends_on:
       postgres:

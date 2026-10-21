@@ -549,3 +549,17 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Verify the list and translation upsert/delete against an authorized isolated PostgreSQL/API environment. Check rendered values and permissions there; do not infer live success from SQL compilation alone.
+
+## Wialon pull sync (2026-10-21)
+
+### Verified
+
+- Added Wialon token login, unit search, logout, safe retry handling, stale-session re-login, and the required `sid` session query parameter. The token remains in the login POST body.
+- Added environment configuration, Compose forwarding, admin-only `POST /api/v1/wialon/sync` and `GET /api/v1/wialon/status`, plus one lifespan-managed background loop guarded against overlapping syncs.
+- Reused the existing fixed-asset Wialon matching/update and mileage-history path. Existing `wialon_settings.last_sync_at` and `last_sync_status` columns are present in the model and baseline migration; no migration was added. The code does not read or write the legacy `host`/`token` columns.
+- `python3 -m py_compile` passed for the changed backend modules and test. Isolated `unittest` run passed all 16 `test_wialon_pull.py` tests, including `httpx.MockTransport`, retry, session expiry, status redaction, mapping, mileage decrease, and periodic retry coverage. `git diff --check` passed.
+- No database, migration, real Wialon endpoint, Docker, server, API E2E, or browser was used. Production behavior remains unverified.
+
+### Next task
+
+- Test the implementation against a disposable PostgreSQL database and a Wialon test account/mock API in an explicitly authorized environment. Confirm the live Wialon item flags and mileage counter units before enabling periodic sync in production.

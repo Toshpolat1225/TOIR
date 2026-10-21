@@ -88,3 +88,7 @@ NOT RUN: database execution, authenticated API/browser test, migration, producti
 Changed: backend ML next-point forecast and two backend unit-test harness fixes; HANDOFF verification notes.
 PASS: isolated venv, 61 backend unit tests, tsc, isolated frontend build, offline Alembic SQL + PostgreSQL grammar parsing.
 NOT RUN: PostgreSQL execution/schema/FKs, API E2E, browser, production deploy. Next: test against a confirmed disposable PostgreSQL database.
+2026-10-21 | Copilot SDK | Implemented Wialon pull synchronization without server or database access.
+Changed: backend Wialon client/config/service/repository/router/schema/tests, asset update helper, main lifespan, Compose env, requirements, `.env.example`, HANDOFF.
+PASS: py_compile for changed backend files; isolated Wialon unittest suite (16 tests); `git diff --check`.
+NOT RUN: PostgreSQL/migration, real Wialon API/account, API E2E, Docker, browser, server/deploy. Next: verify against an approved disposable DB and test API.

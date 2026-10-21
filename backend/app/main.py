@@ -29,8 +29,10 @@ from app.routers.tmc_documents import router as tmc_documents_router
 from app.routers.users import router as users_router
 from app.routers.permissions import router as permissions_router
 from app.routers.wialon import router as wialon_router
+from app.routers.wialon_pull import router as wialon_pull_router
 from app.routers.work_orders import router as work_orders_router
 from app.realtime import dispatch_database_events, listen_for_database_events
+from app.services.wialon import run_periodic_wialon_sync
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +41,21 @@ logger = logging.getLogger(__name__)
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     listener_task = asyncio.create_task(listen_for_database_events())
     dispatcher_task = asyncio.create_task(dispatch_database_events())
+    wialon_task = (
+        asyncio.create_task(run_periodic_wialon_sync())
+        if settings.wialon_pull_enabled
+        else None
+    )
     try:
         yield
     finally:
         listener_task.cancel()
         dispatcher_task.cancel()
-        await asyncio.gather(listener_task, dispatcher_task, return_exceptions=True)
+        tasks = [listener_task, dispatcher_task]
+        if wialon_task is not None:
+            wialon_task.cancel()
+            tasks.append(wialon_task)
+        await asyncio.gather(*tasks, return_exceptions=True)
         await engine.dispose()
 
 
@@ -149,6 +160,7 @@ app.include_router(references_router, prefix="/api/v1")
 app.include_router(nomenclature_router, prefix="/api/v1")
 app.include_router(assets_router, prefix="/api/v1")
 app.include_router(wialon_router, prefix="/api/v1")
+app.include_router(wialon_pull_router, prefix="/api/v1")
 app.include_router(work_orders_router, prefix="/api/v1")
 app.include_router(maintenance_router, prefix="/api/v1")
 app.include_router(localization_router, prefix="/api/v1")
