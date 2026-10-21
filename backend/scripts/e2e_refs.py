@@ -73,6 +73,10 @@ def main() -> int:
     foreign_department_id: str | None = None
     section_id: str | None = None
     foreign_section_id: str | None = None
+    hierarchy_parent_id: str | None = None
+    hierarchy_child_id: str | None = None
+    hierarchy_leaf_id: str | None = None
+    hierarchy_other_root_id: str | None = None
     employee_id: str | None = None
     foreign_employee_id: str | None = None
     work_type_id: str | None = None
@@ -278,6 +282,18 @@ def main() -> int:
             and [item.get("id") for item in master_section_items] == [section_id]
             else f"HTTP {master_sections.status}; section scope was not enforced",
         )
+        master_tree = request(
+            "GET", "/api/v1/sections/tree", bearer=master_token
+        )
+        master_tree_items = master_tree.json() if master_tree.status == 200 else []
+        check_condition(
+            checks,
+            "Master tree is scoped to own section",
+            len(master_tree_items) == 1
+            and master_tree_items[0].get("id") == section_id
+            and not master_tree_items[0].get("children"),
+            f"HTTP {master_tree.status}; own unit only",
+        )
         master_filtered_sections = request(
             "GET",
             f"/api/v1/sections?limit=25&q=REF-UPD-{suffix[:8]}",
@@ -312,6 +328,347 @@ def main() -> int:
             ),
             403,
         )
+        check_status(
+            checks,
+            "Master cannot create hierarchy units",
+            request(
+                "POST",
+                "/api/v1/sections",
+                bearer=master_token,
+                payload={"name": f"Forbidden unit {suffix}"},
+            ),
+            403,
+        )
+
+        hierarchy_parent = request(
+            "POST",
+            "/api/v1/sections",
+            bearer=operator_token,
+            payload={
+                "name": f"HIER-RU-{suffix[:8]}",
+                "unit_type": "department",
+                "translations": {
+                    "ru": f"HIER-RU-{suffix[:8]}",
+                    "uz-Latn": f"HIER-LAT-{suffix[:8]}",
+                    "uz-Cyrl": f"HIER-CYR-{suffix[:8]}",
+                },
+            },
+        )
+        hierarchy_parent_id = _record_created(
+            checks, resources, "Create translated hierarchy root",
+            hierarchy_parent, "/api/v1/sections",
+        )
+        check_status(
+            checks,
+            "Master cannot modify hierarchy units",
+            request(
+                "PATCH",
+                f"/api/v1/sections/{hierarchy_parent_id}",
+                bearer=master_token,
+                payload={"name": f"Forbidden update {suffix}"},
+            ),
+            403,
+        )
+        check_status(
+            checks,
+            "Master cannot archive hierarchy units",
+            request(
+                "DELETE",
+                f"/api/v1/sections/{hierarchy_parent_id}",
+                bearer=master_token,
+            ),
+            403,
+        )
+        hierarchy_child = request(
+            "POST",
+            "/api/v1/sections",
+            bearer=operator_token,
+            payload={
+                "name": f"HIER-DIV-{suffix[:8]}",
+                "parent_id": hierarchy_parent_id,
+                "unit_type": "division",
+                "translations": {
+                    "ru": f"HIER-DIV-{suffix[:8]}",
+                    "uz-Latn": f"HIER-DIVLAT-{suffix[:8]}",
+                    "uz-Cyrl": f"HIER-DIVCYR-{suffix[:8]}",
+                },
+            },
+        )
+        hierarchy_child_id = _record_created(
+            checks, resources, "Create typed child unit",
+            hierarchy_child, "/api/v1/sections",
+        )
+        hierarchy_leaf = request(
+            "POST",
+            "/api/v1/sections",
+            bearer=operator_token,
+            payload={
+                "name": f"HIER-SEC-{suffix[:8]}",
+                "parent_id": hierarchy_child_id,
+                "unit_type": "division",
+                "translations": {
+                    "ru": f"HIER-SEC-{suffix[:8]}",
+                    "uz-Latn": f"HIER-SECLAT-{suffix[:8]}",
+                    "uz-Cyrl": f"HIER-SECCYR-{suffix[:8]}",
+                },
+            },
+        )
+        hierarchy_leaf_id = _record_created(
+            checks, resources, "Create third-level unit",
+            hierarchy_leaf, "/api/v1/sections",
+        )
+        check_status(
+            checks,
+            "Division cannot have a section parent",
+            request(
+                "POST",
+                "/api/v1/sections",
+                bearer=operator_token,
+                payload={
+                    "name": f"HIER-BAD-{suffix[:8]}",
+                    "parent_id": section_id,
+                    "unit_type": "division",
+                },
+            ),
+            409,
+        )
+        hierarchy_other_root = request(
+            "POST",
+            "/api/v1/sections",
+            bearer=operator_token,
+            payload={
+                "name": f"HIER-ALT-{suffix[:8]}",
+                "unit_type": "department",
+                "translations": {
+                    "ru": f"HIER-ALT-{suffix[:8]}",
+                    "uz-Latn": f"HIER-ALTLAT-{suffix[:8]}",
+                    "uz-Cyrl": f"HIER-ALTCYR-{suffix[:8]}",
+                },
+            },
+        )
+        hierarchy_other_root_id = _record_created(
+            checks, resources, "Create second hierarchy root",
+            hierarchy_other_root, "/api/v1/sections",
+        )
+        move_to_other_root = request(
+            "PATCH",
+            f"/api/v1/sections/{hierarchy_child_id}",
+            bearer=operator_token,
+            payload={"parent_id": hierarchy_other_root_id},
+        )
+        moved_payload = parse_object(move_to_other_root) if move_to_other_root.status == 200 else {}
+        check_condition(
+            checks,
+            "Move unit to compatible parent",
+            move_to_other_root.status == 200
+            and moved_payload.get("parent_id") == hierarchy_other_root_id,
+            f"HTTP {move_to_other_root.status}; parent ID returned",
+        )
+        move_back = request(
+            "PATCH",
+            f"/api/v1/sections/{hierarchy_child_id}",
+            bearer=operator_token,
+            payload={"parent_id": hierarchy_parent_id},
+        )
+        check_status(checks, "Move unit back to original parent", move_back, 200)
+        hierarchy_payload = parse_object(hierarchy_parent)
+        check_condition(
+            checks,
+            "Section stores all three names",
+            hierarchy_payload.get("translations") == {
+                "ru": f"HIER-RU-{suffix[:8]}",
+                "uz-Latn": f"HIER-LAT-{suffix[:8]}",
+                "uz-Cyrl": f"HIER-CYR-{suffix[:8]}",
+            },
+            "Three translations returned on create response",
+        )
+        updated_translations = {
+            "ru": f"HIER-SEC-UPD-{suffix[:8]}",
+            "uz-Latn": f"HIER-SEC-UPDLAT-{suffix[:8]}",
+            "uz-Cyrl": f"HIER-SEC-UPDCYR-{suffix[:8]}",
+        }
+        translation_update = request(
+            "PATCH",
+            f"/api/v1/sections/{hierarchy_leaf_id}",
+            bearer=operator_token,
+            payload={"translations": updated_translations},
+        )
+        translation_update_payload = (
+            parse_object(translation_update) if translation_update.status == 200 else {}
+        )
+        check_condition(
+            checks,
+            "Update all section translations",
+            translation_update.status == 200
+            and translation_update_payload.get("translations") == updated_translations,
+            f"HTTP {translation_update.status}; all values returned",
+        )
+        translation_get = request(
+            "GET",
+            f"/api/v1/sections/{hierarchy_leaf_id}",
+            bearer=operator_token,
+            headers={"Accept-Language": "uz-Latn"},
+        )
+        translation_payload = (
+            parse_object(translation_get) if translation_get.status == 200 else {}
+        )
+        check_condition(
+            checks,
+            "Read Russian canonical and Uzbek localized names",
+            translation_get.status == 200
+            and translation_payload.get("name") == updated_translations["ru"]
+            and translation_payload.get("localized_name") == updated_translations["uz-Latn"],
+            f"HTTP {translation_get.status}; canonical and localized values checked",
+        )
+        translated_search = request(
+            "GET",
+            f"/api/v1/sections?limit=25&q=HIER-LAT-{suffix[:8]}",
+            bearer=operator_token,
+        )
+        translated_items = parse_object(translated_search).get("items", [])
+        check_condition(
+            checks,
+            "Section search includes Uzbek translations",
+            translated_search.status == 200
+            and any(item.get("id") == hierarchy_parent_id for item in translated_items),
+            f"HTTP {translated_search.status}; localized-name search checked",
+        )
+        nested_tree_response = request(
+            "GET",
+            f"/api/v1/sections/tree?q=HIER-RU-{suffix[:8]}",
+            bearer=operator_token,
+        )
+        require_status(checks, "Read nested hierarchy tree", nested_tree_response, 200)
+        nested_tree = nested_tree_response.json()
+        nested_ok = (
+            isinstance(nested_tree, list)
+            and len(nested_tree) == 1
+            and nested_tree[0].get("id") == hierarchy_parent_id
+            and len(nested_tree[0].get("children", [])) == 1
+            and nested_tree[0]["children"][0].get("id") == hierarchy_child_id
+            and nested_tree[0]["children"][0]["children"][0].get("id") == hierarchy_leaf_id
+        )
+        check_condition(
+            checks, "Tree includes three levels", nested_ok,
+            "Root, child, and grandchild IDs checked",
+        )
+        check_status(
+            checks,
+            "Cycle-causing move returns 409",
+            request(
+                "PATCH",
+                f"/api/v1/sections/{hierarchy_child_id}",
+                bearer=operator_token,
+                payload={"parent_id": hierarchy_leaf_id},
+            ),
+            409,
+        )
+        check_status(
+            checks,
+            "Parent with active child cannot be archived",
+            request(
+                "DELETE",
+                f"/api/v1/sections/{hierarchy_parent_id}",
+                bearer=operator_token,
+            ),
+            409,
+        )
+        historical_employee_response = request(
+            "POST",
+            "/api/v1/employees",
+            bearer=operator_token,
+            payload={
+                "tab_number": f"REF-HIST-{suffix[:8]}",
+                "full_name": "Historical section link test",
+                "section_id": hierarchy_leaf_id,
+            },
+        )
+        historical_employee_id = _record_created(
+            checks,
+            resources,
+            "Create employee with hierarchy reference",
+            historical_employee_response,
+            "/api/v1/employees",
+        )
+        check_status(
+            checks,
+            "Archive section with historical employee reference",
+            request(
+                "DELETE",
+                f"/api/v1/sections/{hierarchy_leaf_id}",
+                bearer=operator_token,
+            ),
+            204,
+        )
+        historical_employee_get = request(
+            "GET",
+            f"/api/v1/employees/{historical_employee_id}",
+            bearer=operator_token,
+        )
+        historical_employee_payload = (
+            parse_object(historical_employee_get)
+            if historical_employee_get.status == 200
+            else {}
+        )
+        check_condition(
+            checks,
+            "Archive preserves historical section foreign key",
+            historical_employee_get.status == 200
+            and historical_employee_payload.get("section_id") == hierarchy_leaf_id,
+            f"HTTP {historical_employee_get.status}; historical ID retained",
+        )
+        for label, record_id in (
+            ("Archive leaf unit", hierarchy_leaf_id),
+            ("Archive middle unit", hierarchy_child_id),
+            ("Archive hierarchy root", hierarchy_parent_id),
+        ):
+            check_status(
+                checks,
+                label,
+                request(
+                    "DELETE",
+                    f"/api/v1/sections/{record_id}",
+                    bearer=operator_token,
+                ),
+                204,
+            )
+        archived_tree = request(
+            "GET",
+            f"/api/v1/sections/tree?q=HIER-SEC-{suffix[:8]}&include_archived=true",
+            bearer=operator_token,
+        )
+        archived_nodes = archived_tree.json() if archived_tree.status == 200 else []
+        check_condition(
+            checks,
+            "Archived hierarchy retains all IDs",
+            len(archived_nodes) == 1
+            and archived_nodes[0].get("id") == hierarchy_parent_id
+            and archived_nodes[0].get("is_archived") is True
+            and archived_nodes[0]["children"][0]["children"][0].get("id") == hierarchy_leaf_id,
+            f"HTTP {archived_tree.status}; archived tree inspected",
+        )
+        check_status(
+            checks,
+            "New employee cannot use an archived unit",
+            request(
+                "POST",
+                "/api/v1/employees",
+                bearer=operator_token,
+                payload={
+                    "tab_number": f"REF-ARCH-{suffix[:8]}",
+                    "full_name": "Archived section test",
+                    "section_id": hierarchy_parent_id,
+                },
+            ),
+            422,
+        )
+        restore_parent = request(
+            "PATCH",
+            f"/api/v1/sections/{hierarchy_parent_id}",
+            bearer=operator_token,
+            payload={"is_archived": False},
+        )
+        check_status(checks, "Restore hierarchy root", restore_parent, 200)
 
         employee_response = request(
             "POST",
@@ -429,16 +786,6 @@ def main() -> int:
             },
         )
         check_status(checks, "Duplicate employee tab number returns 409", duplicate_employee, 409)
-        check_status(
-            checks,
-            "Referenced section delete returns 409",
-            request(
-                "DELETE",
-                f"/api/v1/sections/{section_id}",
-                bearer=operator_token,
-            ),
-            409,
-        )
         check_status(
             checks,
             "Delete employee",

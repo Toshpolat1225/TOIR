@@ -62,3 +62,25 @@ Fixed missing SQLAlchemy exists import in the TMC repository search query.
 Plan determinism uses separate content/date/status RNGs, so resuming after a day shift keeps descriptions and repairs stable.
 The generator posts monthly mileage before order blocks so mileage_at_creation varies; completed orders still trigger the existing ML background analysis.
 Full scale is about 118k orders and roughly 280k API calls; the smoke run is 4 assets and about 400 orders.
+2026-10-21 | Copilot SDK | Implemented dynamic multi-level organization hierarchy using the existing `sections` table and stable IDs
+Changed: `backend/app/`, `backend/alembic/versions/0007_section_hierarchy.py`, new `0008_safe_section_hierarchy.py`, `backend/scripts/`, hierarchy UI/API, `postgres/schema.sql`, and related docs/tests
+Verified: Python syntax check passed; `npx tsc --noEmit` and `npm run build` passed (2 existing Hook warnings); `git diff --check` passed
+NOT TESTED: backend unit/E2E tests, SQL preflight, Alembic migration, database behavior, browser, or server update; local FastAPI dependency missing
+Next: run read-only hierarchy preflight on a non-production DB copy, then test migration and E2E there
+2026-10-21 | Copilot SDK | Audited hierarchy diff and corrected search-tree filtering, master GET scope, Russian translation sync, and migration head graph
+Added `0010_merge_section_hierarchy.py`; expanded hierarchy unit/E2E checks for translation CRUD, denied master writes, and archived historical FK retention; added duplicate-name rollback preflight
+Verified: AST migration graph has one head and no missing parents; dry-run SQL contains no writes/DDL; `py_compile` and `git diff --check` passed
+Backend unit test discovery FAIL (test not imported): `ModuleNotFoundError: fastapi`; PostgreSQL/Alembic runtime, E2E, server, and database NOT TESTED
+Next: finish sequential frontend build/type validation; then run tests and migration checks only in an isolated test environment
+2026-10-21 | Copilot SDK | Fixed duplicate-name ID assumptions in hierarchy consumers; clarified migration rollback risk.
+Changed: backend CLI/analytics/tests, dashboard/layout/reports/TMC/OS, section context/hooks, DECISIONS, HANDOFF.
+Verified: Python syntax, `git diff --check`, `npx tsc --noEmit`, and `npm run build` passed; build has 2 existing work-orders Hook warnings.
+NOT TESTED: unit tests blocked by missing FastAPI; DB, migration, E2E, browser, and server. Next: test in an approved isolated environment without production access.
+2026-10-21 | Copilot SDK | Diagnosed why hierarchy code is not proven visible in the browser; no deploy or DB connection.
+Evidence: worktree changes are uncommitted; local built API URL is localhost:8010; production Compose uses DOMAIN URL; API/tree route wiring and one-head Alembic graph are statically confirmed.
+NOT RUN: shared browser, live frontend/backend process, DB schema/data, live API/tree response, migration, and production server. No service was restarted.
+Next: review/publish the changes, test migration and CRUD on an isolated DB copy, then deploy only with explicit user-controlled authorization.
+2026-10-21 | Copilot SDK | Isolated hierarchy verification; production not contacted.
+Changed: backend ML next-point forecast and two backend unit-test harness fixes; HANDOFF verification notes.
+PASS: isolated venv, 61 backend unit tests, tsc, isolated frontend build, offline Alembic SQL + PostgreSQL grammar parsing.
+NOT RUN: PostgreSQL execution/schema/FKs, API E2E, browser, production deploy. Next: test against a confirmed disposable PostgreSQL database.

@@ -33,8 +33,17 @@ export function useSections() {
 
   // Получить ID участка по имени
   const getSectionId = useCallback((name: string): string | undefined => {
-    return sectionsData.find(s => s.name === name || s.localized_name === name)?.id
+    const matches = sectionsData.filter(
+      (section) => section.name === name || section.localized_name === name,
+    )
+    return matches.length === 1 ? matches[0].id : undefined
   }, [sectionsData])
 
-  return { sections, sectionsData, loading, refresh, getSectionId }
+  const hasAmbiguousSectionName = useCallback((name: string): boolean => {
+    return sectionsData.filter(
+      (section) => section.name === name || section.localized_name === name,
+    ).length > 1
+  }, [sectionsData])
+
+  return { sections, sectionsData, loading, refresh, getSectionId, hasAmbiguousSectionName }
 }

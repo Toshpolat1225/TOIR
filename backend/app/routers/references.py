@@ -122,12 +122,13 @@ async def get_sections(
     q: str | None = Query(default=None, max_length=200),
     parent_id: UUID | None = None,
     include_archived: bool = Query(default=False),
+    unit_type: Literal["department", "division", "section", "team"] | None = None,
+    is_active: bool | None = None,
+    department_id: UUID | None = None,
 ) -> PaginatedResponse[SectionRead]:
     items, total = await service.list_sections(
         db,
-        master_section_id=(
-            current_user.section_id if current_user.role == "master" else None
-        ),
+        master_section_id=_master_section_id(current_user),
         limit=limit,
         offset=offset,
         sort_by=sort_by,
@@ -135,6 +136,9 @@ async def get_sections(
         q=q,
         parent_id=parent_id,
         include_archived=include_archived,
+        unit_type=unit_type,
+        is_active=is_active,
+        department_id=department_id,
     )
     return PaginatedResponse[SectionRead](
         items=items, total=total, limit=limit, offset=offset
@@ -147,14 +151,19 @@ async def get_sections_tree(
     db: DatabaseSession,
     parent_id: UUID | None = None,
     include_archived: bool = Query(default=False),
+    q: str | None = Query(default=None, max_length=200),
+    unit_type: Literal["department", "division", "section", "team"] | None = None,
+    is_active: bool | None = None,
 ) -> list[dict]:
-    master_section_id = current_user.section_id if current_user.role == "master" else None
-    if master_section_id is not None and parent_id is None:
-        parent_id = master_section_id
+    master_section_id = _master_section_id(current_user)
     return await service.list_section_tree(
         db,
         parent_id=parent_id,
         include_archived=include_archived,
+        master_section_id=master_section_id,
+        q=q,
+        unit_type=unit_type,
+        is_active=is_active,
     )
 
 
@@ -165,9 +174,7 @@ async def get_section(
     return await service.get_section(
         db,
         section_id,
-        master_section_id=(
-            current_user.section_id if current_user.role == "master" else None
-        ),
+        master_section_id=_master_section_id(current_user),
     )
 
 

@@ -520,7 +520,7 @@ function toRow(
 const PAGE_SIZE = 50
 
 export default function OsPage() {
-  const { sections, sectionsData, getSectionId } = useSections()
+  const { sections, sectionsData, getSectionId, hasAmbiguousSectionName } = useSections()
   const [assetTypes, setAssetTypes] = useState<AssetCatalogItem[]>([])
   const [assetStatuses, setAssetStatuses] = useState<AssetCatalogItem[]>([])
   const [assets,    setAssets]    = useState<FixedAsset[]>([])
@@ -641,6 +641,10 @@ export default function OsPage() {
   const filtered      = assets  // фильтрация на сервере
 
   const handleSave = async (updated: FixedAsset) => {
+    if (hasAmbiguousSectionName(updated.depot)) {
+      alert("Невозможно выбрать участок: название не уникально. Выберите участок по ID.")
+      return
+    }
     try {
       await api.fixedAssets.update(updated.id, {
         ...toRow(updated),
@@ -666,6 +670,10 @@ export default function OsPage() {
   }
 
   const handleAdd = async (a: FixedAsset) => {
+    if (hasAmbiguousSectionName(a.depot)) {
+      alert("Невозможно выбрать участок: название не уникально. Выберите участок по ID.")
+      return
+    }
     try {
       await api.fixedAssets.create({
         ...toRow(a),

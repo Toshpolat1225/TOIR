@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assets import FixedAsset
 from app.repositories import assets as repository
+from app.repositories import references as references_repository
 from app.repositories import maintenance as maintenance_repository
 from app.services import maintenance as maintenance_service
 from app.schemas.assets import (
@@ -125,6 +126,13 @@ async def get_fixed_asset_stats(
 async def create_fixed_asset(
     db: AsyncSession, payload: FixedAssetCreate
 ):
+    if payload.section_id is not None and await references_repository.get_non_archived_section(
+        db, payload.section_id
+    ) is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot assign an archived or missing section to a fixed asset",
+        )
     if not await repository.active_catalog_value_exists(db, kind="types", code=payload.asset_type):
         raise HTTPException(status_code=422, detail="Asset type is unavailable")
     if not await repository.active_catalog_value_exists(db, kind="statuses", code=payload.status):
@@ -163,6 +171,13 @@ async def update_fixed_asset(
         raise HTTPException(status_code=422, detail="Asset type is unavailable")
     if "status" in changes and not await repository.active_catalog_value_exists(db, kind="statuses", code=changes["status"]):
         raise HTTPException(status_code=422, detail="Asset status is unavailable")
+    section_id = changes.get("section_id")
+    if section_id is not None and section_id != asset.section_id:
+        if await references_repository.get_non_archived_section(db, section_id) is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Cannot assign an archived or missing section to a fixed asset",
+            )
     mileage = changes.pop("mileage", None)
     for field_name, value in changes.items():
         setattr(asset, field_name, value)

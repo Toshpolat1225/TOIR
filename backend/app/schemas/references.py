@@ -5,6 +5,21 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+SectionLocale = Literal["uz-Latn", "uz-Cyrl", "ru"]
+
+
+def _normalize_section_translations(
+    translations: dict[SectionLocale, str] | None,
+) -> dict[SectionLocale, str] | None:
+    if translations is None:
+        return None
+    normalized = {locale: name.strip() for locale, name in translations.items()}
+    if set(normalized) != {"uz-Latn", "uz-Cyrl", "ru"}:
+        raise ValueError("Provide names for uz-Latn, uz-Cyrl, and ru")
+    if any(not name for name in normalized.values()):
+        raise ValueError("Translated section names must not be empty")
+    return normalized
+
 
 class PatchModel(BaseModel):
     @model_validator(mode="after")
@@ -61,6 +76,7 @@ class SectionRead(BaseModel):
     parent_id: UUID | None = None
     unit_type: str = "section"
     code: str | None = None
+    translations: dict[SectionLocale, str] = Field(default_factory=dict)
     is_active: bool = True
     is_archived: bool = False
     sort_order: int = 0
@@ -78,6 +94,7 @@ class SectionCreate(BaseModel):
     parent_id: UUID | None = None
     unit_type: str = "section"
     code: str | None = None
+    translations: dict[SectionLocale, str] | None = None
     is_active: bool = True
     is_archived: bool = False
     sort_order: int = 0
@@ -91,6 +108,9 @@ class SectionCreate(BaseModel):
             self.code = self.code.strip() or None
         if self.unit_type is not None:
             self.unit_type = self.unit_type.strip() or "section"
+        self.translations = _normalize_section_translations(self.translations)
+        if self.translations is not None:
+            self.name = self.translations["ru"]
         return self
 
 
@@ -100,6 +120,7 @@ class SectionUpdate(PatchModel):
     parent_id: UUID | None = None
     unit_type: str | None = None
     code: str | None = None
+    translations: dict[SectionLocale, str] | None = None
     is_active: bool | None = None
     is_archived: bool | None = None
     sort_order: int | None = None
@@ -114,6 +135,11 @@ class SectionUpdate(PatchModel):
             self.code = self.code.strip() or None
         if "unit_type" in self.model_fields_set and self.unit_type is not None:
             self.unit_type = self.unit_type.strip() or "section"
+        if "translations" in self.model_fields_set:
+            self.translations = _normalize_section_translations(self.translations)
+            if self.translations is None:
+                raise ValueError("translations cannot be null")
+            self.name = self.translations["ru"]
         if "is_active" in self.model_fields_set and self.is_active is None:
             raise ValueError("is_active cannot be null")
         if "is_archived" in self.model_fields_set and self.is_archived is None:

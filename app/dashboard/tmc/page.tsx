@@ -88,7 +88,7 @@ function AddNomenclatureModal({
   useEffect(() => {
     if (open && sections.length) {
       const defaultDepartmentId = effectiveSection
-        ? sections.find((section) => section.name === effectiveSection)?.department_id ?? ""
+        ? sections.find((section) => section.id === effectiveSection)?.department_id ?? ""
         : ""
       const selectedDepartmentId = departments.some(
         (department) => department.id === defaultDepartmentId
@@ -552,7 +552,7 @@ export default function TmcPage() {
       if (filterDepartmentId) {
         params.department_id = filterDepartmentId
       } else if (effectiveSection) {
-        const section = sections.find((item) => item.name === effectiveSection)
+        const section = sections.find((item) => item.id === effectiveSection)
         if (!section?.department_id) {
           setNomenclature([])
           return

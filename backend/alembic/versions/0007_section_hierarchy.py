@@ -15,7 +15,23 @@ depends_on = None
 def upgrade() -> None:
     op.execute("ALTER TABLE sections ADD COLUMN IF NOT EXISTS parent_id uuid NULL")
     op.execute(
-        "ALTER TABLE sections ADD CONSTRAINT IF NOT EXISTS sections_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES sections(id) ON DELETE SET NULL"
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conname = 'sections_parent_id_fkey'
+                  AND conrelid = 'sections'::regclass
+            ) THEN
+                ALTER TABLE sections
+                    ADD CONSTRAINT sections_parent_id_fkey
+                    FOREIGN KEY (parent_id) REFERENCES sections(id)
+                    ON DELETE SET NULL;
+            END IF;
+        END;
+        $$;
+        """
     )
     op.execute("ALTER TABLE sections ADD COLUMN IF NOT EXISTS unit_type text NOT NULL DEFAULT 'section'")
     op.execute("ALTER TABLE sections ADD COLUMN IF NOT EXISTS code text NULL")

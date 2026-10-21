@@ -86,6 +86,7 @@ export default function DashboardPage() {
   const { locale, t } = useLocale()
   const { effectiveSection } = useSectionView()
   const [summary, setSummary] = useState<DashboardSummary>(EMPTY_SUMMARY)
+  const [effectiveSectionName, setEffectiveSectionName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const loadData = useCallback(async () => {
@@ -95,11 +96,15 @@ export default function DashboardPage() {
       const selected = effectiveSection
         ? await api.sections.list({ limit: 1000, offset: 0 })
         : null
-      const sectionId = selected?.items.find((section) => (section.localized_name ?? section.name) === effectiveSection)?.id
-      const summaryData = await api.dashboard.getSummary({ section_id: sectionId });
+      const selectedUnit = selected?.items.find((section) => section.id === effectiveSection)
+      setEffectiveSectionName(
+        selectedUnit?.localized_name ?? selectedUnit?.name ?? (effectiveSection ? "—" : null),
+      )
+      const summaryData = await api.dashboard.getSummary({ section_id: effectiveSection ?? undefined });
       setSummary(summaryData);
     } catch (e) {
       console.error("Ошибка загрузки дашборда:", e)
+      setEffectiveSectionName(effectiveSection ? "—" : null)
       setSummary(EMPTY_SUMMARY)
     } finally {
       setLoading(false)
@@ -176,7 +181,7 @@ export default function DashboardPage() {
   const kpi = [
     {
       title: "Всего единиц ОС",   value: totalAssets,   unit:"ед.",
-      sub: effectiveSection ? `${t("Участок")}: ${effectiveSection}` : t("в реестре"), Icon: Train,
+      sub: effectiveSectionName ? `${t("Участок")}: ${effectiveSectionName}` : t("в реестре"), Icon: Train,
       light:"bg-blue-50 dark:bg-blue-950/60", text:"text-blue-600 dark:text-blue-400", bar:"bg-blue-500",
       pct: 100,
     },
@@ -284,7 +289,7 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t("Дашборд")}</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
             {effectiveSection ? (
-              <>{t("Участок")}: <span className="font-medium text-gray-700 dark:text-gray-300">{effectiveSection}</span> · {todayLabel}</>
+              <>{t("Участок")}: <span className="font-medium text-gray-700 dark:text-gray-300">{effectiveSectionName ?? "—"}</span> · {todayLabel}</>
             ) : (
               <>{t("Обзор состояния парка")} · <span className="font-medium">{todayLabel}</span></>
             )}
@@ -323,7 +328,7 @@ export default function DashboardPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-300">{t("Обзор парка")}</p>
                 <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">{t("Технический парк под контролем")}</h2>
                 <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">
-                  Текущая готовность и состав основных средств{effectiveSection ? ` · ${effectiveSection}` : ""}.
+                  Текущая готовность и состав основных средств{effectiveSectionName ? ` · ${effectiveSectionName}` : ""}.
                 </p>
               </div>
               <div className="mt-6 flex flex-wrap items-end justify-between gap-4">

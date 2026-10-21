@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, Index, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -29,6 +29,10 @@ class Department(Base):
 class Section(Base):
     __tablename__ = "sections"
     __table_args__ = (
+        CheckConstraint(
+            "unit_type IN ('department', 'division', 'section', 'team')",
+            name="ck_sections_unit_type_supported",
+        ),
         Index("ix_sections_department", "department_id"),
         Index("ix_sections_parent", "parent_id"),
         Index("ix_sections_type", "unit_type"),
@@ -37,7 +41,7 @@ class Section(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
     )
-    name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
     department_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("departments.id", ondelete="SET NULL")
     )
@@ -65,6 +69,14 @@ class Section(Base):
     updated_at: Mapped[datetime] = mapped_column(
         nullable=False, server_default=text("now()")
     )
+
+    @property
+    def translations(self) -> dict[str, str]:
+        return self.__dict__.get("_translations", {})
+
+    @translations.setter
+    def translations(self, value: dict[str, str]) -> None:
+        self.__dict__["_translations"] = value
 
 
 class Employee(Base):

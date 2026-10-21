@@ -35,7 +35,7 @@ def linear_regression_predict(values: Sequence[float]) -> float | None:
         (index - x_mean) * (value - y_mean)
         for index, value in enumerate(values)
     ) / denominator
-    return y_mean + slope * (len(values) - 1 - x_mean)
+    return y_mean + slope * (len(values) - x_mean)
 
 
 def linear_regression_slope(

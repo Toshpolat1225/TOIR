@@ -71,12 +71,22 @@ async def dashboard_summary(
         if user.role == "master":
             effective_section_id = _effective_section(user, None)
         else:
-            section_row = (
-                await db.execute(select(Section).where(Section.name == section))
-            ).scalar_one_or_none()
-            if section_row is None:
+            section_rows = (
+                await db.execute(
+                    select(Section).where(
+                        Section.name == section,
+                        Section.is_archived.is_(False),
+                    )
+                )
+            ).scalars().all()
+            if not section_rows:
                 raise HTTPException(status_code=404, detail="Section not found")
-            effective_section_id = section_row.id
+            if len(section_rows) > 1:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Section name is ambiguous; use section_id",
+                )
+            effective_section_id = section_rows[0].id
     else:
         effective_section_id = _effective_section(user, section_id)
 

@@ -67,15 +67,6 @@ function toIsoDate(value: string): string | undefined {
   return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`
 }
 
-async function resolveSectionId(sectionName: string | null): Promise<string | undefined> {
-  if (!sectionName) return undefined
-  const sections = await api.sections.list({ limit: 1000, offset: 0 })
-  const section = sections.items.find((item) => item.name === sectionName)
-    ?? sections.items.find((item) => item.id === sectionName)
-  if (!section) throw new Error(`Участок «${sectionName}» не найден`)
-  return section.id
-}
-
 export default function ReportsPage() {
   const { locale, t } = useLocale()
   const { effectiveSection } = useSectionView()
@@ -98,11 +89,10 @@ export default function ReportsPage() {
     setLoading(true)
     setError(null)
     try {
-      const sectionId = await resolveSectionId(effectiveSection)
       const response = await api.reports.list(reportType, {
         limit: 1000,
         offset: 0,
-        section_id: sectionId,
+        section_id: effectiveSection ?? undefined,
         date_from: toIsoDate(dateFrom),
         date_to: toIsoDate(dateTo),
         status: reportType === "work-orders" ? workOrderStatus || undefined : undefined,
@@ -138,9 +128,8 @@ export default function ReportsPage() {
   const downloadReport = async (report: ReportId, filename: string) => {
     setError(null)
     try {
-      const sectionId = await resolveSectionId(effectiveSection)
       const blob = await api.reports.downloadCsv(report, {
-        section_id: sectionId,
+        section_id: effectiveSection ?? undefined,
         date_from: toIsoDate(dateFrom),
         date_to: toIsoDate(dateTo),
         status: report === "work-orders" ? workOrderStatus || undefined : undefined,

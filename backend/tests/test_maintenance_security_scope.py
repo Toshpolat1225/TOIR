@@ -92,7 +92,7 @@ class MaintenanceScopeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_cross_section_plan_update_is_404_before_status_checks(self):
         user = SimpleNamespace(role="master", section_id=uuid4())
-        db = Mock()
+        db = AsyncMock()
         with patch.object(
             maintenance.repository, "get_plan", new=AsyncMock(return_value=None)
         ) as get_plan:
@@ -108,7 +108,7 @@ class MaintenanceScopeTests(unittest.IsolatedAsyncioTestCase):
         section_id = uuid4()
         user = SimpleNamespace(role="master", section_id=section_id)
         plan = SimpleNamespace(id=uuid4(), asset_id=uuid4(), status="scheduled")
-        db = Mock()
+        db = AsyncMock()
         with (
             patch.object(maintenance.repository, "get_plan", new=AsyncMock(return_value=plan)),
             patch("app.repositories.work_orders.get_order", new=AsyncMock(return_value=None)) as get_order,

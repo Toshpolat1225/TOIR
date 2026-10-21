@@ -9,6 +9,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.security import hash_password
 from app.models.identity import RefreshToken, User
+from app.repositories import references as references_repository
 from app.repositories.users import USER_SORT_FIELDS, get_user, get_user_by_email, list_users
 from app.schemas.users import PasswordReset, UserCreate, UserUpdate
 
@@ -53,6 +54,13 @@ async def create_user(db: AsyncSession, payload: UserCreate) -> User:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A user with this email already exists",
+        )
+    if payload.section_id is not None and await references_repository.get_non_archived_section(
+        db, payload.section_id
+    ) is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Cannot assign an archived or missing section to a user",
         )
 
     user = User(
@@ -111,6 +119,18 @@ async def update_user(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Master users must be assigned to a section",
+        )
+    if (
+        next_section_id is not None
+        and (
+            next_section_id != user.section_id
+            or (next_role == "master" and user.role != "master")
+        )
+        and await references_repository.get_non_archived_section(db, next_section_id) is None
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Cannot assign an archived or missing section to a user",
         )
 
     for field_name, value in changes.items():

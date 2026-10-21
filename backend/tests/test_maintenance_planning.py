@@ -9,7 +9,7 @@ from app.repositories import maintenance as repository
 from app.services import maintenance as service
 
 
-class MaintenancePlanningTests(unittest.TestCase):
+class MaintenancePlanningTests(unittest.IsolatedAsyncioTestCase):
     def test_next_trigger_at_interval_boundary(self):
         self.assertEqual(
             service._next_km_trigger(Decimal("5000"), Decimal("5000"), []),
@@ -27,13 +27,13 @@ class MaintenancePlanningTests(unittest.TestCase):
         )
         self.assertEqual(scheduled, today - timedelta(days=13))
 
-    def test_day_interval_forecast_does_not_require_daily_kilometers(self):
+    async def test_day_interval_forecast_does_not_require_daily_kilometers(self):
         today = date(2026, 10, 16)
         asset = SimpleNamespace(id=uuid4(), mileage=Decimal("0"))
         interval = SimpleNamespace(
             id=uuid4(), interval_km=None, interval_days=30
         )
-        _, scheduled = service._interval_target(
+        _, scheduled = await service._interval_target(
             asset, interval, {}, None, today
         )
         self.assertEqual(scheduled, today + timedelta(days=30))

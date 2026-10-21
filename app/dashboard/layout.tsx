@@ -42,7 +42,6 @@ function UserBlockWithSection({
   user,
   role,
   badge,
-  sections,
   sectionsData,
   sectionsLoading,
   onSignOut,
@@ -51,7 +50,6 @@ function UserBlockWithSection({
   user: { email?: string } | null
   role: string
   badge: { label: string; cls: string }
-  sections: string[]
   sectionsData: SectionData[]
   sectionsLoading: boolean
   onSignOut: () => void
@@ -83,7 +81,11 @@ function UserBlockWithSection({
               )}
             >
               <span className="truncate">
-                {viewSection === null ? "Все участки" : viewSection}
+                {viewSection === null
+                  ? "Все участки"
+                  : sectionsData.find((section) => section.id === viewSection)?.localized_name
+                    ?? sectionsData.find((section) => section.id === viewSection)?.name
+                    ?? viewSection}
               </span>
               <ChevronDown className={cn("w-3.5 h-3.5 flex-shrink-0 transition-transform", dropdownOpen && "rotate-180")} />
             </button>
@@ -101,19 +103,29 @@ function UserBlockWithSection({
                   >
                     Все участки
                   </button>
-                  {!sectionsLoading && sections.map((name) => (
-                    <button
-                      key={name}
-                      type="button"
-                      onClick={() => { setViewSection(name); setDropdownOpen(false) }}
-                      className={cn(
-                        "w-full text-left px-3 py-2 text-xs font-medium",
-                        viewSection === name ? "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300" : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                      )}
-                    >
-                      <span className="truncate">{name}</span>
-                    </button>
-                  ))}
+                  {!sectionsLoading && sectionsData.map((section) => {
+                    const label = section.localized_name ?? section.name
+                    const duplicateLabel = sectionsData.some(
+                      (candidate) =>
+                        candidate.id !== section.id &&
+                        (candidate.localized_name ?? candidate.name) === label,
+                    )
+                    return (
+                      <button
+                        key={section.id}
+                        type="button"
+                        onClick={() => { setViewSection(section.id); setDropdownOpen(false) }}
+                        className={cn(
+                          "w-full text-left px-3 py-2 text-xs font-medium",
+                          viewSection === section.id ? "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300" : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        )}
+                      >
+                        <span className="truncate">
+                          {label}{duplicateLabel ? ` · ${section.id.slice(0, 8)}` : ""}
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
               </>
             )}
@@ -144,7 +156,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router   = useRouter()
   const { user, profile, loading, signOut, hasPermission } = useAuth()
   const { t } = useLocale()
-  const { sections, sectionsData, loading: sectionsLoading } = useSections()
+  const { sectionsData, loading: sectionsLoading } = useSections()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   useEffect(() => {
@@ -166,10 +178,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const navItems = ALL_NAV.filter(n => hasPermission(n.permission))
   const badge    = ROLE_BADGE[role]
   const isAdmin  = role === "admin"
-  const sectionName = sectionsData.find((section) => section.id === profile?.section_id)?.localized_name
-    ?? profile?.section
-    ?? sectionsData.find((section) => section.id === profile?.section_id)?.name
-    ?? null
   const currentPage = navItems.find((item) =>
     item.exact ? pathname === item.href : pathname.startsWith(item.href)
   )
@@ -181,7 +189,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <SectionViewProvider
-      effectiveSectionFromProfile={sectionName}
+      effectiveSectionFromProfile={profile?.section_id ?? null}
       isAdmin={isAdmin}
     >
       <div className="min-h-screen bg-slate-50 dark:bg-gray-950">
@@ -224,7 +232,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             user={user}
             role={role}
             badge={badge}
-            sections={sections}
             sectionsData={sectionsData}
             sectionsLoading={sectionsLoading}
             onSignOut={handleSignOut}

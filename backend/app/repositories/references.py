@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assets import FixedAsset
@@ -15,12 +15,26 @@ from app.models.maintenance import (
     WorkType,
 )
 from app.models.organization import Department, Employee, Section
+from app.models.localization import SectionTranslation
 from app.models.work_orders import WorkOrder, WorkOrderRepair
 from app.models.identity import User
 
 SORT_FIELDS = {
     Department: frozenset({"name", "color", "created_at", "updated_at"}),
-    Section: frozenset({"name", "department_id", "created_at", "updated_at"}),
+    Section: frozenset(
+        {
+            "name",
+            "department_id",
+            "parent_id",
+            "unit_type",
+            "code",
+            "is_active",
+            "is_archived",
+            "sort_order",
+            "created_at",
+            "updated_at",
+        }
+    ),
     Employee: frozenset(
         {"tab_number", "full_name", "position", "section_id", "created_at", "updated_at"}
     ),
@@ -74,6 +88,18 @@ async def get_record(db: AsyncSession, model: type[Any], record_id: UUID) -> Any
     return result.scalar_one_or_none()
 
 
+async def get_non_archived_section(
+    db: AsyncSession, section_id: UUID
+) -> Section | None:
+    result = await db.execute(
+        select(Section).where(
+            Section.id == section_id,
+            Section.is_archived.is_(False),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 async def count_references(
     db: AsyncSession, model: type[Any], column_name: str, record_id: UUID
 ) -> int:
@@ -94,18 +120,36 @@ async def list_sections(
     q: str | None = None,
     parent_id: UUID | None = None,
     include_archived: bool = False,
+    unit_type: str | None = None,
+    is_active: bool | None = None,
+    department_id: UUID | None = None,
 ) -> tuple[list[Section], int]:
     filters: list[Any] = []
     if master_section_id is not None:
         filters.append(Section.id == master_section_id)
     if parent_id is not None:
         filters.append(Section.parent_id == parent_id)
-    elif master_section_id is None:
-        filters.append(Section.parent_id.is_(None))
     if not include_archived:
         filters.append(Section.is_archived.is_(False))
+    if unit_type is not None:
+        filters.append(Section.unit_type == unit_type)
+    if is_active is not None:
+        filters.append(Section.is_active.is_(is_active))
+    if department_id is not None:
+        filters.append(Section.department_id == department_id)
     if q and q.strip():
-        filters.append(Section.name.ilike(f"%{q.strip()}%"))
+        search = f"%{q.strip()}%"
+        filters.append(
+            or_(
+                Section.name.ilike(search),
+                exists(
+                    select(SectionTranslation.id).where(
+                        SectionTranslation.section_id == Section.id,
+                        SectionTranslation.name.ilike(search),
+                    )
+                ),
+            )
+        )
     return await list_page(
         db,
         Section,
@@ -127,25 +171,53 @@ async def get_section(
     return result.scalar_one_or_none()
 
 
-async def list_section_tree(
+async def list_all_sections(
     db: AsyncSession,
     *,
-    parent_id: UUID | None = None,
-    include_archived: bool = False,
+    include_archived: bool = True,
+    master_section_id: UUID | None = None,
 ) -> list[Section]:
-    filters: list[Any] = []
-    if parent_id is None:
-        filters.append(Section.parent_id.is_(None))
-    else:
-        filters.append(Section.parent_id == parent_id)
+    query = select(Section)
+    if master_section_id is not None:
+        query = query.where(Section.id == master_section_id)
     if not include_archived:
-        filters.append(Section.is_archived.is_(False))
+        query = query.where(Section.is_archived.is_(False))
     result = await db.execute(
-        select(Section)
-        .where(*filters)
-        .order_by(Section.sort_order.asc(), Section.name.asc())
+        query.order_by(Section.sort_order.asc(), Section.name.asc(), Section.id.asc())
     )
     return list(result.scalars().all())
+
+
+async def get_section_translations(
+    db: AsyncSession, section_ids: set[UUID]
+) -> dict[UUID, dict[str, str]]:
+    if not section_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(
+                SectionTranslation.section_id,
+                SectionTranslation.locale,
+                SectionTranslation.name,
+            ).where(SectionTranslation.section_id.in_(section_ids))
+        )
+    ).all()
+    translations: dict[UUID, dict[str, str]] = {}
+    for section_id, locale, name in rows:
+        translations.setdefault(section_id, {})[locale] = name
+    return translations
+
+
+async def has_active_children(db: AsyncSession, section_id: UUID) -> bool:
+    result = await db.execute(
+        select(func.count())
+        .select_from(Section)
+        .where(
+            Section.parent_id == section_id,
+            Section.is_archived.is_(False),
+        )
+    )
+    return bool(result.scalar_one())
 
 
 async def list_employees(

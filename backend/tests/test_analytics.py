@@ -3,6 +3,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
+from fastapi import HTTPException
+
 from app.services import analytics
 
 
@@ -53,6 +55,24 @@ class AnalyticsTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(list_analytics.await_args.kwargs["section_id"], section_id)
+
+    async def test_ambiguous_legacy_section_name_is_rejected(self):
+        section_rows = [SimpleNamespace(id=uuid4()), SimpleNamespace(id=uuid4())]
+        result = SimpleNamespace(
+            scalars=lambda: SimpleNamespace(all=lambda: section_rows)
+        )
+        db = SimpleNamespace(execute=AsyncMock(return_value=result))
+        user = SimpleNamespace(role="admin", section_id=None)
+
+        with self.assertRaises(HTTPException) as raised:
+            await analytics.dashboard_summary(
+                db,
+                user,
+                section_id=None,
+                section="Duplicate name",
+            )
+
+        self.assertEqual(raised.exception.status_code, 422)
 
 
 if __name__ == "__main__":

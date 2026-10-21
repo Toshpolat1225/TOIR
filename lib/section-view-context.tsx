@@ -3,10 +3,10 @@
 import { createContext, useContext, useState, useMemo, ReactNode } from "react"
 
 type SectionViewContextType = {
-  /** Выбранный участок для отображения (только для админа; null = все) */
+  /** Selected section ID for display (admin only; null = all). */
   viewSection: string | null
   setViewSection: (s: string | null) => void
-  /** Эффективный участок: для мастера — его участок, для админа — viewSection */
+  /** Effective section ID: assigned master section or admin selection. */
   effectiveSection: string | null
 }
 

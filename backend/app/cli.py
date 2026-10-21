@@ -97,10 +97,23 @@ async def _seed_reference() -> int:
                     department_count += 1
 
                 result = await db.execute(
-                    select(Section).where(Section.name == section_name)
+                    select(Section).where(
+                        Section.name == section_name,
+                        Section.department_id == department.id,
+                        Section.parent_id.is_(None),
+                        Section.unit_type == "section",
+                        Section.is_archived.is_(False),
+                    )
                 )
-                section = result.scalar_one_or_none()
-                if section is None:
+                matching_sections = result.scalars().all()
+                if len(matching_sections) > 1:
+                    print(
+                        f"Reference section name is ambiguous in department {department_name!r}: "
+                        f"{section_name!r}. Resolve the duplicate before seeding.",
+                        file=sys.stderr,
+                    )
+                    return 2
+                if not matching_sections:
                     db.add(
                         Section(
                             name=section_name,
@@ -108,8 +121,6 @@ async def _seed_reference() -> int:
                         )
                     )
                     section_count += 1
-                elif section.department_id != department.id:
-                    section.department_id = department.id
 
             for sort_order, (code, unit_type) in enumerate(REFERENCE_WORK_TYPES, start=1):
                 result = await db.execute(

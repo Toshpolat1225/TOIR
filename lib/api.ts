@@ -296,6 +296,7 @@ export type Section = {
   parent_id?: string | null;
   unit_type?: string;
   code?: string | null;
+  translations: Partial<Record<"uz-Latn" | "uz-Cyrl" | "ru", string>>;
   is_active?: boolean;
   is_archived?: boolean;
   sort_order?: number;
@@ -320,7 +321,7 @@ type ListParams = {
 };
 
 const sections = {
-  async list(params: ListParams & { q?: string; parent_id?: string; include_archived?: boolean } = { limit: 100, offset: 0 }): Promise<Paginated<Section>> {
+  async list(params: ListParams & { q?: string; parent_id?: string; include_archived?: boolean; unit_type?: string; is_active?: boolean; department_id?: string } = { limit: 100, offset: 0 }): Promise<Paginated<Section>> {
     return request<Paginated<Section>>({
       method: "GET",
       path: "/sections",
@@ -328,7 +329,7 @@ const sections = {
     });
   },
 
-  async tree(params: { parent_id?: string; include_archived?: boolean } = {}): Promise<SectionTreeNode[]> {
+  async tree(params: { parent_id?: string; include_archived?: boolean; q?: string; unit_type?: string; is_active?: boolean } = {}): Promise<SectionTreeNode[]> {
     return request<SectionTreeNode[]>({
       method: "GET",
       path: "/sections/tree",
@@ -336,7 +337,7 @@ const sections = {
     });
   },
 
-  async create(data: { name: string; department_id?: string; parent_id?: string | null; unit_type?: string; code?: string | null; is_active?: boolean; is_archived?: boolean; sort_order?: number }): Promise<Section> {
+  async create(data: { name: string; department_id?: string; parent_id?: string | null; unit_type?: string; code?: string | null; translations?: Record<"uz-Latn" | "uz-Cyrl" | "ru", string>; is_active?: boolean; is_archived?: boolean; sort_order?: number }): Promise<Section> {
     return request<Section>({
       method: "POST",
       path: "/sections",
@@ -344,7 +345,7 @@ const sections = {
     });
   },
 
-  async update(id: string, data: { name?: string; department_id?: string; parent_id?: string | null; unit_type?: string; code?: string | null; is_active?: boolean; is_archived?: boolean; sort_order?: number }): Promise<Section> {
+  async update(id: string, data: { name?: string; department_id?: string; parent_id?: string | null; unit_type?: string; code?: string | null; translations?: Record<"uz-Latn" | "uz-Cyrl" | "ru", string>; is_active?: boolean; is_archived?: boolean; sort_order?: number }): Promise<Section> {
     return request<Section>({
       method: "PATCH",
       path: `/sections/${id}`,

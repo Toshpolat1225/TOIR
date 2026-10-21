@@ -14,6 +14,7 @@ from app.models.maintenance import MaintenancePlan
 from app.models.work_orders import WorkOrder
 from app.repositories import work_orders as repository
 from app.repositories import maintenance as maintenance_repository
+from app.repositories import references as references_repository
 from app.schemas.work_orders import (
     NormCheckRequest,
     NormCheckResult,
@@ -164,6 +165,11 @@ async def _resolve_create_scope(
     section = await repository.get_section(db, target_section_id)
     if section is None:
         raise HTTPException(status_code=422, detail="Section does not exist")
+    if section.is_archived:
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot create a work order in an archived section",
+        )
     department_id = payload.department_id or section.department_id
     if user.role == "master" and department_id != section.department_id:
         raise HTTPException(status_code=403, detail="Department is outside your section")
@@ -391,8 +397,25 @@ async def update_order(
         section = await repository.get_section(db, values["section_id"])
         if section is None:
             raise HTTPException(status_code=422, detail="Section does not exist")
+        if (
+            section.is_archived
+            and (
+                values["section_id"] != order.section_id
+                or "fixed_asset_id" in values
+            )
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Cannot move a work order to an archived section",
+            )
         if "department_id" not in values and section.department_id is not None:
             values["department_id"] = section.department_id
+    elif "fixed_asset_id" in values and target_section is not None:
+        if await references_repository.get_non_archived_section(db, target_section) is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Cannot move a work order to an archived section",
+            )
     if user.role == "master":
         section = await repository.get_section(db, target_section)
         if section is None or (
