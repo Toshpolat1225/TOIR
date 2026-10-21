@@ -28,7 +28,11 @@ class Department(Base):
 
 class Section(Base):
     __tablename__ = "sections"
-    __table_args__ = (Index("ix_sections_department", "department_id"),)
+    __table_args__ = (
+        Index("ix_sections_department", "department_id"),
+        Index("ix_sections_parent", "parent_id"),
+        Index("ix_sections_type", "unit_type"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
@@ -36,6 +40,24 @@ class Section(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     department_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("departments.id", ondelete="SET NULL")
+    )
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sections.id", ondelete="SET NULL")
+    )
+    unit_type: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default=text("'section'"),
+    )
+    code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    is_archived: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    sort_order: Mapped[int] = mapped_column(
+        nullable=False, server_default=text("0")
     )
     created_at: Mapped[datetime] = mapped_column(
         nullable=False, server_default=text("now()")

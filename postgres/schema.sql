@@ -34,10 +34,18 @@ CREATE TABLE sections (
     id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name           text NOT NULL UNIQUE,
     department_id  uuid REFERENCES departments(id) ON DELETE SET NULL,
+    parent_id      uuid REFERENCES sections(id) ON DELETE SET NULL,
+    unit_type      text NOT NULL DEFAULT 'section' CHECK (unit_type IN ('department', 'division', 'section', 'team')),
+    code           text,
+    is_active      boolean NOT NULL DEFAULT true,
+    is_archived    boolean NOT NULL DEFAULT false,
+    sort_order     integer NOT NULL DEFAULT 0,
     created_at     timestamptz NOT NULL DEFAULT now(),
     updated_at     timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_sections_department ON sections(department_id);
+CREATE INDEX ix_sections_parent ON sections(parent_id);
+CREATE INDEX ix_sections_type ON sections(unit_type);
 
 -- =====================================================================
 -- 2. FOYDALANUVCHILAR

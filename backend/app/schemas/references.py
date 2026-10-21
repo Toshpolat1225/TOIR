@@ -58,25 +58,51 @@ class SectionRead(BaseModel):
     id: UUID
     name: str
     department_id: UUID | None
+    parent_id: UUID | None = None
+    unit_type: str = "section"
+    code: str | None = None
+    is_active: bool = True
+    is_archived: bool = False
+    sort_order: int = 0
     created_at: datetime
     updated_at: datetime
+
+
+class SectionTreeNode(SectionRead):
+    children: list["SectionTreeNode"] = Field(default_factory=list)
 
 
 class SectionCreate(BaseModel):
     name: str = Field(min_length=1)
     department_id: UUID | None = None
+    parent_id: UUID | None = None
+    unit_type: str = "section"
+    code: str | None = None
+    is_active: bool = True
+    is_archived: bool = False
+    sort_order: int = 0
 
     @model_validator(mode="after")
     def normalize_name(self):
         self.name = self.name.strip()
         if not self.name:
             raise ValueError("Section name must not be empty")
+        if self.code is not None:
+            self.code = self.code.strip() or None
+        if self.unit_type is not None:
+            self.unit_type = self.unit_type.strip() or "section"
         return self
 
 
 class SectionUpdate(PatchModel):
     name: str | None = Field(default=None, min_length=1)
     department_id: UUID | None = None
+    parent_id: UUID | None = None
+    unit_type: str | None = None
+    code: str | None = None
+    is_active: bool | None = None
+    is_archived: bool | None = None
+    sort_order: int | None = None
 
     @model_validator(mode="after")
     def validate_name(self):
@@ -84,6 +110,14 @@ class SectionUpdate(PatchModel):
             if self.name is None or not self.name.strip():
                 raise ValueError("Section name must not be empty")
             self.name = self.name.strip()
+        if "code" in self.model_fields_set and self.code is not None:
+            self.code = self.code.strip() or None
+        if "unit_type" in self.model_fields_set and self.unit_type is not None:
+            self.unit_type = self.unit_type.strip() or "section"
+        if "is_active" in self.model_fields_set and self.is_active is None:
+            raise ValueError("is_active cannot be null")
+        if "is_archived" in self.model_fields_set and self.is_archived is None:
+            raise ValueError("is_archived cannot be null")
         return self
 
 

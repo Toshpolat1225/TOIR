@@ -20,6 +20,7 @@ from app.schemas.references import (
     MaintenanceIntervalUpdate,
     SectionCreate,
     SectionRead,
+    SectionTreeNode,
     SectionUpdate,
     WorkSubtaskCreate,
     WorkSubtaskRead,
@@ -119,6 +120,8 @@ async def get_sections(
     sort_by: str = Query(default="name"),
     sort_order: SortOrder = Query(default="asc"),
     q: str | None = Query(default=None, max_length=200),
+    parent_id: UUID | None = None,
+    include_archived: bool = Query(default=False),
 ) -> PaginatedResponse[SectionRead]:
     items, total = await service.list_sections(
         db,
@@ -130,9 +133,28 @@ async def get_sections(
         sort_by=sort_by,
         sort_order=sort_order,
         q=q,
+        parent_id=parent_id,
+        include_archived=include_archived,
     )
     return PaginatedResponse[SectionRead](
         items=items, total=total, limit=limit, offset=offset
+    )
+
+
+@router.get("/sections/tree", response_model=list[SectionTreeNode])
+async def get_sections_tree(
+    current_user: AuthenticatedUser,
+    db: DatabaseSession,
+    parent_id: UUID | None = None,
+    include_archived: bool = Query(default=False),
+) -> list[dict]:
+    master_section_id = current_user.section_id if current_user.role == "master" else None
+    if master_section_id is not None and parent_id is None:
+        parent_id = master_section_id
+    return await service.list_section_tree(
+        db,
+        parent_id=parent_id,
+        include_archived=include_archived,
     )
 
 

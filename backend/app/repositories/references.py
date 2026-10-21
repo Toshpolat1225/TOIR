@@ -92,8 +92,18 @@ async def list_sections(
     sort_by: str,
     sort_order: str,
     q: str | None = None,
+    parent_id: UUID | None = None,
+    include_archived: bool = False,
 ) -> tuple[list[Section], int]:
-    filters = [Section.id == master_section_id] if master_section_id is not None else []
+    filters: list[Any] = []
+    if master_section_id is not None:
+        filters.append(Section.id == master_section_id)
+    if parent_id is not None:
+        filters.append(Section.parent_id == parent_id)
+    elif master_section_id is None:
+        filters.append(Section.parent_id.is_(None))
+    if not include_archived:
+        filters.append(Section.is_archived.is_(False))
     if q and q.strip():
         filters.append(Section.name.ilike(f"%{q.strip()}%"))
     return await list_page(
@@ -115,6 +125,27 @@ async def get_section(
         filters.append(Section.id == master_section_id)
     result = await db.execute(select(Section).where(*filters))
     return result.scalar_one_or_none()
+
+
+async def list_section_tree(
+    db: AsyncSession,
+    *,
+    parent_id: UUID | None = None,
+    include_archived: bool = False,
+) -> list[Section]:
+    filters: list[Any] = []
+    if parent_id is None:
+        filters.append(Section.parent_id.is_(None))
+    else:
+        filters.append(Section.parent_id == parent_id)
+    if not include_archived:
+        filters.append(Section.is_archived.is_(False))
+    result = await db.execute(
+        select(Section)
+        .where(*filters)
+        .order_by(Section.sort_order.asc(), Section.name.asc())
+    )
+    return list(result.scalars().all())
 
 
 async def list_employees(

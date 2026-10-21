@@ -293,9 +293,17 @@ export type Section = {
   localized_name?: string;
   translation_missing?: boolean;
   department_id: string | null;
+  parent_id?: string | null;
+  unit_type?: string;
+  code?: string | null;
+  is_active?: boolean;
+  is_archived?: boolean;
+  sort_order?: number;
   created_at: string;
   updated_at: string;
 };
+
+export type SectionTreeNode = Section & { children: SectionTreeNode[] };
 
 export type Paginated<T> = {
   items: T[];
@@ -312,7 +320,7 @@ type ListParams = {
 };
 
 const sections = {
-  async list(params: ListParams & { q?: string } = { limit: 100, offset: 0 }): Promise<Paginated<Section>> {
+  async list(params: ListParams & { q?: string; parent_id?: string; include_archived?: boolean } = { limit: 100, offset: 0 }): Promise<Paginated<Section>> {
     return request<Paginated<Section>>({
       method: "GET",
       path: "/sections",
@@ -320,7 +328,15 @@ const sections = {
     });
   },
 
-  async create(data: { name: string; department_id?: string }): Promise<Section> {
+  async tree(params: { parent_id?: string; include_archived?: boolean } = {}): Promise<SectionTreeNode[]> {
+    return request<SectionTreeNode[]>({
+      method: "GET",
+      path: "/sections/tree",
+      params,
+    });
+  },
+
+  async create(data: { name: string; department_id?: string; parent_id?: string | null; unit_type?: string; code?: string | null; is_active?: boolean; is_archived?: boolean; sort_order?: number }): Promise<Section> {
     return request<Section>({
       method: "POST",
       path: "/sections",
@@ -328,7 +344,7 @@ const sections = {
     });
   },
 
-  async update(id: string, data: { name?: string; department_id?: string }): Promise<Section> {
+  async update(id: string, data: { name?: string; department_id?: string; parent_id?: string | null; unit_type?: string; code?: string | null; is_active?: boolean; is_archived?: boolean; sort_order?: number }): Promise<Section> {
     return request<Section>({
       method: "PATCH",
       path: `/sections/${id}`,

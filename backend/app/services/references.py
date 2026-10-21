@@ -151,6 +151,71 @@ async def delete_department(db: AsyncSession, department_id: UUID) -> None:
     )
 
 
+async def _validate_section_hierarchy(
+    db: AsyncSession,
+    *,
+    section_id: UUID | None,
+    parent_id: UUID | None,
+    unit_type: str,
+) -> None:
+    if unit_type not in {"department", "division", "section", "team"}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Unsupported unit type",
+        )
+
+    if parent_id == section_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Section cannot be its own parent",
+        )
+
+    if parent_id is not None:
+        parent = await repository.get_record(db, Section, parent_id)
+        if parent is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Parent section not found",
+            )
+
+        if unit_type == "department":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Department cannot be assigned to a parent unit",
+            )
+
+        if unit_type == "division" and parent.unit_type not in {"department", "division"}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Division parent must be a department or division",
+            )
+
+        if unit_type == "section" and parent.unit_type not in {"department", "division", "section"}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Section parent must be a department, division, or section",
+            )
+
+        if unit_type == "team" and parent.unit_type not in {"division", "section", "team"}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Team parent must be a division, section, or team",
+            )
+
+        cursor_id = parent_id
+        seen: set[UUID] = set()
+        while cursor_id is not None and cursor_id not in seen:
+            seen.add(cursor_id)
+            current = await repository.get_record(db, Section, cursor_id)
+            if current is None:
+                break
+            if section_id is not None and current.id == section_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Parent cycle detected",
+                )
+            cursor_id = current.parent_id
+
 async def list_sections(
     db: AsyncSession,
     *,
@@ -160,6 +225,8 @@ async def list_sections(
     sort_by: str,
     sort_order: str,
     q: str | None = None,
+    parent_id: UUID | None = None,
+    include_archived: bool = False,
 ) -> tuple[list[Section], int]:
     try:
         return await repository.list_sections(
@@ -170,6 +237,8 @@ async def list_sections(
             sort_by=sort_by,
             sort_order=sort_order,
             q=q,
+            parent_id=parent_id,
+            include_archived=include_archived,
         )
     except ValueError as exc:
         raise _unsupported_sort() from exc
@@ -186,10 +255,51 @@ async def get_section(
     return section
 
 
+async def list_section_tree(
+    db: AsyncSession,
+    *,
+    parent_id: UUID | None = None,
+    include_archived: bool = False,
+) -> list[dict[str, Any]]:
+    rows = await repository.list_section_tree(
+        db, parent_id=parent_id, include_archived=include_archived
+    )
+    dict_by_id: dict[UUID, dict[str, Any]] = {}
+    root_nodes: list[dict[str, Any]] = []
+    for row in rows:
+        node = {
+            "id": row.id,
+            "name": row.name,
+            "department_id": row.department_id,
+            "parent_id": row.parent_id,
+            "unit_type": row.unit_type,
+            "code": row.code,
+            "is_active": row.is_active,
+            "is_archived": row.is_archived,
+            "sort_order": row.sort_order,
+            "created_at": row.created_at,
+            "updated_at": row.updated_at,
+            "children": [],
+        }
+        dict_by_id[row.id] = node
+        if row.parent_id is None:
+            root_nodes.append(node)
+    for row in rows:
+        if row.parent_id is not None and row.parent_id in dict_by_id:
+            dict_by_id[row.parent_id]["children"].append(dict_by_id[row.id])
+    return root_nodes
+
+
 async def create_section(db: AsyncSession, payload: SectionCreate) -> Section:
+    await _validate_section_hierarchy(
+        db,
+        section_id=None,
+        parent_id=payload.parent_id,
+        unit_type=payload.unit_type,
+    )
     section = Section(**payload.model_dump())
     db.add(section)
-    await _commit_or_conflict(db, "Section name already exists or the department does not exist")
+    await _commit_or_conflict(db, "Section name already exists or the hierarchy is invalid")
     await db.refresh(section)
     return section
 
@@ -198,9 +308,18 @@ async def update_section(
     db: AsyncSession, section_id: UUID, payload: SectionUpdate
 ) -> Section:
     section = await get_section(db, section_id, master_section_id=None)
-    for field_name, value in payload.model_dump(exclude_unset=True).items():
+    update_data = payload.model_dump(exclude_unset=True)
+    parent_id = update_data.get("parent_id", section.parent_id)
+    unit_type = update_data.get("unit_type", section.unit_type)
+    await _validate_section_hierarchy(
+        db,
+        section_id=section_id,
+        parent_id=parent_id,
+        unit_type=unit_type,
+    )
+    for field_name, value in update_data.items():
         setattr(section, field_name, value)
-    await _commit_or_conflict(db, "Section name already exists or the department does not exist")
+    await _commit_or_conflict(db, "Section name already exists or the hierarchy is invalid")
     await db.refresh(section)
     return section
 
