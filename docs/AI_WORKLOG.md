@@ -92,3 +92,7 @@ NOT RUN: PostgreSQL execution/schema/FKs, API E2E, browser, production deploy. N
 Changed: backend Wialon client/config/service/repository/router/schema/tests, asset update helper, main lifespan, Compose env, requirements, `.env.example`, HANDOFF.
 PASS: py_compile for changed backend files; isolated Wialon unittest suite (16 tests); `git diff --check`.
 NOT RUN: PostgreSQL/migration, real Wialon API/account, API E2E, Docker, browser, server/deploy. Next: verify against an approved disposable DB and test API.
+2026-10-22 | Copilot SDK | Completed W1 diagnostics and safe Wialon error reporting.
+Changed: `backend/app/cli.py`, Wialon client/status service, mock tests, HANDOFF.
+PASS: py_compile, 25 isolated MockTransport/unit tests, `git diff --check`; flags checked against official unit format docs.
+NOT RUN: live Wialon probe, DB, E2E, Docker, browser, server/deploy. Next: wait for approval before W2.

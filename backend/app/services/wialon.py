@@ -31,7 +31,22 @@ def _safe_status(message: str) -> str:
 def _display_status(message: str | None) -> str | None:
     if message is None:
         return None
-    if message == "error: Wialon synchronization failed":
+    if message in {
+        "error: Wialon synchronization failed",
+        "Wialon: token yo‘q yoki noto‘g‘ri; token sozlamasini tekshiring",
+        "Wialon: host mask rad etdi; administratorga murojaat qiling",
+        "Wialon: ruxsat rad etildi (xato 7)",
+        "Wialon: sessiya eskirdi; qayta avtorizatsiya kerak",
+        "Wialon: javob kutish vaqti tugadi (timeout)",
+        "Wialon: tarmoq xatosi; ulanishni tekshiring",
+        "Wialon: avtorizatsiya javobi noto‘g‘ri",
+        "Wialon: birliklar ro‘yxati noto‘g‘ri formatda",
+        "Wialon: server javobi noto‘g‘ri formatda",
+    }:
+        return message
+    if re.fullmatch(r"Wialon: so‘rov rad etildi \(xato \d+\)", message):
+        return message
+    if re.fullmatch(r"Wialon: server HTTP \d{3} qaytardi", message):
         return message
     if re.fullmatch(
         r"ok: found=\d+, updated=\d+, not_found=\d+",
@@ -53,9 +68,11 @@ async def get_sync_status(db: AsyncSession) -> WialonSyncStatus:
     )
 
 
-async def _record_failure(db: AsyncSession, synced_at: datetime) -> None:
+async def _record_failure(
+    db: AsyncSession, synced_at: datetime, status_message: str
+) -> None:
     await repository.save_sync_status(
-        db, synced_at=synced_at, status="error: Wialon synchronization failed"
+        db, synced_at=synced_at, status=status_message
     )
 
 
@@ -118,7 +135,12 @@ async def sync_wialon_assets(db: AsyncSession) -> WialonSyncResult:
             return result
         except Exception as exc:
             await db.rollback()
-            await _record_failure(db, synced_at)
+            status_message = (
+                exc.status_message
+                if isinstance(exc, WialonClientError)
+                else "error: Wialon synchronization failed"
+            )
+            await _record_failure(db, synced_at, status_message)
             logger.error("Wialon synchronization failed (%s)", type(exc).__name__)
             if isinstance(exc, HTTPException):
                 raise

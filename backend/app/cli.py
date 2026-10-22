@@ -1,12 +1,22 @@
 import argparse
 import asyncio
 import getpass
+import json
 import sys
+from decimal import Decimal
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.database import SessionFactory, engine
+from app.integrations.wialon_client import (
+    WialonClient,
+    WialonClientError,
+    diagnostic_counter,
+    item_field_names,
+    parse_units,
+)
 from app.models.maintenance import WorkType
 from app.models.organization import Department, Section
 from app.services.auth import create_initial_admin
@@ -161,16 +171,113 @@ async def _seed_reference() -> int:
     return 0
 
 
+def _probe_unit(item: dict[str, object]) -> dict[str, object]:
+    item_copy = dict(item)
+    item_copy.setdefault("id", "__probe__")
+    if not item_copy.get("nm") and not item_copy.get("name"):
+        item_copy["nm"] = "__probe__"
+    parsed_units = parse_units({"items": [item_copy]})
+    parsed = parsed_units[0] if parsed_units else None
+
+    mileage_field, mileage = diagnostic_counter(item, counter="mileage")
+    engine_hours_field, engine_hours = diagnostic_counter(
+        item, counter="engine_hours"
+    )
+    measurement_system = item.get("mu")
+    try:
+        measurement_system_code = int(measurement_system)
+    except (TypeError, ValueError):
+        measurement_system_code = None
+
+    estimated_km: Decimal | None = None
+    if mileage is not None and measurement_system_code in {0, 3}:
+        estimated_km = mileage
+        mileage_assumption = (
+            f"mu={measurement_system_code}: xom hisoblagich km deb faraz qilindi"
+        )
+    elif mileage is not None and measurement_system_code in {1, 2}:
+        estimated_km = mileage * Decimal("1.609344")
+        mileage_assumption = (
+            f"mu={measurement_system_code}: xom hisoblagich mil deb faraz qilinib, "
+            "km ga aylantirildi"
+        )
+    else:
+        mileage_assumption = (
+            "o‘lchov birligi aniqlanmadi; Wialon hisoblagich sozlamasida tasdiqlang"
+        )
+
+    position = item.get("pos")
+    message = item.get("lmsg")
+    if not isinstance(position, dict) and isinstance(message, dict):
+        position = message.get("pos")
+    position_present = isinstance(position, dict) and (
+        "x" in position or "y" in position
+    )
+
+    return {
+        "id": item.get("id"),
+        "name": item.get("nm") or item.get("name"),
+        "field_names": item_field_names(item),
+        "mileage": {
+            "field": mileage_field,
+            "raw": str(mileage) if mileage is not None else None,
+            "estimated_km": str(estimated_km) if estimated_km is not None else None,
+            "assumption": mileage_assumption,
+        },
+        "engine_hours": {
+            "field": engine_hours_field,
+            "raw": str(engine_hours) if engine_hours is not None else None,
+        },
+        "speed": str(parsed.speed) if parsed and parsed.speed is not None else None,
+        "last_message_at_utc": (
+            parsed.last_message_at.isoformat()
+            if parsed and parsed.last_message_at is not None
+            else None
+        ),
+        "position_present": position_present,
+    }
+
+
+async def _wialon_probe() -> int:
+    if settings.wialon_host is None or settings.wialon_token is None:
+        print("Wialon sozlanmagan: WIALON_HOST yoki WIALON_TOKEN yo‘q.", file=sys.stderr)
+        return 2
+
+    try:
+        client = WialonClient(
+            settings.wialon_host,
+            settings.wialon_token.get_secret_value(),
+        )
+        items = await client.fetch_diagnostic_items()
+    except WialonClientError as exc:
+        print(exc.status_message, file=sys.stderr)
+        return 1
+    finally:
+        await engine.dispose()
+
+    report = {
+        "unit_count": len(items),
+        "shown_count": min(len(items), 20),
+        "truncated": len(items) > 20,
+        "units": [_probe_unit(item) for item in items[:20]],
+    }
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("create-admin", help="Create the first administrator")
     subparsers.add_parser("seed-reference", help="Create initial directory reference data")
+    subparsers.add_parser("wialon-probe", help="Read safe Wialon unit diagnostics")
     arguments = parser.parse_args()
     if arguments.command == "create-admin":
         return asyncio.run(_create_admin())
     if arguments.command == "seed-reference":
         return asyncio.run(_seed_reference())
+    if arguments.command == "wialon-probe":
+        return asyncio.run(_wialon_probe())
     parser.error("Unsupported command")
     return 2
 

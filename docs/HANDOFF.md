@@ -563,3 +563,18 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Test the implementation against a disposable PostgreSQL database and a Wialon test account/mock API in an explicitly authorized environment. Confirm the live Wialon item flags and mileage counter units before enabling periodic sync in production.
+
+## Wialon stage W1 (2026-10-22)
+
+### Verified
+
+- Added `python -m app.cli wialon-probe`. It performs one login and one `core/search_items` request, logs out, and prints at most 20 units with field names and selected diagnostic values; it does not print the token, session ID, or request URL.
+- Corrected unit search flags using the official [unit format](https://sdk.wialon.com/wiki/en/sidebar/remoteapi/apiref/format/unit): general fields `0x1`, last message/position `0x400`, and mileage/engine-hour counters `0x2000`. The documented fields are `cnm` (km or miles) and `cneh` (engine hours); the Wialon Local response has not been observed, so actual values/units remain unconfirmed.
+- Added safe status messages for login error codes 4/8, access denied including the reported host-mask reason, expired session, network failure, timeout, and server response errors. Official [error codes](https://sdk.wialon.com/wiki/en/sidebar/remoteapi/apiref/errors/errors) document generic meanings; the specific host-mask reason came from the supplied runtime report, not a live check in this stage.
+- `python3 -m py_compile backend/app/cli.py backend/app/integrations/wialon_client.py backend/app/services/wialon.py backend/tests/test_wialon_pull.py` passed. Isolated Wialon unit suite: 25 tests passed. `git diff --check` passed.
+- The first test attempt failed because the harness patched a read-only SQLAlchemy engine method; the test now replaces the engine dependency with a mock, and the final suite passed.
+- No live Wialon request, database, E2E, Docker, browser, server, or deploy was used. Results apply to code and mock tests only.
+
+### Next task
+
+- Stop after W1 as requested. Wait for explicit approval before starting W2. Before any real probe, use the protected server environment; do not paste or print `.env` or Wialon credentials.

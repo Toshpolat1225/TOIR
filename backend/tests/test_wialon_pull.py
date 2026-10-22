@@ -16,15 +16,196 @@ from pydantic import SecretStr
 from app.core.config import Settings
 from app.integrations.wialon_client import (
     SEARCH_FLAGS,
+    UnitSearchFlags,
     WialonClient,
     WialonClientError,
     WialonUnit,
+    diagnostic_counter,
+    item_field_names,
     parse_units,
 )
 from app.services import assets, wialon
 
 
 class WialonClientTests(unittest.IsolatedAsyncioTestCase):
+    def test_search_flags_match_official_unit_format_flags(self):
+        self.assertEqual(int(UnitSearchFlags.BASE), 0x00000001)
+        self.assertEqual(int(UnitSearchFlags.LAST_MESSAGE_AND_POSITION), 0x00000400)
+        self.assertEqual(int(UnitSearchFlags.COUNTERS), 0x00002000)
+        self.assertEqual(SEARCH_FLAGS, 0x00002401)
+
+    def test_wialon_counter_names_parse_mileage_and_engine_hours(self):
+        item = {"cnm": 12345.6, "cneh": 789.5}
+        parsed = parse_units({"items": [{"id": 1, "nm": "Unit", **item}]})
+        self.assertEqual(parsed[0].mileage, Decimal("12345.6"))
+        self.assertEqual(
+            diagnostic_counter(item, counter="mileage"),
+            ("cnm", Decimal("12345.6")),
+        )
+        self.assertEqual(
+            diagnostic_counter(item, counter="engine_hours"),
+            ("cneh", Decimal("789.5")),
+        )
+
+    def test_probe_reports_raw_and_assumed_kilometers_and_field_names_only(self):
+        from app.cli import _probe_unit
+
+        probe = _probe_unit(
+            {
+                "id": 71,
+                "nm": "Локомотив 71",
+                "mu": 1,
+                "cnm": 100,
+                "cneh": 20,
+                "lmsg": {"t": 1_782_000_000, "pos": {"x": 69.2, "y": 41.3, "s": 15}},
+            }
+        )
+        self.assertEqual(probe["mileage"]["raw"], "100")
+        self.assertEqual(probe["mileage"]["estimated_km"], "160.934400")
+        self.assertIn("mil deb faraz", probe["mileage"]["assumption"])
+        self.assertIn("lmsg.pos.x", probe["field_names"])
+        self.assertEqual(probe["engine_hours"]["raw"], "20")
+        self.assertEqual(probe["speed"], "15")
+        self.assertTrue(probe["position_present"])
+        self.assertNotIn("token", " ".join(probe["field_names"]).lower())
+
+    async def test_diagnostic_fetch_makes_one_login_and_one_search(self):
+        services: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            form = parse_qs(request.content.decode())
+            service = form["svc"][0]
+            services.append(service)
+            if service == "token/login":
+                return httpx.Response(200, json={"eid": "private-session"})
+            if service == "core/search_items":
+                return httpx.Response(200, json={"items": [{"id": 1, "nm": "Test"}]})
+            return httpx.Response(200, json={"error": 0})
+
+        client = WialonClient(
+            "https://gps.agmk.uz",
+            "private-token",
+            transport=httpx.MockTransport(handler),
+        )
+        items = await client.fetch_diagnostic_items()
+        self.assertEqual(services, ["token/login", "core/search_items", "core/logout"])
+        self.assertEqual(items, [{"id": 1, "nm": "Test"}])
+        self.assertNotIn("private-session", json.dumps(items))
+
+    async def test_diagnostic_fetch_accepts_empty_item_list(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            service = parse_qs(request.content.decode())["svc"][0]
+            if service == "token/login":
+                return httpx.Response(200, json={"eid": "private-session"})
+            if service == "core/search_items":
+                return httpx.Response(200, json={"items": []})
+            return httpx.Response(200, json={"error": 0})
+
+        client = WialonClient(
+            "https://gps.agmk.uz",
+            "private-token",
+            transport=httpx.MockTransport(handler),
+        )
+        self.assertEqual(await client.fetch_diagnostic_items(), [])
+
+    async def test_login_errors_have_safe_messages(self):
+        cases = (
+            (4, None, "token yo‘q yoki noto‘g‘ri"),
+            (7, "ACCESS_DENIED_BY_HOST_MASK", "host mask rad etdi"),
+        )
+        for code, reason, expected_message in cases:
+            with self.subTest(code=code):
+                payload = {"error": code}
+                if reason:
+                    payload["reason"] = reason
+
+                def handler(_: httpx.Request) -> httpx.Response:
+                    return httpx.Response(200, json=payload)
+
+                client = WialonClient(
+                    "https://gps.agmk.uz",
+                    "private-token",
+                    transport=httpx.MockTransport(handler),
+                )
+                with self.assertRaises(WialonClientError) as raised:
+                    await client.fetch_diagnostic_items()
+                self.assertIn(expected_message, raised.exception.status_message)
+                self.assertNotIn("private-token", raised.exception.status_message)
+                self.assertNotIn("ACCESS_DENIED_BY_HOST_MASK", raised.exception.status_message)
+
+    async def test_network_and_timeout_failures_are_distinguished(self):
+        cases = (
+            (httpx.ReadTimeout("mock timeout"), "timeout"),
+            (httpx.ConnectError("mock network failure"), "tarmoq xatosi"),
+        )
+        for failure, expected_status in cases:
+            with self.subTest(expected_status=expected_status):
+                attempts = 0
+
+                def handler(_: httpx.Request) -> httpx.Response:
+                    nonlocal attempts
+                    attempts += 1
+                    raise failure
+
+                client = WialonClient(
+                    "https://gps.agmk.uz",
+                    "private-token",
+                    transport=httpx.MockTransport(handler),
+                )
+                with patch(
+                    "app.integrations.wialon_client.asyncio.sleep",
+                    new=AsyncMock(),
+                ):
+                    with self.assertRaises(WialonClientError) as raised:
+                        await client.fetch_diagnostic_items()
+                self.assertEqual(attempts, 3)
+                self.assertIn(expected_status, raised.exception.status_message)
+                self.assertNotIn("private-token", raised.exception.status_message)
+
+    async def test_probe_output_is_limited_to_first_twenty_units(self):
+        from app import cli
+
+        units = [{"id": index, "nm": f"Unit {index}"} for index in range(21)]
+        units[0]["eid"] = "private-session-id"
+        with (
+            patch(
+                "app.cli.settings",
+                SimpleNamespace(
+                    wialon_host="https://gps.agmk.uz",
+                    wialon_token=SecretStr("private-token"),
+                ),
+            ),
+            patch("app.cli.WialonClient") as client_type,
+            patch("app.cli.engine", SimpleNamespace(dispose=AsyncMock())),
+        ):
+            client_type.return_value.fetch_diagnostic_items = AsyncMock(
+                return_value=units
+            )
+            output = io.StringIO()
+            with patch("sys.stdout", output):
+                result = await cli._wialon_probe()
+
+        report = json.loads(output.getvalue())
+        self.assertEqual(result, 0)
+        self.assertEqual(report["unit_count"], 21)
+        self.assertEqual(report["shown_count"], 20)
+        self.assertTrue(report["truncated"])
+        self.assertEqual(len(report["units"]), 20)
+        self.assertNotIn("private-token", output.getvalue())
+        self.assertNotIn("private-session-id", output.getvalue())
+
+    def test_field_names_for_sparse_item_do_not_invent_values(self):
+        item = {"id": 5, "nm": "Sparse"}
+        self.assertEqual(item_field_names(item), ["id", "nm"])
+        from app.cli import _probe_unit
+
+        report = _probe_unit(item)
+        self.assertIsNone(report["mileage"]["raw"])
+        self.assertIsNone(report["engine_hours"]["raw"])
+        self.assertIsNone(report["speed"])
+        self.assertIsNone(report["last_message_at_utc"])
+        self.assertFalse(report["position_present"])
+
     async def test_search_parses_message_speed_and_odometer(self):
         requests: list[dict[str, str]] = []
         request_urls: list[str] = []
@@ -263,6 +444,12 @@ class WialonClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             wialon._display_status("token=secret https://host/path?token=secret"),
             "previous status omitted because it is not a recognized safe status",
+        )
+        self.assertEqual(
+            wialon._display_status(
+                "Wialon: host mask rad etdi; administratorga murojaat qiling"
+            ),
+            "Wialon: host mask rad etdi; administratorga murojaat qiling",
         )
 
     async def test_periodic_loop_continues_after_failed_sync(self):
