@@ -1,7 +1,7 @@
 services:
   backend:
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:18000:8000"
     environment:
       CORS_ORIGINS: "http://localhost:3000"
       API_DOCS_ENABLED: "true"
@@ -12,4 +12,4 @@ services:
       - "127.0.0.1:3000:3000"
     build:
       args:
-        NEXT_PUBLIC_API_URL: "http://localhost:8000/api/v1"
+        NEXT_PUBLIC_API_URL: "http://localhost:18000/api/v1"
