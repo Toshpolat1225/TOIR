@@ -24,6 +24,7 @@ from app.models.maintenance import (
 from app.models.organization import Department, Employee, Section
 from app.models.permissions import Permission, PermissionAudit, RolePermission
 from app.models.tmc import TmcDocument, TmcDocumentItem
+from app.models.wialon_counters import WialonCounterState, WialonRejectedReading
 from app.models.work_orders import WorkOrder, WorkOrderItem, WorkOrderRepair
 from app.models.work_records import AiInsight, MaintenanceLog
 
@@ -58,6 +59,8 @@ __all__ = [
     "TmcDocumentItem",
     "User",
     "WialonSettings",
+    "WialonCounterState",
+    "WialonRejectedReading",
     "WorkOrder",
     "WorkOrderItem",
     "WorkOrderRepair",

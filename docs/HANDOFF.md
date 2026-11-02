@@ -578,3 +578,16 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Stop after W1 as requested. Wait for explicit approval before starting W2. Before any real probe, use the protected server environment; do not paste or print `.env` or Wialon credentials.
+
+## Wialon delta quality gate (2026-11-02)
+
+### Verified
+
+- Added the async Wialon counter repository, exposed both counter models, and added an Alembic revision for only `wialon_counter_state` and `wialon_rejected_readings`.
+- Added pure unit tests for quality-gate and bootstrap-plan decisions. `receive_wialon_update` checks `mileage is not None` before saving mileage, so `mileage=None` does not change `assets.mileage`, including with `allow_zero_mileage=True`.
+- Python 3.14 `py_compile` passed for the Wialon modules/scripts and new tests; `git diff --check` passed.
+- The requested Python 3.12 tests were not run because Python 3.12 is not installed here. PostgreSQL and Alembic execution were not tested.
+
+### Next task
+
+- Run only `test_wialon_quality.py` and `test_wialon_bootstrap_plan.py` under Python 3.12 with project dependencies available; then validate the migration against a disposable PostgreSQL database.

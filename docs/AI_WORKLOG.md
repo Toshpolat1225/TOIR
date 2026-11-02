@@ -96,3 +96,8 @@ NOT RUN: PostgreSQL/migration, real Wialon API/account, API E2E, Docker, browser
 Changed: `backend/app/cli.py`, Wialon client/status service, mock tests, HANDOFF.
 PASS: py_compile, 25 isolated MockTransport/unit tests, `git diff --check`; flags checked against official unit format docs.
 NOT RUN: live Wialon probe, DB, E2E, Docker, browser, server/deploy. Next: wait for approval before W2.
+2026-11-02 | Copilot SDK | Integrated Wialon delta/baseline quality-gate persistence and migration.
+Changed: counter repository/models, Alembic revision, Wialon quality/bootstrap tests, `.gitignore`, HANDOFF.
+PASS: Python 3.14 syntax check and `git diff --check`; `mileage=None` guard confirmed by source.
+NOT RUN: Python 3.12 unit tests (runtime unavailable), SQLAlchemy/Alembic runtime, PostgreSQL, Wialon, E2E, server/deploy.
+Next: run only the two requested unit test modules under Python 3.12, then validate on a disposable DB.

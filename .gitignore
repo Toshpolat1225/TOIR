@@ -31,3 +31,5 @@ next-env.d.ts
 # Python
 __pycache__/
 *.py[cod]
+wialon_natija_*.txt
+backend/scripts/wialon_bootstrap_*.csv
