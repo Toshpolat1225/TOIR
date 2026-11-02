@@ -1,3 +1,4 @@
+import logging
 import math
 from calendar import monthrange
 from datetime import date, datetime, timedelta, timezone
@@ -9,6 +10,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.assets import FixedAsset
 from app.models.identity import User
 from app.models.maintenance import MaintenanceInterval, MaintenancePlan
@@ -21,6 +23,13 @@ from app.schemas.maintenance import (
     MaintenanceSettingsRead,
     MaintenanceSettingsUpdate,
 )
+from app.services.maintenance_planning import (
+    calculate_maintenance_target,
+    maintenance_urgency,
+    next_mileage_threshold,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def _not_found() -> HTTPException:
@@ -56,45 +65,12 @@ def estimate_date(
     return today - timedelta(days=_ceil_days(abs(remaining_km), daily_average_km))
 
 
-def _next_km_trigger(
-    mileage: Decimal, interval_km: Decimal, plans: list[MaintenancePlan]
-) -> Decimal:
-    completed_triggers = [
-        plan.trigger_mileage
-        for plan in plans
-        if plan.status == "completed" and plan.trigger_mileage is not None
-    ]
-    last_completed = max(completed_triggers, default=None)
-    outstanding = [
-        plan
-        for plan in plans
-        if plan.status in {"scheduled", "in_progress"}
-        and plan.trigger_mileage is not None
-        and (last_completed is None or plan.trigger_mileage > last_completed)
-    ]
-    if outstanding:
-        return min(plan.trigger_mileage for plan in outstanding if plan.trigger_mileage is not None)
-
-    if last_completed is not None:
-        next_after_completion = last_completed + interval_km
-        if mileage > next_after_completion:
-            crossed = (mileage // interval_km) * interval_km
-            return max(crossed, next_after_completion)
-        return next_after_completion
-
-    if mileage > 0:
-        crossed = (mileage // interval_km) * interval_km
-        if crossed > 0:
-            return crossed
-    return (mileage // interval_km + 1) * interval_km
-
-
-def _plan_status(plan: MaintenancePlan, mileage: Decimal) -> str:
+def _plan_status(plan: MaintenancePlan) -> str:
+    if plan.status == "completed":
+        return "completed"
+    if plan.scheduled_date is not None and plan.scheduled_date < date.today():
+        return "overdue"
     if plan.status == "scheduled":
-        if plan.trigger_mileage is not None and mileage >= plan.trigger_mileage:
-            return "overdue"
-        if plan.scheduled_date is not None and plan.scheduled_date < date.today():
-            return "overdue"
         return "upcoming"
     return plan.status
 
@@ -126,61 +102,26 @@ async def update_settings(
 async def reconcile_asset_plans(
     db: AsyncSession, asset: FixedAsset, mileage: Decimal
 ) -> None:
-    daily_average_km = await get_daily_average_km(db)
     today = date.today()
     intervals = await repository.list_active_intervals(db, asset.asset_type)
     for interval in intervals:
-        plans = await repository.plans_for_interval(db, asset.id, interval.id)
-        if interval.interval_km is not None:
-            if daily_average_km is None:
-                continue
-            trigger = _next_km_trigger(mileage, interval.interval_km, plans)
-            remaining = trigger - mileage
-            warning_distance = (
-                interval.interval_km * interval.warn_percent / Decimal("100")
-            )
-            if remaining > warning_distance:
-                continue
-            scheduled_date = estimate_date(today, remaining, daily_average_km)
-            await repository.upsert_scheduled_plan(
-                db,
-                asset_id=asset.id,
-                interval_id=interval.id,
-                trigger_mileage=trigger,
-                scheduled_date=scheduled_date,
-            )
-            continue
-
-        if interval.interval_days is None:
-            continue
-        completed_dates = [
-            plan.completed_date
-            for plan in plans
-            if plan.status == "completed" and plan.completed_date is not None
-        ]
-        base_date = max(completed_dates, default=today)
-        scheduled_date = base_date + timedelta(days=interval.interval_days)
-        outstanding = [
-            plan
-            for plan in plans
-            if plan.status in {"scheduled", "in_progress"}
-            and plan.trigger_mileage is None
-        ]
-        if outstanding:
-            scheduled_date = min(
-                (plan.scheduled_date for plan in outstanding if plan.scheduled_date),
-                default=scheduled_date,
-            )
-        days_remaining = (scheduled_date - today).days
-        warning_days = Decimal(interval.interval_days) * interval.warn_percent / Decimal("100")
-        if Decimal(days_remaining) > warning_days:
+        target = calculate_maintenance_target(
+            asset_type=asset.asset_type,
+            interval_asset_types=interval.asset_types,
+            mileage=mileage,
+            interval_km=interval.interval_km,
+            warn_percent=interval.warn_percent,
+            daily_km_estimate=settings.daily_km_estimate,
+            today=today,
+        )
+        if target is None:
             continue
         await repository.upsert_scheduled_plan(
             db,
             asset_id=asset.id,
             interval_id=interval.id,
-            trigger_mileage=None,
-            scheduled_date=scheduled_date,
+            trigger_mileage=target.trigger_mileage,
+            scheduled_date=target.scheduled_date,
         )
 
 
@@ -196,11 +137,32 @@ def _plan_read(row: dict[str, Any]) -> MaintenancePlanRead:
         interval_code=row["interval_code"],
         interval_name=row["interval_name"],
         work_type_id=row["work_type_id"],
+        urgency=_plan_urgency(row),
         status=plan.status,
         trigger_mileage=plan.trigger_mileage,
         scheduled_date=plan.scheduled_date,
         completed_date=plan.completed_date,
         work_order_id=plan.work_order_id,
+    )
+
+
+def _plan_urgency(row: dict[str, Any]) -> str | None:
+    plan = row["plan"]
+    interval_km = row.get("interval_km")
+    mileage = row.get("mileage")
+    if (
+        plan.status not in {"scheduled", "in_progress"}
+        or plan.trigger_mileage is None
+        or interval_km is None
+        or interval_km <= 0
+        or mileage is None
+    ):
+        return None
+    remaining_percent = (
+        (plan.trigger_mileage - mileage) / interval_km * Decimal("100")
+    )
+    return maintenance_urgency(
+        remaining_percent, row.get("warn_percent", Decimal("0"))
     )
 
 
@@ -213,6 +175,7 @@ async def list_plans(
     month: str | None,
     limit: int,
     offset: int,
+    urgency_filter: str | None = None,
 ) -> tuple[list[MaintenancePlanRead], int]:
     master_section_id = _master_section_scope(user)
     month_start: date | None = None
@@ -231,6 +194,7 @@ async def list_plans(
         db,
         asset_id=asset_id,
         status_filter=status_filter,
+        urgency_filter=urgency_filter,
         month_start=month_start,
         month_end=month_end,
         master_section_id=master_section_id,
@@ -291,25 +255,12 @@ async def update_plan(
     except IntegrityError as exc:
         await db.rollback()
         raise _conflict("Maintenance plan references an invalid record") from exc
-    fresh = await repository.get_plan(
+    row = await repository.get_plan_read_row(
         db, plan_id, master_section_id=master_section_id
     )
-    if fresh is None:
+    if row is None:
         raise _not_found()
-    rows, _ = await repository.list_plans(
-        db,
-        asset_id=fresh.asset_id,
-        status_filter=None,
-        month_start=None,
-        month_end=None,
-        master_section_id=master_section_id,
-        limit=1000,
-        offset=0,
-    )
-    match = next((row for row in rows if row["plan"].id == plan_id), None)
-    if match is None:
-        raise _not_found()
-    return _plan_read(match)
+    return _plan_read(row)
 
 
 async def _interval_target(
@@ -323,7 +274,9 @@ async def _interval_target(
     if interval.interval_km is not None:
         if daily_average_km is None:
             return None, today
-        trigger = _next_km_trigger(asset.mileage, interval.interval_km, plans)
+        trigger = next_mileage_threshold(asset.mileage, interval.interval_km)
+        if trigger is None:
+            return None, today
         remaining = trigger - asset.mileage
         return trigger, estimate_date(today, remaining, daily_average_km)
     if interval.interval_days is not None:
@@ -357,7 +310,7 @@ async def get_schedule(
         day=monthrange(month_start.year, month_start.month)[1]
     ) + timedelta(days=1)
 
-    daily_average_km = await get_daily_average_km(db)
+    daily_average_km = Decimal(settings.daily_km_estimate)
     schedule: list[MaintenanceScheduleItem] = []
     work_orders = await repository.list_work_orders_for_schedule(
         db,
@@ -403,15 +356,12 @@ async def get_schedule(
             )
         )
 
-    plan_rows, _ = await repository.list_plans(
+    plan_rows = await repository.list_schedule_plans(
         db,
-        asset_id=None,
-        status_filter=None,
-        month_start=None,
-        month_end=None,
+        start=month_start,
+        end=month_end,
+        today=date.today(),
         master_section_id=master_section_id,
-        limit=10000,
-        offset=0,
     )
     plans_by_key = await repository.list_asset_interval_plans(
         db, master_section_id=master_section_id
@@ -421,9 +371,7 @@ async def get_schedule(
         if plan.status == "cancelled":
             continue
         mileage = row["mileage"]
-        displayed_status = _plan_status(plan, mileage)
-        if not _in_month(plan.scheduled_date, month_start, month_end) and displayed_status != "overdue":
-            continue
+        displayed_status = _plan_status(plan)
         schedule.append(
             MaintenanceScheduleItem(
                 id=str(plan.id),
@@ -445,6 +393,7 @@ async def get_schedule(
                 section_id=row["section_id"],
                 interval_id=plan.interval_id,
                 work_type_id=row["work_type_id"],
+                urgency=_plan_urgency(row),
                 plan_id=plan.id,
                 work_order_id=plan.work_order_id,
             )
@@ -468,11 +417,14 @@ async def get_schedule(
                 today,
             )
             if any(
-                plan.status in {"scheduled", "in_progress"}
-                and (
-                    plan.trigger_mileage == trigger
-                    if trigger is not None
-                    else plan.trigger_mileage is None
+                (
+                    trigger is not None
+                    and plan.trigger_mileage == trigger
+                )
+                or (
+                    trigger is None
+                    and plan.trigger_mileage is None
+                    and plan.status in {"scheduled", "in_progress"}
                 )
                 for plan in plans
             ):
@@ -480,10 +432,7 @@ async def get_schedule(
             remaining = trigger - asset.mileage if trigger is not None else None
             display_status = (
                 "overdue"
-                if (
-                    remaining is not None and remaining <= 0
-                )
-                or scheduled_date < today
+                if scheduled_date < today
                 else "upcoming"
             )
             if not _in_month(scheduled_date, month_start, month_end) and display_status != "overdue":

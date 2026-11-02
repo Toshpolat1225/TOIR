@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -619,7 +619,14 @@ class WialonAssetMappingTests(unittest.IsolatedAsyncioTestCase):
             mileage=Decimal("1000"),
             updated_at=None,
         )
-        db = object()
+        class Savepoint:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_):
+                return None
+
+        db = SimpleNamespace(begin_nested=Mock(return_value=Savepoint()))
         with (
             patch(
                 "app.services.assets.maintenance_repository.lock_asset_mileage",

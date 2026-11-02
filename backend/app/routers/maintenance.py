@@ -1,11 +1,12 @@
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.permissions import require_permission
+from app.core.security import get_current_user
 from app.models.identity import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.maintenance import (
@@ -14,12 +15,13 @@ from app.schemas.maintenance import (
     MaintenanceScheduleRead,
     MaintenanceSettingsRead,
     MaintenanceSettingsUpdate,
+    MaintenanceUrgency,
 )
 from app.services import maintenance as service
 
 router = APIRouter(tags=["maintenance"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
-AuthenticatedUser = Annotated[User, Depends(require_permission("maintenance.view"))]
+AuthenticatedUser = Annotated[User, Depends(get_current_user)]
 MaintenanceConfigurator = Annotated[User, Depends(require_permission("maintenance.update"))]
 MaintenanceSettingsEditor = Annotated[User, Depends(require_permission("maintenance_settings.update"))]
 PlanStatus = Literal["scheduled", "in_progress", "completed", "cancelled"]
@@ -58,6 +60,7 @@ async def read_maintenance_plans(
     db: DatabaseSession,
     asset_id: UUID | None = None,
     status_filter: Annotated[PlanStatus | None, Query(alias="status")] = None,
+    urgency: MaintenanceUrgency | None = None,
     month: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
     limit: int = Query(default=50, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
@@ -67,6 +70,7 @@ async def read_maintenance_plans(
         current_user,
         asset_id=asset_id,
         status_filter=status_filter,
+        urgency_filter=urgency,
         month=month,
         limit=limit,
         offset=offset,
@@ -83,4 +87,9 @@ async def patch_maintenance_plan(
     current_user: MaintenanceConfigurator,
     db: DatabaseSession,
 ) -> MaintenancePlanRead:
+    if current_user.role not in {"admin", "operator"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators and operators can update maintenance plans",
+        )
     return await service.update_plan(db, current_user, plan_id, payload)

@@ -618,3 +618,18 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Review the dry-run CSV from an approved backend environment, then explicitly decide whether to run `--apply`. Check suspicious units and duplicate inventory-number skips first.
+
+## Maintenance planning service T5 (2026-11-02)
+
+### Verified
+
+- Added pure kilometer-threshold planning with a configurable `DAILY_KM_ESTIMATE` (default 200). Existing database-backed maintenance settings remain available for their settings endpoint; planning and schedule forecasts use the environment setting.
+- Mileage changes from manual asset updates and Wialon pass through a savepoint-protected plan reconciliation. Failures are logged without rolling back mileage/history. Plan upsert uses the existing unique constraint and does not reopen completed/in-progress plans.
+- Added paginated maintenance-plan urgency filters (`high` ≤3%, `medium` >3–7%, `low` >7% through `warn_percent`), authenticated reads, and admin/operator plan updates. Schedule query returns this month’s plans plus overdue non-cancelled plans; overdue is based on a past scheduled date unless completed.
+- Added idempotent `python -m app.cli seed-intervals` for the requested eight intervals. Work-order completion already updates its linked plan through the existing service path.
+- Backend `.venv` Python 3.12.10 pytest: maintenance planning and all Wialon test modules passed (51 tests). The run emitted an existing pytest-asyncio loop-scope deprecation warning.
+- No PostgreSQL execution, API E2E, migration, Docker, Wialon, or server check was run. Existing `test_maintenance_security_scope.py` was updated for the schedule query but was not run per the requested test scope.
+
+### Next task
+
+- Run the maintenance security-scope suite and API tests in the approved test environment; then verify interval seeding and mileage-triggered plan persistence against a disposable PostgreSQL database.

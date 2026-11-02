@@ -11,6 +11,7 @@ MaintenancePlanStatus = Literal[
 MaintenanceDisplayStatus = Literal[
     "upcoming", "in_progress", "completed", "overdue"
 ]
+MaintenanceUrgency = Literal["high", "medium", "low"]
 
 
 class MaintenanceSettingsRead(BaseModel):
@@ -39,6 +40,7 @@ class MaintenancePlanRead(BaseModel):
     interval_code: str
     interval_name: str
     work_type_id: UUID | None
+    urgency: MaintenanceUrgency | None = None
     status: MaintenancePlanStatus
     trigger_mileage: Decimal | None
     scheduled_date: date | None
@@ -60,6 +62,7 @@ class MaintenanceScheduleItem(BaseModel):
     mileage: Decimal | None = None
     remainingKm: Decimal | None = None
     nextThreshold: Decimal | None = None
+    urgency: MaintenanceUrgency | None = None
     asset_id: UUID
     section_id: UUID | None = None
     interval_id: UUID | None = None

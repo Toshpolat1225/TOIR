@@ -38,6 +38,7 @@ services:
       WIALON_TOKEN: ${WIALON_TOKEN:-}
       WIALON_SYNC_INTERVAL_MINUTES: ${WIALON_SYNC_INTERVAL_MINUTES:-2}
       WIALON_SYNC_ENABLED: ${WIALON_SYNC_ENABLED:-false}
+      DAILY_KM_ESTIMATE: ${DAILY_KM_ESTIMATE:-200}
     networks: [internal]
     depends_on:
       postgres:

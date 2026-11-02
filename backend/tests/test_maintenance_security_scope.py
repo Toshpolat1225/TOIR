@@ -80,7 +80,7 @@ class MaintenanceScopeTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(maintenance, "get_daily_average_km", new=AsyncMock(return_value=None)),
             patch.object(maintenance.repository, "list_work_orders_for_schedule", new=AsyncMock(return_value=[])) as orders,
-            patch.object(maintenance.repository, "list_plans", new=AsyncMock(return_value=([], 0))) as plans,
+            patch.object(maintenance.repository, "list_schedule_plans", new=AsyncMock(return_value=[])) as plans,
             patch.object(maintenance.repository, "list_asset_interval_plans", new=AsyncMock(return_value={})) as interval_plans,
             patch.object(maintenance.repository, "list_schedule_assets", new=AsyncMock(return_value=[])) as assets,
         ):

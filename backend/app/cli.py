@@ -3,6 +3,7 @@ import asyncio
 import getpass
 import json
 import sys
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -17,7 +18,7 @@ from app.integrations.wialon_client import (
     item_field_names,
     parse_units,
 )
-from app.models.maintenance import WorkType
+from app.models.maintenance import MaintenanceInterval, WorkType
 from app.models.organization import Department, Section
 from app.services.auth import create_initial_admin
 
@@ -44,6 +45,16 @@ REFERENCE_WORK_TYPES = (
     ("ДР", "wagon"),
     ("КРВ", "wagon"),
     ("ВНВ", "wagon"),
+)
+MAINTENANCE_INTERVALS = (
+    ("ТО-1", Decimal("5000")),
+    ("ТО-2", Decimal("15000")),
+    ("ТО-3", Decimal("30000")),
+    ("ТР-1", Decimal("100000")),
+    ("ТР-2", Decimal("200000")),
+    ("ТР-3", Decimal("400000")),
+    ("СР", Decimal("800000")),
+    ("КР", Decimal("1600000")),
 )
 
 
@@ -171,6 +182,64 @@ async def _seed_reference() -> int:
     return 0
 
 
+async def _seed_intervals() -> int:
+    created = 0
+    updated = 0
+    interval_codes = [code for code, _ in MAINTENANCE_INTERVALS]
+    try:
+        async with SessionFactory() as db:
+            work_types = (
+                await db.execute(
+                    select(WorkType.code, WorkType.id).where(
+                        WorkType.code.in_(interval_codes)
+                    )
+                )
+            ).all()
+            work_type_ids = {code: work_type_id for code, work_type_id in work_types}
+            for code, interval_km in MAINTENANCE_INTERVALS:
+                result = await db.execute(
+                    select(MaintenanceInterval).where(
+                        MaintenanceInterval.code == code
+                    )
+                )
+                interval = result.scalar_one_or_none()
+                if interval is None:
+                    interval = MaintenanceInterval(code=code, name=code)
+                    db.add(interval)
+                    created += 1
+                else:
+                    updated += 1
+                interval.name = code
+                interval.interval_km = interval_km
+                interval.interval_days = None
+                interval.asset_types = ["locomotive", "diesel"]
+                interval.warn_percent = Decimal("10")
+                interval.is_active = True
+                interval.work_type_id = work_type_ids.get(code)
+                interval.updated_at = datetime.now(timezone.utc)
+            await db.commit()
+    except IntegrityError:
+        print(
+            "Maintenance intervals could not be seeded because a reference constraint failed.",
+            file=sys.stderr,
+        )
+        return 2
+    except SQLAlchemyError:
+        print(
+            "Database operation failed; verify the database connection and schema.",
+            file=sys.stderr,
+        )
+        return 2
+    finally:
+        await engine.dispose()
+
+    print(
+        "Maintenance intervals ready "
+        f"(added: {created}, updated: {updated}; work types linked by code)."
+    )
+    return 0
+
+
 def _probe_unit(item: dict[str, object]) -> dict[str, object]:
     item_copy = dict(item)
     item_copy.setdefault("id", "__probe__")
@@ -270,12 +339,15 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("create-admin", help="Create the first administrator")
     subparsers.add_parser("seed-reference", help="Create initial directory reference data")
+    subparsers.add_parser("seed-intervals", help="Idempotently seed maintenance intervals")
     subparsers.add_parser("wialon-probe", help="Read safe Wialon unit diagnostics")
     arguments = parser.parse_args()
     if arguments.command == "create-admin":
         return asyncio.run(_create_admin())
     if arguments.command == "seed-reference":
         return asyncio.run(_seed_reference())
+    if arguments.command == "seed-intervals":
+        return asyncio.run(_seed_intervals())
     if arguments.command == "wialon-probe":
         return asyncio.run(_wialon_probe())
     parser.error("Unsupported command")

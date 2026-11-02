@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     wialon_token: SecretStr | None = None
     wialon_sync_interval_minutes: int = Field(default=2, ge=1, le=1440)
     wialon_sync_enabled: bool = False
+    daily_km_estimate: int = Field(default=200, gt=0)
 
     @field_validator("wialon_host", mode="before")
     @classmethod

@@ -153,7 +153,14 @@ async def _save_mileage_change(
     asset.mileage = mileage
     asset.updated_at = datetime.now(timezone.utc)
     await repository.add_mileage_history(db, asset.id, mileage, source)
-    await maintenance_service.reconcile_asset_plans(db, asset, mileage)
+    try:
+        async with db.begin_nested():
+            await maintenance_service.reconcile_asset_plans(db, asset, mileage)
+    except Exception:
+        logger.exception(
+            "Could not reconcile maintenance plans for fixed asset %s",
+            asset.id,
+        )
     if source == "wialon" and mileage < previous_mileage:
         logger.warning("Wialon mileage decreased for fixed asset %s", asset.id)
 

@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,10 @@ from app.models.maintenance import (
 )
 from app.models.organization import Employee, Section
 from app.models.work_orders import WorkOrder, WorkOrderRepair
+from app.services.maintenance_planning import (
+    HIGH_URGENCY_MAX_PERCENT,
+    MEDIUM_URGENCY_MAX_PERCENT,
+)
 
 
 async def get_settings(db: AsyncSession) -> MaintenanceSettings | None:
@@ -155,24 +159,35 @@ async def upsert_scheduled_plan(
     trigger_mileage: Decimal | None,
     scheduled_date: date,
 ) -> MaintenancePlan:
-    plan = await get_plan_for_trigger(
-        db, asset_id, interval_id, trigger_mileage
-    )
-    if plan is None:
-        plan = MaintenancePlan(
+    statement = (
+        insert(MaintenancePlan)
+        .values(
             asset_id=asset_id,
             interval_id=interval_id,
             trigger_mileage=trigger_mileage,
             scheduled_date=scheduled_date,
             status="scheduled",
         )
-        db.add(plan)
-        await db.flush()
+        .on_conflict_do_update(
+            constraint="maintenance_plan_asset_id_interval_id_trigger_mileage_key",
+            set_={
+                "scheduled_date": scheduled_date,
+                "updated_at": func.now(),
+            },
+            where=MaintenancePlan.status == "scheduled",
+        )
+        .returning(MaintenancePlan)
+    )
+    result = await db.execute(statement)
+    plan = result.scalar_one_or_none()
+    if plan is not None:
         return plan
-    if plan.status == "scheduled":
-        plan.scheduled_date = scheduled_date
-        plan.updated_at = datetime.now(timezone.utc)
-    return plan
+    existing = await get_plan_for_trigger(
+        db, asset_id, interval_id, trigger_mileage
+    )
+    if existing is None:
+        raise RuntimeError("Maintenance plan upsert did not return a persisted plan")
+    return existing
 
 
 def _plan_statement() -> Select[Any]:
@@ -187,11 +202,40 @@ def _plan_statement() -> Select[Any]:
             MaintenanceInterval.code.label("interval_code"),
             MaintenanceInterval.name.label("interval_name"),
             MaintenanceInterval.work_type_id.label("work_type_id"),
+            MaintenanceInterval.interval_km.label("interval_km"),
+            MaintenanceInterval.warn_percent.label("warn_percent"),
         )
         .join(FixedAsset, FixedAsset.id == MaintenancePlan.asset_id)
         .join(MaintenanceInterval, MaintenanceInterval.id == MaintenancePlan.interval_id)
         .outerjoin(Section, Section.id == FixedAsset.section_id)
     )
+
+
+async def get_plan_read_row(
+    db: AsyncSession,
+    plan_id: UUID,
+    *,
+    master_section_id: UUID | None = None,
+) -> dict[str, Any] | None:
+    statement = _plan_statement().where(MaintenancePlan.id == plan_id)
+    if master_section_id is not None:
+        statement = statement.where(FixedAsset.section_id == master_section_id)
+    row = (await db.execute(statement)).one_or_none()
+    if row is None:
+        return None
+    return {
+        "plan": row[0],
+        "asset_name": row.asset_name,
+        "asset_inv_number": row.asset_inv_number,
+        "mileage": row.mileage,
+        "section_id": row.section_id,
+        "section_name": row.section_name,
+        "interval_code": row.interval_code,
+        "interval_name": row.interval_name,
+        "work_type_id": row.work_type_id,
+        "interval_km": row.interval_km,
+        "warn_percent": row.warn_percent,
+    }
 
 
 async def list_plans(
@@ -204,12 +248,42 @@ async def list_plans(
     master_section_id: UUID | None,
     limit: int,
     offset: int,
+    urgency_filter: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     filters: list[Any] = []
     if asset_id is not None:
         filters.append(MaintenancePlan.asset_id == asset_id)
     if status_filter is not None:
         filters.append(MaintenancePlan.status == status_filter)
+    if urgency_filter is not None:
+        remaining_percent = (
+            (MaintenancePlan.trigger_mileage - FixedAsset.mileage)
+            * 100
+            / MaintenanceInterval.interval_km
+        )
+        filters.extend(
+            (
+                MaintenancePlan.status.in_(("scheduled", "in_progress")),
+                MaintenancePlan.trigger_mileage.is_not(None),
+                MaintenanceInterval.interval_km.is_not(None),
+            )
+        )
+        if urgency_filter == "high":
+            filters.append(remaining_percent <= HIGH_URGENCY_MAX_PERCENT)
+        elif urgency_filter == "medium":
+            filters.extend(
+                (
+                    remaining_percent > HIGH_URGENCY_MAX_PERCENT,
+                    remaining_percent <= MEDIUM_URGENCY_MAX_PERCENT,
+                )
+            )
+        elif urgency_filter == "low":
+            filters.extend(
+                (
+                    remaining_percent > MEDIUM_URGENCY_MAX_PERCENT,
+                    remaining_percent <= MaintenanceInterval.warn_percent,
+                )
+            )
     if month_start is not None and month_end is not None:
         filters.extend(
             (
@@ -226,7 +300,15 @@ async def list_plans(
             )
         )
 
-    count_query = select(func.count()).select_from(MaintenancePlan)
+    count_query = (
+        select(func.count())
+        .select_from(MaintenancePlan)
+        .join(FixedAsset, FixedAsset.id == MaintenancePlan.asset_id)
+        .join(
+            MaintenanceInterval,
+            MaintenanceInterval.id == MaintenancePlan.interval_id,
+        )
+    )
     statement = _plan_statement()
     if filters:
         count_query = count_query.where(*filters)
@@ -253,9 +335,56 @@ async def list_plans(
             "interval_code": row.interval_code,
             "interval_name": row.interval_name,
             "work_type_id": row.work_type_id,
+            "interval_km": row.interval_km,
+            "warn_percent": row.warn_percent,
         }
         for row in rows
     ], total
+
+
+async def list_schedule_plans(
+    db: AsyncSession,
+    *,
+    start: date,
+    end: date,
+    today: date,
+    master_section_id: UUID | None = None,
+) -> list[dict[str, Any]]:
+    in_month = and_(
+        MaintenancePlan.scheduled_date >= start,
+        MaintenancePlan.scheduled_date < end,
+    )
+    overdue = and_(
+        MaintenancePlan.scheduled_date < today,
+        MaintenancePlan.status.not_in(("completed", "cancelled")),
+    )
+    statement = _plan_statement().where(or_(in_month, overdue))
+    if master_section_id is not None:
+        statement = statement.where(FixedAsset.section_id == master_section_id)
+    rows = (
+        await db.execute(
+            statement.order_by(
+                MaintenancePlan.scheduled_date.asc().nullslast(),
+                MaintenancePlan.created_at.desc(),
+            )
+        )
+    ).all()
+    return [
+        {
+            "plan": row[0],
+            "asset_name": row.asset_name,
+            "asset_inv_number": row.asset_inv_number,
+            "mileage": row.mileage,
+            "section_id": row.section_id,
+            "section_name": row.section_name,
+            "interval_code": row.interval_code,
+            "interval_name": row.interval_name,
+            "work_type_id": row.work_type_id,
+            "interval_km": row.interval_km,
+            "warn_percent": row.warn_percent,
+        }
+        for row in rows
+    ]
 
 
 async def list_work_orders_for_schedule(
