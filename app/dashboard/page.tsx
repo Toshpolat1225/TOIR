@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useCallback } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import Link from "next/link"
 import { useRealtime } from "@/lib/use-realtime"
 import { api } from "@/lib/api"
@@ -88,9 +88,11 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary>(EMPTY_SUMMARY)
   const [effectiveSectionName, setEffectiveSectionName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const hasLoadedRef = useRef(false)
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadData = useCallback(async () => {
-    setLoading(true)
+    if (!hasLoadedRef.current) setLoading(true)
     try {
       // A single call to the new dashboard summary endpoint
       const selected = effectiveSection
@@ -107,6 +109,7 @@ export default function DashboardPage() {
       setEffectiveSectionName(effectiveSection ? "—" : null)
       setSummary(EMPTY_SUMMARY)
     } finally {
+      hasLoadedRef.current = true
       setLoading(false)
     }
   }, [effectiveSection])
@@ -115,13 +118,23 @@ export default function DashboardPage() {
     loadData()
   }, [loadData])
 
-  // Using the existing WebSocket infrastructure for real-time updates
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+    refreshTimerRef.current = setTimeout(() => {
+      refreshTimerRef.current = null
+      void loadData()
+    }, 750)
+  }, [loadData])
+
+  useEffect(() => () => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+  }, [])
+
   useRealtime(useCallback((event) => {
-    if (event.resource === 'work_orders' || event.resource === 'fixed_assets') {
-      console.log(`Dashboard received update for ${event.resource}, refetching summary...`);
-      loadData();
+    if (event.resource === "work_orders" || event.resource === "fixed_assets") {
+      scheduleRefresh()
     }
-  }, [loadData]), ["work_orders", "fixed_assets"]);
+  }, [scheduleRefresh]), ["work_orders", "fixed_assets"])
 
   const orders = summary.orders ?? []
   const assets = summary.assets ?? []

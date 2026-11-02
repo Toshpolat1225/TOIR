@@ -662,3 +662,16 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Run frontend lint and `tsc --noEmit` when permitted and the repository's frontend dependencies are available; then verify the Gantt, filters, and role-gated status update in the browser.
+
+## Dashboard realtime refresh flicker (2026-11-02)
+
+### Verified
+
+- `postgres/schema.sql` sends a `fixed_assets` realtime notification for each row-level INSERT, UPDATE, or DELETE. `backend/app/services/wialon.py` processes fetched units one by one.
+- `app/dashboard/page.tsx` previously refetched the summary and set full-page loading for every received `work_orders` or `fixed_assets` event.
+- Dashboard now groups events received within 750 ms into one summary refresh and keeps the loaded page visible during background refreshes. The pending timer is cleared on unmount.
+- Lint and TypeScript checks were attempted; both could not run because frontend dependencies (`eslint` and `typescript`) are unavailable locally. Browser behavior was not tested.
+
+### Next task
+
+- With frontend dependencies available, rerun lint and `tsc --noEmit`; then verify in a browser that a burst of realtime events causes one refresh without page flicker.

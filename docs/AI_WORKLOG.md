@@ -131,3 +131,8 @@ Changed: lib/api.ts adds nullable urgency matching backend MaintenanceScheduleIt
 Verified by schema inspection: urgency, asset_id, plan_id, interval_id and work_type_id are defined in backend schema.
 NOT TESTED: lint/tsc/build (terminal prohibited); backend, `.env`, and commit untouched.
 Next: rerun `tsc --noEmit` when terminal use is permitted.
+2026-11-02 | Copilot SDK | Reduced dashboard flicker from realtime asset/work-order event bursts.
+Changed: app/dashboard/page.tsx coalesces events and avoids full-page loading during background refresh; HANDOFF updated.
+Attempted: npm lint and TypeScript check; both unavailable because local eslint/typescript dependencies are missing.
+NOT TESTED: browser behavior and production realtime rate; no dependencies installed, `.env` untouched, no commit.
+Next: run lint/tsc with frontend dependencies available and verify a realtime event burst in browser.
