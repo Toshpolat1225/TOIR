@@ -116,3 +116,8 @@ Changed: pure planner, settings/Compose, maintenance repo/service/router/schema,
 PASS: backend Python 3.12.10 pytest for maintenance planning and all Wialon suites: 51 passed.
 NOT RUN: PostgreSQL, interval seed execution, API/E2E, Docker, Wialon or server; security-scope test not run.
 Next: verify API authorization and persistence in an approved disposable database.
+2026-11-02 | Copilot SDK | Added idempotent `recalculate-plans` CLI with per-asset savepoints and accurate insert counts.
+Changed: backend/app/cli.py, maintenance repository/service, maintenance tests, HANDOFF.
+PASS: backend/.venv Python 3.12 pytest for recalculation and maintenance suites: 25 passed.
+NOT RUN: PostgreSQL/CLI DB execution, Docker, or server; no `.env` access or commit.
+Next: inspect results/logs when run against the approved database.

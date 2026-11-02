@@ -633,3 +633,16 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Run the maintenance security-scope suite and API tests in the approved test environment; then verify interval seeding and mileage-triggered plan persistence against a disposable PostgreSQL database.
+
+## Plan recalculation command (2026-11-02)
+
+### Verified
+
+- Added `python -m app.cli recalculate-plans` for `operational` locomotive and diesel assets.
+- Each asset is reconciled inside its own savepoint and committed separately. A failed asset is rolled back and logged, while processing continues. Reconciliation counts only rows inserted by the unique-key upsert, avoiding duplicate plans.
+- Backend `.venv` Python 3.12.10 pytest: recalculation and maintenance planning/security-scope tests passed (25 tests).
+- PostgreSQL, actual CLI-to-DB execution, Docker, and server behavior were not tested.
+
+### Next task
+
+- Run the command against the approved database after reviewing interval configuration; inspect the printed counts and logs.

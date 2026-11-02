@@ -9,6 +9,7 @@ from decimal import Decimal
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import SessionFactory, engine
@@ -245,7 +246,9 @@ async def _seed_intervals() -> int:
     return 0
 
 
-async def _recalculate_asset_plans(db, assets: list[FixedAsset]) -> tuple[int, int]:
+async def _recalculate_asset_plans(
+    db: AsyncSession, assets: list[FixedAsset]
+) -> tuple[int, int]:
     created = 0
     errors = 0
     for asset in assets:

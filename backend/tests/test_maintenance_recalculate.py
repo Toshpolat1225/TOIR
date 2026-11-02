@@ -58,7 +58,10 @@ class RecalculatePlansTests(unittest.IsolatedAsyncioTestCase):
             exit_code = await cli._recalculate_plans()
 
         self.assertEqual(exit_code, 1)
-        self.assertIn("ko‘rib chiqildi: 3; yangi rejalar: 3; xatolar: 1", output.getvalue())
+        self.assertIn(
+            "ko‘rib chiqildi: 3; yangi rejalar: 3; xatolar: 1",
+            output.getvalue(),
+        )
         self.assertEqual(reconcile.await_count, 3)
         self.assertEqual(db.commit.await_count, 2)
         db.rollback.assert_awaited_once()
