@@ -34,3 +34,5 @@ __pycache__/
 wialon_natija_*.txt
 backend/scripts/wialon_bootstrap_*.csv
 backend/.venv/
+
+*.dump

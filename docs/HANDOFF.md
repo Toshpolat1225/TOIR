@@ -591,3 +591,16 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Run only `test_wialon_quality.py` and `test_wialon_bootstrap_plan.py` under Python 3.12 with project dependencies available; then validate the migration against a disposable PostgreSQL database.
+
+## Wialon bootstrap container access (2026-11-02)
+
+### Verified
+
+- Added `backend/scripts` to the backend image. Copied scripts/directories use Docker's default readable permissions for `appuser`; no write access to the image's root-owned scripts directory is needed.
+- The backend Compose service already maps `WIALON_HOST`, `WIALON_TOKEN`, and `WIALON_SYNC_ENABLED` to their matching Pydantic Settings environment names. Empty host/token values normalize to `None`, and the pull-enabled property remains false unless explicitly enabled and fully configured.
+- Bootstrap CSV output now targets `/tmp` and prints that path.
+- No terminal commands, Docker, container, `.env`, or secret values were accessed. Runtime/build behavior is NOT TESTED.
+
+### Next task
+
+- On the user's machine, build/run the backend bootstrap dry-run, then copy its printed `/tmp/wialon_bootstrap_*.csv` path from the container with `docker compose cp`.

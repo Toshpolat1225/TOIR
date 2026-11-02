@@ -43,7 +43,7 @@ async def main(apply: bool, map_exact: bool) -> int:
             if r.status in ("ambiguous", "unmapped", "asset_without_unit") or r.suspect_absolute or (r.diff is not None and abs(r.diff) > 1000):
                 print(f"  [{r.status}] unit={r.unit_id} {r.unit_name} | asset={r.asset_name} | TOIR={r.toir_mileage} cnm={r.cnm} "
                       f"farq={r.diff} | shubhali={r.suspect_absolute}")
-        csv_path = Path(__file__).resolve().parent / f"wialon_bootstrap_{now:%Y%m%d_%H%M%S}.csv"
+        csv_path = Path("/tmp") / f"wialon_bootstrap_{now:%Y%m%d_%H%M%S}.csv"
         with open(csv_path, "w", newline="", encoding="utf-8-sig") as fh:
             w = csv.writer(fh)
             w.writerow(["status", "unit_id", "unit_name", "asset_id", "asset_name", "toir_mileage", "cnm", "diff", "cneh", "suspect", "has_state"])

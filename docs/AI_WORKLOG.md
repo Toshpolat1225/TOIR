@@ -101,3 +101,8 @@ Changed: counter repository/models, Alembic revision, Wialon quality/bootstrap t
 PASS: Python 3.14 syntax check and `git diff --check`; `mileage=None` guard confirmed by source.
 NOT RUN: Python 3.12 unit tests (runtime unavailable), SQLAlchemy/Alembic runtime, PostgreSQL, Wialon, E2E, server/deploy.
 Next: run only the two requested unit test modules under Python 3.12, then validate on a disposable DB.
+2026-11-02 | Copilot SDK | Made Wialon bootstrap scripts accessible in the backend image.
+Changed: `backend/Dockerfile`, bootstrap CSV output path, HANDOFF.
+Verified by source inspection: Compose Wialon env names match Settings; empty host/token normalize to None; copied script files are readable by appuser.
+NOT TESTED: Docker build/container, bootstrap execution, CSV copying; no terminal commands or `.env` access.
+Next: run the bootstrap dry-run in the user's container and copy the printed `/tmp` CSV path.
