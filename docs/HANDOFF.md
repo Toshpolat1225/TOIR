@@ -670,8 +670,9 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 - `postgres/schema.sql` sends a `fixed_assets` realtime notification for each row-level INSERT, UPDATE, or DELETE. `backend/app/services/wialon.py` processes fetched units one by one.
 - `app/dashboard/page.tsx` previously refetched the summary and set full-page loading for every received `work_orders` or `fixed_assets` event.
 - Dashboard now groups events received within 750 ms into one summary refresh and keeps the loaded page visible during background refreshes. The pending timer is cleared on unmount.
+- The user still sees the exact old callback and log string in the browser bundle; a source search finds no such string in current TS/JS source. This indicates the browser is receiving an older frontend build (or a different deployment); the current browser was not available to inspect directly.
 - Lint and TypeScript checks were attempted; both could not run because frontend dependencies (`eslint` and `typescript`) are unavailable locally. Browser behavior was not tested.
 
 ### Next task
 
-- With frontend dependencies available, rerun lint and `tsc --noEmit`; then verify in a browser that a burst of realtime events causes one refresh without page flicker.
+- Ensure the updated frontend source is on the production host, rebuild/recreate only the TOIR `frontend` service, hard-refresh the browser, then verify the old log is gone and an event burst does not flicker. Rerun lint and `tsc --noEmit` when dependencies are available.

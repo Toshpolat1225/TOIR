@@ -136,3 +136,7 @@ Changed: app/dashboard/page.tsx coalesces events and avoids full-page loading du
 Attempted: npm lint and TypeScript check; both unavailable because local eslint/typescript dependencies are missing.
 NOT TESTED: browser behavior and production realtime rate; no dependencies installed, `.env` untouched, no commit.
 Next: run lint/tsc with frontend dependencies available and verify a realtime event burst in browser.
+2026-11-02 | Copilot SDK | Traced persistent flicker report to an outdated frontend bundle.
+Evidence: user's console shows the old callback/log text; exact text is absent from current TS/JS source; HANDOFF updated.
+No application code changed; production/browser was not accessed and frontend service was not rebuilt.
+Next: deploy current frontend source, rebuild only TOIR frontend, hard-refresh, and check console again.
