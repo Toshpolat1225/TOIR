@@ -12,6 +12,7 @@ class WialonAssetImportTests(unittest.TestCase):
             ("ПЭ-2у 094", "locomotive"),
             ("МПЭ-2у 001", "locomotive"),
             ("ТЭМ18 ДМ 3183", "diesel"),
+            ("2тэ116", "diesel"),
             ("КамАЗ", None),
             ("Nexia", None),
         )
@@ -24,6 +25,8 @@ class WialonAssetImportTests(unittest.TestCase):
             ("ПЭ-2у 094", "ПЭ-2у"),
             ("МПЭ-2у 001", "МПЭ-2у"),
             ("ТЭМ18 ДМ 3183", "ТЭМ18 ДМ"),
+            ("2тэ116", "2ТЭ116"),
+            ("2tэ116 004", "2ТЭ116"),
             ("КамАЗ", None),
             ("Nexia", None),
         )
@@ -36,6 +39,7 @@ class WialonAssetImportTests(unittest.TestCase):
         self.assertEqual(classify_asset_type("mpe-2y 001"), "locomotive")
         self.assertEqual(classify_asset_type("tem18 dm 3183"), "diesel")
         self.assertEqual(classify_asset_type("TЭМ18 ДМ 3183"), "diesel")
+        self.assertEqual(classify_asset_type("2tэ116"), "diesel")
 
 
 if __name__ == "__main__":
