@@ -106,3 +106,8 @@ Changed: `backend/Dockerfile`, bootstrap CSV output path, HANDOFF.
 Verified by source inspection: Compose Wialon env names match Settings; empty host/token normalize to None; copied script files are readable by appuser.
 NOT TESTED: Docker build/container, bootstrap execution, CSV copying; no terminal commands or `.env` access.
 Next: run the bootstrap dry-run in the user's container and copy the printed `/tmp` CSV path.
+2026-11-02 | Copilot SDK | Added a dry-run-first importer for creating new assets from Wialon units.
+Changed: new import service/script/test; updated Wialon pull test mock; HANDOFF.
+PASS: backend Python 3.12.10 pytest for the new import test and all Wialon suites: 41 passed.
+NOT RUN: live Wialon/API, DB/apply transaction, dry-run CSV, Docker or server; no `.env` access.
+Next: review dry-run CSV and skipped/suspect rows before explicitly choosing `--apply`.

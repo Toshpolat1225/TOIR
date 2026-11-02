@@ -400,6 +400,23 @@ class WialonClientTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ) as update_asset,
             patch(
+                "app.services.wialon.counters_repo.get_asset_by_wialon_id",
+                new=AsyncMock(
+                    side_effect=[
+                        SimpleNamespace(id="asset-1", mileage=Decimal("80")),
+                        None,
+                    ]
+                ),
+            ),
+            patch(
+                "app.services.wialon.counters_repo.get_state_row",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.services.wialon.counters_repo.save_decision",
+                new=AsyncMock(),
+            ),
+            patch(
                 "app.services.wialon.repository.save_sync_status",
                 new=AsyncMock(),
             ) as save_status,

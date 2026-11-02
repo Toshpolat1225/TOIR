@@ -604,3 +604,17 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - On the user's machine, build/run the backend bootstrap dry-run, then copy its printed `/tmp/wialon_bootstrap_*.csv` path from the container with `docker compose cp`.
+
+## Wialon new asset import (2026-11-02)
+
+### Verified
+
+- Added a dry-run-by-default importer. It uses exact existing `wialon_id` checks only; it does not match by name or update existing assets. Unsupported names and `inv_number` conflicts are skipped with reasons.
+- Added pure Cyrillic/Latin case-insensitive type and series parsing for the supported locomotive/diesel prefixes. Suspicious absolute mileage is imported as zero and reported for manual correction.
+- `--apply` creates each new asset, writes its quality-gate baseline and one `wialon` mileage-history row, then commits once after all planned rows.
+- Backend Python 3.12.10 pytest run: 41 Wialon tests passed, including asset import, pull, quality, and bootstrap plan tests. Pytest emitted an existing `pytest-asyncio` loop-scope deprecation warning.
+- No import script execution, real Wialon request, or database transaction was performed.
+
+### Next task
+
+- Review the dry-run CSV from an approved backend environment, then explicitly decide whether to run `--apply`. Check suspicious units and duplicate inventory-number skips first.
