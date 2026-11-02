@@ -693,3 +693,18 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Apply Alembic `0012_wialon_units` to a disposable PostgreSQL copy, run a test sync to populate `wialon_units`, then execute `backend/scripts/e2e_wialon_units.py` before production rollout.
+
+## ОС dashboard: unified API and Wialon page (2026-11-02)
+
+### Verified
+
+- `/dashboard/os` now loads its main table from `GET /api/v1/fixed-assets/unified`, with source badges/filter and Wialon counter/connectivity columns. Wialon-only rows have no edit/delete action; admin/operator can open the create-asset flow.
+- Fixed-asset create/edit uses the optional `wialon_id` field and can unlink it. Viewing a linked asset loads Wialon detail data.
+- Added `/dashboard/os/wialon` for unit filters, detail, rejected readings, suggestions, linking, and Wialon-based asset creation. Its sidebar entry and client route are hidden/redirected for master; writes are limited to admin/operator.
+- API types now follow `FixedAssetRead`, `UnifiedAssetRead`, and Wialon schemas. Removed four translation-label/missing-translation properties from the `FixedAsset` response type because they are not in `FixedAssetRead`.
+- VS Code Problems showed no errors in the four changed TS/TSX files; source scan found no Supabase calls in either OS page.
+- `npx tsc --noEmit` and `npm run build` were NOT TESTED successfully: PowerShell blocked `npx.ps1`, `npx.cmd tsc --noEmit` reported TypeScript is not installed, and `npm.cmd run build` reported `next` is unavailable. No dependencies were installed.
+
+### Next task
+
+- Make the already-declared frontend dependencies available in the local environment, then run `npx tsc --noEmit` and `npm run build`; after that, verify OS/Wialon flows in a browser against a test API.

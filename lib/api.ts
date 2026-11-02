@@ -522,10 +522,6 @@ export type FixedAsset = {
   id: string;
   inv_number: string;
   name: string;
-  asset_type_label?: string;
-  asset_status_label?: string;
-  asset_type_translation_missing?: boolean;
-  asset_status_translation_missing?: boolean;
   asset_type: string;
   series: string | null;
   depot: string | null;
@@ -559,6 +555,128 @@ export type FixedAssetListParams = ListParams & {
   depot?: string;
 };
 
+export type UnifiedAsset = {
+  source: "toir" | "wialon" | "both";
+  asset_id: string | null;
+  unit_id: string | null;
+  name: string;
+  asset_type: string | null;
+  series: string | null;
+  inv_number: string | null;
+  status: string | null;
+  section: string | null;
+  section_id: string | null;
+  mileage: number | string | null;
+  wialon_cnm: number | string | null;
+  wialon_cneh: number | string | null;
+  speed: number | string | null;
+  last_message_at: string | null;
+  is_online: boolean;
+  suspect_absolute: boolean;
+};
+
+export type WialonUnitListParams = ListParams & {
+  linked?: boolean;
+  q?: string;
+  online?: boolean;
+  suspect?: boolean;
+  stale?: boolean;
+};
+
+export type WialonCounterSummary = {
+  last_status: string | null;
+  last_reason: string | null;
+};
+
+export type WialonRejectedReading = {
+  id: number;
+  counter: string;
+  value: number | string | null;
+  previous_value: number | string | null;
+  reading_at: string | null;
+  reason: string;
+  created_at: string;
+};
+
+export type WialonUnit = {
+  unit_id: string;
+  name: string;
+  cnm: number | string | null;
+  cneh: number | string | null;
+  speed: number | string | null;
+  last_message_at: string | null;
+  is_online: boolean;
+  suspect_absolute: boolean;
+  linked_asset: { id: string; name: string; inv_number: string } | null;
+  counter_state: WialonCounterSummary | null;
+  rejected_count: number;
+};
+
+export type WialonUnitDetail = WialonUnit & {
+  rejected_readings: WialonRejectedReading[];
+};
+
+export type WialonAssetSuggestion = {
+  asset_id: string;
+  name: string;
+  inv_number: string;
+  asset_type: string;
+  series: string | null;
+  section_id: string | null;
+  matched_series: boolean;
+  matched_numbers: number[];
+};
+
+export type WialonCreateAssetRequest = {
+  inv_number: string;
+  name?: string | null;
+  asset_type: "locomotive" | "diesel" | "wagon";
+  series?: string | null;
+  section_id?: string | null;
+};
+
+export type WialonCreateAssetResponse = {
+  asset: FixedAsset;
+  warning: string | null;
+};
+
+const wialon = {
+  async listUnits(params: WialonUnitListParams = {}): Promise<Paginated<WialonUnit>> {
+    return request<Paginated<WialonUnit>>({
+      method: "GET",
+      path: "/wialon/units",
+      params,
+    });
+  },
+  async getUnit(unitId: string): Promise<WialonUnitDetail> {
+    return request<WialonUnitDetail>({
+      method: "GET",
+      path: `/wialon/units/${encodeURIComponent(unitId)}`,
+    });
+  },
+  async suggestions(unitId: string): Promise<{ items: WialonAssetSuggestion[] }> {
+    return request<{ items: WialonAssetSuggestion[] }>({
+      method: "GET",
+      path: `/wialon/units/${encodeURIComponent(unitId)}/suggestions`,
+    });
+  },
+  async createAsset(unitId: string, data: WialonCreateAssetRequest): Promise<WialonCreateAssetResponse> {
+    return request<WialonCreateAssetResponse>({
+      method: "POST",
+      path: `/wialon/units/${encodeURIComponent(unitId)}/create-asset`,
+      body: data,
+    });
+  },
+};
+
+export type UnifiedAssetListParams = ListParams & {
+  source?: UnifiedAsset["source"];
+  asset_type?: string;
+  status?: string;
+  section_id?: string;
+  q?: string;
+};
+
 export type FixedAssetStats = {
   total: number;
   by_asset_type: Record<string, number>;
@@ -588,6 +706,9 @@ export type FixedAssetUpdate = Partial<Omit<FixedAsset, "id" | "created_at" | "u
 const fixedAssets = {
   async list(params: FixedAssetListParams): Promise<Paginated<FixedAsset>> {
     return request<Paginated<FixedAsset>>({ method: "GET", path: "/fixed-assets", params });
+  },
+  async unified(params: UnifiedAssetListParams = {}): Promise<Paginated<UnifiedAsset>> {
+    return request<Paginated<UnifiedAsset>>({ method: "GET", path: "/fixed-assets/unified", params });
   },
   async get(id: string): Promise<FixedAsset> {
     return request<FixedAsset>({ method: "GET", path: `/fixed-assets/${id}` });
@@ -1478,6 +1599,7 @@ export const api = {
   departments,
   nomenclature,
   fixedAssets,
+  wialon,
   fixedAssetCatalogs,
   workOrders,
   tmcDocuments,

@@ -1,16 +1,20 @@
 "use client"
 
+import Link from "next/link"
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRealtime } from "@/lib/use-realtime"
 import { useDebouncedValue } from "@/lib/use-debounced-value"
 import {
   api,
-  type FixedAsset as ApiFixedAsset,
   type FixedAssetCreate,
   type FixedAssetUpdate,
+  type UnifiedAsset,
+  type WialonUnit,
+  type WialonUnitDetail,
   type AssetCatalogItem,
   type FixedAssetStats,
 } from "@/lib/api"
+import { useAuth } from "@/lib/auth-context"
 import { useSections } from "@/lib/use-sections"
 import {
   Train, Container, Plus, Search, X, Save, ChevronDown,
@@ -48,6 +52,13 @@ type FixedAsset = {
   /** Пробег синхронизирован из Wialon */
   wialonLastSync?: string | null
   wialonOnline?: boolean
+  source: UnifiedAsset["source"]
+  unitId: string | null
+  wialonMileage: string
+  engineHours: string
+  speed: string
+  lastMessageAt: string | null
+  suspectAbsolute: boolean
 }
 
 /* ════════════════════════════════════════
@@ -67,13 +78,14 @@ const statusConfig: Record<string, { label: string; icon: React.ElementType; cls
 /* ════════════════════════════════════════
    МОДАЛ ПРОСМОТРА / РЕДАКТИРОВАНИЯ
 ════════════════════════════════════════ */
-function AssetModal({ asset, onClose, onSave, onDelete, sections, statuses }: {
+function AssetModal({ asset, onClose, onSave, onDelete, sections, statuses, canWrite }: {
   asset: FixedAsset
   onClose: () => void
   onSave: (a: FixedAsset) => void
   onDelete?: (a: FixedAsset) => void
   sections: string[]
   statuses: AssetCatalogItem[]
+  canWrite: boolean
 }) {
   const [editing,      setEditing]      = useState(false)
   const [commDate,     setCommDate]     = useState(asset.commDate)
@@ -84,6 +96,24 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, statuses }: {
   const [nextMaint,    setNextMaint]    = useState(asset.nextMaint)
   const [initialCost,  setInitialCost]  = useState(asset.initialCost)
   const [owner,        setOwner]        = useState(asset.owner)
+  const [wialonId, setWialonId] = useState(asset.wialonId ?? "")
+  const [unitSearch, setUnitSearch] = useState("")
+  const [availableUnits, setAvailableUnits] = useState<WialonUnit[]>([])
+  const [wialonDetail, setWialonDetail] = useState<WialonUnitDetail | null>(null)
+  const [unitLoadError, setUnitLoadError] = useState("")
+
+  useEffect(() => {
+    let active = true
+    api.wialon.listUnits({ linked: false, limit: 1000, offset: 0 })
+      .then((response) => { if (active) setAvailableUnits(response.items) })
+      .catch(() => { if (active) setUnitLoadError("Не удалось загрузить список свободных единиц Wialon.") })
+    if (asset.wialonId) {
+      api.wialon.getUnit(asset.wialonId)
+        .then((detail) => { if (active) setWialonDetail(detail) })
+        .catch(() => { if (active) setUnitLoadError("Не удалось загрузить сведения Wialon.") })
+    }
+    return () => { active = false }
+  }, [asset.wialonId])
 
   const st = statusConfig[status] || { label: asset.statusLabel || status, icon: CheckCircle, cls: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300", dot: "bg-blue-500" }
   const typeLabels: Record<string, { label: string; gradient: string; Icon: React.ElementType }> = {
@@ -92,9 +122,12 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, statuses }: {
     wagon:      { label: "Вагон",     gradient: "bg-gradient-to-r from-purple-600 to-purple-700", Icon: Container },
   }
   const typeInfo = typeLabels[asset.assetType] || typeLabels.locomotive
+  const matchingUnits = availableUnits.filter((unit) =>
+    `${unit.name} ${unit.unit_id}`.toLocaleLowerCase().includes(unitSearch.trim().toLocaleLowerCase()),
+  )
 
   const handleSave = () => {
-    onSave({ ...asset, commDate, status, depot, mileage, lastMaint, nextMaint, initialCost, owner })
+    onSave({ ...asset, commDate, status, depot, mileage, lastMaint, nextMaint, initialCost, owner, wialonId: wialonId || null })
     setEditing(false)
   }
 
@@ -211,6 +244,40 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, statuses }: {
               )}
             </div>
 
+            <div className="col-span-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Wialon</p>
+              {editing ? (
+                <div className="space-y-2">
+                  <Input value={unitSearch} onChange={(event) => setUnitSearch(event.target.value)} placeholder="Поиск по названию или ID Wialon"/>
+                  <select value={wialonId} onChange={(event) => setWialonId(event.target.value)} className={selCls}>
+                    <option value="">Не привязан / Отвязать</option>
+                    {asset.wialonId && !availableUnits.some((unit) => unit.unit_id === asset.wialonId) && (
+                      <option value={asset.wialonId}>{asset.wialonId} (текущая привязка)</option>
+                    )}
+                    {matchingUnits.map((unit) => (
+                      <option key={unit.unit_id} value={unit.unit_id}>{unit.name} · {unit.unit_id}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <p className={fieldCls(false)}>{asset.wialonId || "Не привязан"}</p>
+              )}
+              {unitLoadError && <p role="alert" className="mt-1 text-xs text-red-600">{unitLoadError}</p>}
+            </div>
+
+            {asset.wialonId && (
+              <div className="col-span-2 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/70 dark:bg-blue-950/20 p-3">
+                <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-2">Данные Wialon</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <p>Пробег: <b>{(wialonDetail?.cnm ?? asset.wialonMileage) || "—"} км</b></p>
+                  <p>Моточасы: <b>{(wialonDetail?.cneh ?? asset.engineHours) || "—"}</b></p>
+                  <p>Скорость: <b>{(wialonDetail?.speed ?? asset.speed) || "—"} км/ч</b></p>
+                  <p>Последнее сообщение: <b>{wialonDetail?.last_message_at ? new Date(wialonDetail.last_message_at).toLocaleString("ru-RU") : asset.lastMessageAt ? new Date(asset.lastMessageAt).toLocaleString("ru-RU") : "—"}</b></p>
+                </div>
+                {wialonDetail?.suspect_absolute && <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">⚠ Подозрительное значение счётчика</p>}
+              </div>
+            )}
+
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Номер вагона</p>
               {editing ? (
@@ -276,15 +343,15 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, statuses }: {
               </Button>
             )}
             <Button variant="outline" onClick={onClose}>Закрыть</Button>
-            {!editing ? (
+            {!editing && canWrite ? (
               <Button className="gap-2 bg-blue-600 hover:bg-blue-700" onClick={() => setEditing(true)}>
                 <Pencil className="w-4 h-4"/> Редактировать
               </Button>
-            ) : (
+            ) : editing && canWrite ? (
               <Button className="gap-2 bg-green-600 hover:bg-green-700" onClick={handleSave}>
                 <Save className="w-4 h-4"/> Сохранить
               </Button>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
@@ -295,30 +362,60 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, statuses }: {
 /* ════════════════════════════════════════
    МОДАЛ ДОБАВЛЕНИЯ НОВОГО ОС
 ════════════════════════════════════════ */
-function AddAssetModal({ onClose, onSave, sections, types, statuses }: { onClose: () => void; onSave: (a: FixedAsset) => void; sections: string[]; types: AssetCatalogItem[]; statuses: AssetCatalogItem[] }) {
-  const [assetType,   setAssetType]   = useState<AssetType>(types[0]?.code || "locomotive")
-  const [name,        setName]        = useState("")  // Номер/Наименование (основное поле)
+function AddAssetModal({ onClose, onSave, sections, types, statuses, wialonUnit }: {
+  onClose: () => void
+  onSave: (a: FixedAsset, wialonUnit?: WialonUnit) => void
+  sections: string[]
+  types: AssetCatalogItem[]
+  statuses: AssetCatalogItem[]
+  wialonUnit?: WialonUnit
+}) {
+  const [assetType,   setAssetType]   = useState<AssetType>(wialonUnit ? "" : types[0]?.code || "locomotive")
+  const [name,        setName]        = useState(wialonUnit?.name ?? "")  // Номер/Наименование (основное поле)
   const [series,      setSeries]      = useState("")
   const [depot,       setDepot]       = useState(sections[0] ?? "")
   const [commDate,    setCommDate]    = useState("")
   const [yearBuilt,   setYearBuilt]   = useState("")
   const [initialCost, setInitialCost] = useState("")
-  const [invNumber,   setInvNumber]   = useState("")  // Инвентарный номер
+  const [invNumber,   setInvNumber]   = useState(wialonUnit ? `WIALON-${wialonUnit.unit_id}` : "")  // Инвентарный номер
   const [owner,       setOwner]       = useState("РЖД")
   const [error,       setError]       = useState("")
+  const [wialonId, setWialonId] = useState(wialonUnit?.unit_id ?? "")
+  const [unitSearch, setUnitSearch] = useState("")
+  const [availableUnits, setAvailableUnits] = useState<WialonUnit[]>([])
+  const [unitLoadError, setUnitLoadError] = useState("")
 
   useEffect(() => {
+    if (wialonUnit) return
+    let active = true
+    api.wialon.listUnits({ linked: false, limit: 1000, offset: 0 })
+      .then((response) => { if (active) setAvailableUnits(response.items) })
+      .catch(() => { if (active) setUnitLoadError("Не удалось загрузить список свободных единиц Wialon.") })
+    return () => { active = false }
+  }, [wialonUnit])
+
+  useEffect(() => {
+    if (wialonUnit) return
     if (types.length && !types.some((item) => item.code === assetType)) setAssetType(types[0].code)
-  }, [types, assetType])
+  }, [types, assetType, wialonUnit])
+  const matchingUnits = availableUnits.filter((unit) =>
+    `${unit.name} ${unit.unit_id}`.toLocaleLowerCase().includes(unitSearch.trim().toLocaleLowerCase()),
+  )
 
   const handleSave = () => {
-    if (!name.trim() || !invNumber.trim() || !commDate.trim()) {
-      setError("Заполните обязательные поля: Инвентарный номер, Наименование, Дата ввода")
+    if (!name.trim() || !invNumber.trim() || (!wialonUnit && !commDate.trim())) {
+      setError(wialonUnit
+        ? "Заполните обязательные поля: Инвентарный номер и Наименование"
+        : "Заполните обязательные поля: Инвентарный номер, Наименование, Дата ввода")
+      return
+    }
+    if (wialonUnit && assetType !== "locomotive" && assetType !== "diesel" && assetType !== "wagon") {
+      setError("Выберите тип основного средства.")
       return
     }
     // Генерируем уникальный ID
     const generatedId = `${assetType === "locomotive" ? "LOC" : assetType === "diesel" ? "DSL" : "WAG"}-${Date.now()}`
-    onSave({
+    const newAsset: FixedAsset = {
       id: generatedId,
       name: name.trim(),
       assetType,
@@ -334,8 +431,16 @@ function AddAssetModal({ onClose, onSave, sections, types, statuses }: { onClose
       invNumber: invNumber.trim(),
       initialCost,
       owner,
-      wialonId: null,
-    })
+      wialonId: wialonId || null,
+      source: "toir",
+      unitId: wialonId || null,
+      wialonMileage: String(wialonUnit?.cnm ?? ""),
+      engineHours: String(wialonUnit?.cneh ?? ""),
+      speed: String(wialonUnit?.speed ?? ""),
+      lastMessageAt: wialonUnit?.last_message_at ?? null,
+      suspectAbsolute: wialonUnit?.suspect_absolute ?? false,
+    }
+    onSave(newAsset, wialonUnit)
   }
 
   const lbl = "block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1"
@@ -352,7 +457,7 @@ function AddAssetModal({ onClose, onSave, sections, types, statuses }: { onClose
               <Plus className="w-5 h-5"/>
             </div>
             <div>
-              <p className="text-xs text-green-200">Основные средства</p>
+              <p className="text-xs text-green-200">{wialonUnit ? "Создание из Wialon" : "Основные средства"}</p>
               <p className="text-base font-bold">Добавить новый объект ОС</p>
             </div>
           </div>
@@ -365,7 +470,8 @@ function AddAssetModal({ onClose, onSave, sections, types, statuses }: { onClose
           {/* Тип */}
           <div>
             <p className={lbl}>Тип объекта</p>
-            <select value={assetType} onChange={(event) => setAssetType(event.target.value)} className={sel}>
+            <select required value={assetType} onChange={(event) => setAssetType(event.target.value)} className={sel}>
+              {wialonUnit && <option value="" disabled>Выберите тип</option>}
               {types.map((item) => <option key={item.code} value={item.code}>{item.names.ru || item.code}</option>)}
             </select>
             <div className="flex gap-2">
@@ -409,7 +515,7 @@ function AddAssetModal({ onClose, onSave, sections, types, statuses }: { onClose
           {/* Дата ввода — ключевое поле */}
           <div className="rounded-xl border-2 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-3">
             <label className="flex items-center gap-2 text-xs font-bold text-blue-700 dark:text-blue-400 mb-2">
-              <CalendarDays className="w-3.5 h-3.5"/> Дата ввода в эксплуатацию <span className="text-red-500">*</span>
+            <CalendarDays className="w-3.5 h-3.5"/> Дата ввода в эксплуатацию {!wialonUnit && <span className="text-red-500">*</span>}
             </label>
             <input value={commDate} onChange={e => setCommDate(e.target.value)} className={inp + " border-blue-300 dark:border-blue-700 focus:ring-blue-500 font-semibold"} placeholder="ДД.ММ.ГГГГ"/>
           </div>
@@ -436,6 +542,24 @@ function AddAssetModal({ onClose, onSave, sections, types, statuses }: { onClose
           </div>
 
           <div>
+            <label className={lbl}>Wialon (необязательно)</label>
+            {wialonUnit ? (
+              <Input value={`${wialonUnit.name} · ${wialonUnit.unit_id}`} readOnly />
+            ) : (
+              <div className="space-y-2">
+                <Input value={unitSearch} onChange={(event) => setUnitSearch(event.target.value)} placeholder="Поиск по названию или ID Wialon"/>
+                <select value={wialonId} onChange={(event) => setWialonId(event.target.value)} className={sel}>
+                  <option value="">Не привязан</option>
+                  {matchingUnits.map((unit) => (
+                    <option key={unit.unit_id} value={unit.unit_id}>{unit.name} · {unit.unit_id}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {unitLoadError && <p role="alert" className="mt-1 text-xs text-red-600">{unitLoadError}</p>}
+          </div>
+
+          <div>
             <label className={lbl}>Владелец</label>
             <input value={owner} onChange={e => setOwner(e.target.value)} className={inp} placeholder="РЖД, ФПК..."/>
           </div>
@@ -457,12 +581,6 @@ function AddAssetModal({ onClose, onSave, sections, types, statuses }: { onClose
 /* ════════════════════════════════════════
    СТРАНИЦА
 ════════════════════════════════════════ */
-function displayDate(value: string | null): string {
-  if (!value) return ""
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
-  return match ? `${match[3]}.${match[2]}.${match[1]}` : value
-}
-
 function apiDate(value: string): string | null {
   const normalized = value.trim()
   if (!normalized || normalized === "—") return null
@@ -470,28 +588,33 @@ function apiDate(value: string): string | null {
   return match ? `${match[3]}-${match[2]}-${match[1]}` : normalized
 }
 
-function fromRow(r: ApiFixedAsset): FixedAsset {
+function fromUnified(r: UnifiedAsset): FixedAsset {
   return {
-    id:               r.id,
+    id:               r.asset_id ?? `wialon:${r.unit_id ?? r.name}`,
     name:             r.name,
-    assetTypeLabel:   r.asset_type_label,
-    statusLabel:      r.asset_status_label,
-    assetType:        r.asset_type,
+    assetType:        r.asset_type ?? "",
     series:           r.series ?? "",
-    depot:            r.depot ?? "",
+    depot:            r.section ?? "",
     sectionId:        r.section_id,
-    status:           r.status,
-    commDate:         displayDate(r.comm_date),
-    yearBuilt:        String(r.year_built ?? ""),
+    status:           r.status ?? "",
+    commDate:         "",
+    yearBuilt:        "",
     mileage:          String(r.mileage ?? ""),
-    lastMaint:        displayDate(r.last_maint_date),
-    nextMaint:        displayDate(r.next_maint_date),
-    invNumber:        r.inv_number,
-    initialCost:      String(r.initial_cost ?? ""),
-    owner:            r.owner ?? "",
-    wialonId:         r.wialon_id,
-    wialonLastSync:   r.wialon_last_sync ?? null,
-    wialonOnline:     r.wialon_online,
+    lastMaint:        "",
+    nextMaint:        "",
+    invNumber:        r.inv_number ?? "",
+    initialCost:      "",
+    owner:            "",
+    wialonId:         r.unit_id,
+    wialonLastSync:   r.last_message_at,
+    wialonOnline:     r.is_online,
+    source:           r.source,
+    unitId:           r.unit_id,
+    wialonMileage:    String(r.wialon_cnm ?? ""),
+    engineHours:      String(r.wialon_cneh ?? ""),
+    speed:            String(r.speed ?? ""),
+    lastMessageAt:    r.last_message_at,
+    suspectAbsolute:  r.suspect_absolute,
   }
 }
 
@@ -521,6 +644,8 @@ const PAGE_SIZE = 50
 
 export default function OsPage() {
   const { sections, sectionsData, getSectionId, hasAmbiguousSectionName } = useSections()
+  const { profile } = useAuth()
+  const canWrite = profile?.role === "admin" || profile?.role === "operator"
   const [assetTypes, setAssetTypes] = useState<AssetCatalogItem[]>([])
   const [assetStatuses, setAssetStatuses] = useState<AssetCatalogItem[]>([])
   const [assets,    setAssets]    = useState<FixedAsset[]>([])
@@ -528,21 +653,21 @@ export default function OsPage() {
   const [page,      setPage]      = useState(0)
   const [loading,   setLoading]   = useState(true)
   const [selected,  setSelected]  = useState<FixedAsset | null>(null)
+  const [selectedUnit, setSelectedUnit] = useState<WialonUnit | null>(null)
   const [showAdd,   setShowAdd]   = useState(false)
   const [search,    setSearch]    = useState("")
   const debouncedSearch = useDebouncedValue(search.trim())
   const [fType,     setFType]     = useState<AssetType | "">("")
-  const [fDepot,    setFDepot]    = useState("")
+  const [fSource,   setFSource]   = useState<UnifiedAsset["source"] | "">("")
   const [fSection,  setFSection]  = useState("")
   const [fStatus,   setFStatus]   = useState<AssetStatus | "">("")
   const [fBehavior, setFBehavior] = useState("")
-  const [allDepots, setAllDepots] = useState<string[]>([])
   const [counts, setCounts] = useState<FixedAssetStats | null>(null)
   const [loadError, setLoadError] = useState("")
   const [statsError, setStatsError] = useState("")
   
   // Ref для фильтров в real-time подписке (чтобы не пересоздавать канал)
-  const filtersRef = useRef({ page: 0, search: "", fType: "" as AssetType | "", fDepot: "", fSection: "", fStatus: "" as AssetStatus | "", fBehavior: "" })
+  const filtersRef = useRef({ page: 0, search: "", fType: "" as AssetType | "", fSource: "" as UnifiedAsset["source"] | "", fSection: "", fStatus: "" as AssetStatus | "", fBehavior: "" })
 
   // Загружаем счётчики и список депо один раз (оптимизированные запросы)
   const fetchCounts = useCallback(async () => {
@@ -553,16 +678,14 @@ export default function OsPage() {
       if (fStatus) params.status = fStatus;
       if (fBehavior) params.status_behavior = fBehavior;
       if (fSection) params.section_id = fSection;
-      if (fDepot) params.depot = fDepot;
       const stats = await api.fixedAssets.stats(params);
       setCounts(stats);
-      setAllDepots(stats.depots);
       setStatsError("");
     } catch (error) {
       console.error("Failed to fetch asset counts:", error);
       setStatsError("Не удалось загрузить статистику основных средств.");
     }
-  }, [debouncedSearch, fType, fStatus, fBehavior, fSection, fDepot])
+  }, [debouncedSearch, fType, fStatus, fBehavior, fSection])
 
   useEffect(() => {
     void Promise.all([
@@ -574,27 +697,31 @@ export default function OsPage() {
     }).catch((error) => console.error("Failed to load asset catalogs:", error))
   }, [])
 
-  const fetchAssets = useCallback(async (pg: number, q: string, ft: string, fd: string, fs: string, section = fSection, behavior = fBehavior) => {
+  const fetchAssets = useCallback(async (
+    pg: number,
+    q: string,
+    ft: string,
+    source: UnifiedAsset["source"] | "",
+    fs: string,
+    section = fSection,
+    behavior = fBehavior,
+  ) => {
     setLoading(true)
     try {
-      const params: Parameters<typeof api.fixedAssets.list>[0] = {
+      const params: Parameters<typeof api.fixedAssets.unified>[0] = {
         limit: PAGE_SIZE,
         offset: pg * PAGE_SIZE,
-        sort_by: 'created_at',
-        sort_order: 'desc',
+        sort_by: "name",
+        sort_order: "asc",
       };
       if (q) params.q = q;
       if (ft) params.asset_type = ft as AssetType;
-      if (fd) params.depot = fd;
-      if (fs) params.status = fs as AssetStatus;
+      if (source) params.source = source;
+      if (fs || behavior) params.status = (fs || behavior) as AssetStatus;
       if (section) params.section_id = section;
-      if (behavior) params.status_behavior = behavior;
 
-      const response = await api.fixedAssets.list(params);
-      
-      // The backend returns snake_case, but the frontend component expects camelCase.
-      // The `fromRow` function handles this conversion.
-      setAssets(response.items.map(fromRow))
+      const response = await api.fixedAssets.unified(params)
+      setAssets(response.items.map(fromUnified))
       setTotal(response.total);
       setLoadError("");
 
@@ -612,14 +739,14 @@ export default function OsPage() {
 
   // Обновляем ref при изменении фильтров
   useEffect(() => {
-    filtersRef.current = { page, search: debouncedSearch, fType, fDepot, fSection, fStatus, fBehavior }
-  }, [page, debouncedSearch, fType, fDepot, fSection, fStatus, fBehavior])
+    filtersRef.current = { page, search: debouncedSearch, fType, fSource, fSection, fStatus, fBehavior }
+  }, [page, debouncedSearch, fType, fSource, fSection, fStatus, fBehavior])
 
   // New WebSocket-based real-time updates
   useRealtime(useCallback((event) => {
     if (event.resource === "fixed_assets") {
       console.log("Realtime [OS]: fixed_assets updated, refetching...");
-      fetchAssets(filtersRef.current.page, filtersRef.current.search, filtersRef.current.fType, filtersRef.current.fDepot, filtersRef.current.fStatus, filtersRef.current.fSection, filtersRef.current.fBehavior);
+      fetchAssets(filtersRef.current.page, filtersRef.current.search, filtersRef.current.fType, filtersRef.current.fSource, filtersRef.current.fStatus, filtersRef.current.fSection, filtersRef.current.fBehavior);
       fetchCounts();
     }
   }, [fetchAssets, fetchCounts]), ["fixed_assets"]);
@@ -627,15 +754,15 @@ export default function OsPage() {
   // Сброс страницы при смене фильтров
   useEffect(() => {
     setPage(0)
-  }, [search, fType, fDepot, fSection, fStatus, fBehavior])
+  }, [search, fType, fSource, fSection, fStatus, fBehavior])
 
   useEffect(() => {
-    fetchAssets(page, debouncedSearch, fType, fDepot, fStatus, fSection, fBehavior)
-  }, [fetchAssets, page, debouncedSearch, fType, fDepot, fSection, fStatus, fBehavior]);
+    fetchAssets(page, debouncedSearch, fType, fSource, fStatus, fSection, fBehavior)
+  }, [fetchAssets, page, debouncedSearch, fType, fSource, fSection, fStatus, fBehavior]);
 
   const totalPages    = Math.ceil(total / PAGE_SIZE)
-  const activeFilters = [fType, fDepot, fSection, fStatus, fBehavior, search].filter(Boolean).length
-  const clearFilters  = () => { setFType(""); setFDepot(""); setFSection(""); setFStatus(""); setFBehavior(""); setSearch("") }
+  const activeFilters = [fType, fSource, fSection, fStatus, fBehavior, search].filter(Boolean).length
+  const clearFilters  = () => { setFType(""); setFSource(""); setFSection(""); setFStatus(""); setFBehavior(""); setSearch("") }
   const selectType = (code: string) => setFType((current) => current === code ? "" : code)
   const selectBehavior = (code: string) => { setFStatus(""); setFBehavior((current) => current === code ? "" : code) }
   const filtered      = assets  // фильтрация на сервере
@@ -650,7 +777,7 @@ export default function OsPage() {
         ...toRow(updated),
         section_id: getSectionId(updated.depot) ?? updated.sectionId,
       });
-      fetchAssets(page, search, fType, fDepot, fStatus, fSection, fBehavior)
+      fetchAssets(page, search, fType, fSource, fStatus, fSection, fBehavior)
       fetchCounts()
       setSelected(null)
     } catch (error) {
@@ -661,7 +788,7 @@ export default function OsPage() {
   const handleDelete = async (a: FixedAsset) => {
     try {
       await api.fixedAssets.remove(a.id);
-      fetchAssets(page, search, fType, fDepot, fStatus, fSection, fBehavior)
+      fetchAssets(page, search, fType, fSource, fStatus, fSection, fBehavior)
       fetchCounts()
       setSelected(null)
     } catch (error) {
@@ -669,7 +796,36 @@ export default function OsPage() {
     }
   }
 
-  const handleAdd = async (a: FixedAsset) => {
+  const handleAdd = async (a: FixedAsset, wialonUnit?: WialonUnit) => {
+    if (wialonUnit) {
+      if (a.assetType !== "locomotive" && a.assetType !== "diesel" && a.assetType !== "wagon") {
+        alert("Выберите допустимый тип основного средства.")
+        return
+      }
+      if (hasAmbiguousSectionName(a.depot)) {
+        alert("Невозможно выбрать участок: название не уникально. Выберите участок по ID.")
+        return
+      }
+      try {
+        const sectionId = getSectionId(a.depot) ?? null
+        const result = await api.wialon.createAsset(wialonUnit.unit_id, {
+          inv_number: a.invNumber,
+          name: a.name,
+          asset_type: a.assetType,
+          series: a.series || null,
+          section_id: sectionId,
+        })
+        if (result.warning) alert(result.warning)
+        setSelectedUnit(null)
+        setShowAdd(false)
+        await fetchAssets(0, search, fType, fSource, fStatus, fSection, fBehavior)
+        await fetchCounts()
+        setPage(0)
+      } catch (error) {
+        alert("Не удалось создать ОС из Wialon: " + (error instanceof Error ? error.message : "ошибка API"))
+      }
+      return
+    }
     if (hasAmbiguousSectionName(a.depot)) {
       alert("Невозможно выбрать участок: название не уникально. Выберите участок по ID.")
       return
@@ -679,7 +835,7 @@ export default function OsPage() {
         ...toRow(a),
         section_id: getSectionId(a.depot) ?? null,
       });
-      fetchAssets(0, search, fType, fDepot, fStatus, fSection, fBehavior)
+      fetchAssets(0, search, fType, fSource, fStatus, fSection, fBehavior)
       fetchCounts()
       setPage(0)
       setShowAdd(false)
@@ -699,8 +855,8 @@ export default function OsPage() {
 
   return (
     <div className="p-8 space-y-6">
-      {selected  && <AssetModal asset={selected}  onClose={() => setSelected(null)} onSave={handleSave} onDelete={handleDelete} sections={sections} statuses={assetStatuses}/>}
-      {showAdd   && <AddAssetModal onClose={() => setShowAdd(false)} onSave={handleAdd} sections={sections} types={assetTypes} statuses={assetStatuses}/>}
+      {selected && <AssetModal asset={selected} onClose={() => setSelected(null)} onSave={handleSave} onDelete={canWrite ? handleDelete : undefined} sections={sections} statuses={assetStatuses} canWrite={canWrite}/>}
+      {showAdd && canWrite && <AddAssetModal onClose={() => { setShowAdd(false); setSelectedUnit(null) }} onSave={handleAdd} sections={sections} types={assetTypes} statuses={assetStatuses} wialonUnit={selectedUnit ?? undefined}/>}
 
       {/* Заголовок */}
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -708,9 +864,12 @@ export default function OsPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Основные средства</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Реестр подвижного состава — локомотивы и вагоны</p>
         </div>
-        <Button className="gap-2 bg-green-600 hover:bg-green-700" onClick={() => setShowAdd(true)}>
-          <Plus className="w-4 h-4"/> Добавить ОС
-        </Button>
+        <div className="flex items-center gap-2">
+          {profile?.role !== "master" && <Link href="/dashboard/os/wialon" className="rounded-lg border border-blue-200 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:text-blue-300 dark:hover:bg-blue-950/40">Данные Wialon</Link>}
+          {canWrite && <Button className="gap-2 bg-green-600 hover:bg-green-700" onClick={() => setShowAdd(true)}>
+            <Plus className="w-4 h-4"/> Добавить ОС
+          </Button>}
+        </div>
       </div>
 
       {/* KPI карточки */}
@@ -748,21 +907,24 @@ export default function OsPage() {
             {fType && <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600 rounded-full text-[9px] text-white flex items-center justify-center font-bold">✓</span>}
           </div>
 
-          {/* Депо */}
+          {/* Источник */}
+          <div className="relative">
+            <select aria-label="Источник" value={fSource} onChange={(event) => setFSource(event.target.value as UnifiedAsset["source"] | "")} className={selCls}>
+              <option value="">Все источники</option>
+              <option value="toir">ТОИР</option>
+              <option value="wialon">Wialon</option>
+              <option value="both">ТОИР + Wialon</option>
+            </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
+          </div>
+
+          {/* Участок */}
           <div className="relative">
             <select aria-label="Участок" value={fSection} onChange={e => setFSection(e.target.value)} className={selCls}>
               <option value="">Все участки</option>
               {sectionsData.map(section => <option key={section.id} value={section.id}>{section.localized_name || section.name}</option>)}
             </select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
-          </div>
-          <div className="relative">
-            <select aria-label="Депо" value={fDepot} onChange={e => setFDepot(e.target.value)} className={selCls}>
-              <option value="">Все депо</option>
-              {allDepots.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
-            {fDepot && <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600 rounded-full text-[9px] text-white flex items-center justify-center font-bold">✓</span>}
           </div>
 
           {/* Статус */}
@@ -796,69 +958,67 @@ export default function OsPage() {
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-              {["Тип","Наименование / Номер","Дата ввода в экспл.","Депо / Участок","Год","Пробег (км)","Статус"].map(h => (
-                <th key={h} className="text-left px-4 py-3.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
+              {["Источник","Тип","Наименование / Номер","Участок","Пробег ТОИР, км","Пробег Wialon, км","Моточасы","Скорость","Связь","Статус / действие"].map((heading) => (
+                <th key={heading} className="text-left px-4 py-3.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{heading}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="px-5 py-12 text-center text-sm text-gray-400">
+              <tr><td colSpan={10} className="px-5 py-12 text-center text-sm text-gray-400">
                 <Search className="w-8 h-8 mx-auto mb-2 opacity-30"/>
                 Ничего не найдено
               </td></tr>
             )}
-            {filtered.map(a => {
-              const st = statusConfig[a.status] || { label: a.statusLabel || a.status, icon: CheckCircle, cls: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300", dot: "bg-blue-500" }
+            {filtered.map((a) => {
+              const st = statusConfig[a.status] || { label: a.statusLabel || a.status || "—", icon: CheckCircle, cls: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300", dot: "bg-blue-500" }
               const typeConfig: Record<string, { label: string; cls: string; Icon: React.ElementType }> = {
                 locomotive: { label: "Локомотив", cls: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300", Icon: Train },
-                diesel:     { label: "Тепловоз",  cls: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300", Icon: Train },
-                wagon:      { label: "Вагон",     cls: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300", Icon: Container },
+                diesel: { label: "Тепловоз", cls: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300", Icon: Train },
+                wagon: { label: "Вагон", cls: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300", Icon: Container },
               }
-              const tc = typeConfig[a.assetType] || { label: a.assetTypeLabel || a.assetType, cls: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300", Icon: Container }
+              const tc = typeConfig[a.assetType] || { label: a.assetTypeLabel || a.assetType || "—", cls: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300", Icon: Container }
+              const stale = !a.lastMessageAt || Date.now() - new Date(a.lastMessageAt).getTime() > 24 * 60 * 60 * 1000
+              const connection = stale ? "Давно" : a.wialonOnline ? "Онлайн" : "Нет связи"
+              const sourceLabel = a.source === "both" ? "ТОИР + Wialon" : a.source === "wialon" ? "Wialon" : "ТОИР"
+              const rowUnit: WialonUnit | null = a.unitId ? {
+                unit_id: a.unitId,
+                name: a.name,
+                cnm: a.wialonMileage || null,
+                cneh: a.engineHours || null,
+                speed: a.speed || null,
+                last_message_at: a.lastMessageAt,
+                is_online: a.wialonOnline ?? false,
+                suspect_absolute: a.suspectAbsolute,
+                linked_asset: null,
+                counter_state: null,
+                rejected_count: 0,
+              } : null
               return (
-                <tr key={a.id} onClick={() => setSelected(a)}
-                  className="hover:bg-blue-50/40 dark:hover:bg-blue-950/20 cursor-pointer transition-colors">
+                <tr key={a.id} onClick={a.source !== "wialon" ? () => setSelected(a) : undefined}
+                  className={`hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors ${a.source !== "wialon" ? "cursor-pointer" : ""}`}>
                   <td className="px-4 py-3.5">
-                    <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-md ${tc.cls}`}>
-                      <tc.Icon className="w-3 h-3"/>
-                      {a.assetTypeLabel || tc.label}
-                    </span>
+                    <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${a.source === "both" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" : a.source === "wialon" ? "bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"}`}>{sourceLabel}</span>
+                  </td>
+                  <td className="px-4 py-3.5"><span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-md ${tc.cls}`}><tc.Icon className="w-3 h-3"/>{tc.label}</span></td>
+                  <td className="px-4 py-3.5">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{a.name}{a.suspectAbsolute && <span className="ml-2 text-amber-600 dark:text-amber-400" title="Подозрительное значение Wialon">⚠</span>}</p>
+                    {(a.invNumber || a.unitId) && <p className="text-xs text-gray-400 truncate max-w-[220px]">{a.invNumber ? `Инв. № ${a.invNumber}` : `ID ${a.unitId}`}</p>}
+                  </td>
+                  <td className="px-4 py-3.5 text-xs text-gray-600 dark:text-gray-300">{a.depot || "—"}</td>
+                  <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.source !== "wialon" ? a.mileage || "—" : "—"}</td>
+                  <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.unitId ? a.wialonMileage || "—" : "—"}</td>
+                  <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.unitId ? a.engineHours || "—" : "—"}</td>
+                  <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.unitId ? `${a.speed || "0"} км/ч` : "—"}</td>
+                  <td className="px-4 py-3.5">
+                    {a.unitId ? <span className={`inline-flex items-center gap-1 text-xs font-medium ${a.wialonOnline ? "text-emerald-600 dark:text-emerald-400" : stale ? "text-amber-600 dark:text-amber-400" : "text-gray-500 dark:text-gray-400"}`}><Radio className="w-3 h-3"/>{connection}</span> : "—"}
                   </td>
                   <td className="px-4 py-3.5">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                      {a.name}
-                      {a.initialCost && <span className="ml-2 text-blue-600 dark:text-blue-400 font-bold">{a.initialCost}</span>}
-                    </p>
-                    {a.invNumber && <p className="text-xs text-gray-400 truncate max-w-[220px]">Инв. № {a.invNumber}</p>}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div className="flex items-center gap-1.5">
-                      <CalendarDays className="w-3.5 h-3.5 text-blue-500 flex-shrink-0"/>
-                      <span className="text-sm font-semibold text-blue-600 dark:text-blue-400 whitespace-nowrap">{a.commDate || "—"}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300">
-                      <Building2 className="w-3 h-3 flex-shrink-0 text-gray-400"/>
-                      <span className="truncate max-w-[140px]" title={a.depot}>{a.depot}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5 text-sm text-gray-600 dark:text-gray-300">{a.yearBuilt}</td>
-                  <td className="px-4 py-3.5">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{a.mileage || "—"}</span>
-                      {(a.assetType === "locomotive" || a.assetType === "diesel") && a.wialonLastSync && (
-                        <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded ${a.wialonOnline ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`} title={`Обновлено: ${new Date(a.wialonLastSync).toLocaleString("ru-RU")}`}>
-                          <Radio className="w-2.5 h-2.5"/> {a.wialonOnline ? "Wialon" : "Офлайн"}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${st.cls}`}>
-                      <st.icon className="w-3 h-3"/>{a.statusLabel || st.label}
-                    </span>
+                    {a.source === "wialon" ? (
+                      canWrite && rowUnit ? <Button size="sm" className="whitespace-nowrap" onClick={(event) => { event.stopPropagation(); setSelectedUnit(rowUnit); setShowAdd(true) }}>Создать ОС</Button> : "—"
+                    ) : (
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${st.cls}`}><st.icon className="w-3 h-3"/>{a.statusLabel || st.label}</span>
+                    )}
                   </td>
                 </tr>
               )

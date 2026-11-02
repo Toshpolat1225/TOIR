@@ -150,3 +150,8 @@ Changed: backend/scripts/e2e_wialon_units.py, docs/HANDOFF.md, docs/AI_WORKLOG.m
 Checked: Pylance syntax and diagnostics for the script -> no errors or diagnostics; pytest was not rerun because no test code changed.
 NOT TESTED: API E2E, migration, PostgreSQL, Docker, browser, server.
 Next: apply 0012 on a disposable DB, sync at least one unit, then run the E2E script.
+2026-11-02 | Copilot SDK | Connected OS dashboard to unified assets and added Wialon unit page.
+Changed: lib/api.ts, app/dashboard/os/page.tsx, app/dashboard/os/wialon/page.tsx, app/dashboard/layout.tsx, docs/HANDOFF.md, docs/AI_WORKLOG.md.
+Checked: VS Code Problems -> no errors in changed TS/TSX; OS source scan -> no Supabase calls.
+NOT TESTED: tsc/build blocked by missing local TypeScript/Next dependencies; browser/API behavior not tested; no packages installed.
+Next: provide existing frontend dependencies, run allowed tsc/build, then browser-check with test API.

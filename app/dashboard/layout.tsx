@@ -8,6 +8,7 @@ import {
   ChevronRight, Package, Landmark, LogOut, Users, FileText, ChevronDown, FolderOpen,
   BarChart3,
   ShieldCheck,
+  Radio,
 } from "@/components/ui/icons"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
@@ -19,7 +20,8 @@ import { useLocale } from "@/lib/i18n"
 const ALL_NAV = [
   { href: "/dashboard",             label: "Дашборд",        icon: LayoutDashboard, permission: "dashboard.view",         exact: true },
   { href: "/dashboard/analytics",   label: "Аналитика",      icon: BarChart3,       permission: "analytics.view"                    },
-  { href: "/dashboard/os",          label: "Осн. средства",  icon: Landmark,        permission: "assets.view"                    },
+  { href: "/dashboard/os",          label: "Осн. средства",  icon: Landmark,        permission: "assets.view", exact: true       },
+  { href: "/dashboard/os/wialon",   label: "Данные Wialon", icon: Radio,           permission: "assets.view"                    },
   { href: "/dashboard/maintenance", label: "ТО и ремонты",   icon: Wrench,          permission: "maintenance.view"                    },
   { href: "/dashboard/work-orders", label: "Наряд-заказы",   icon: ClipboardList,   permission: "work_orders.view"            },
   { href: "/dashboard/tmc",         label: "ТМЦ",            icon: Package,         permission: "tmc.view"                    },
@@ -175,7 +177,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   const role     = profile?.role ?? "master"
-  const navItems = ALL_NAV.filter(n => hasPermission(n.permission))
+  const navItems = ALL_NAV.filter(n => hasPermission(n.permission) && !(n.href === "/dashboard/os/wialon" && role === "master"))
   const badge    = ROLE_BADGE[role]
   const isAdmin  = role === "admin"
   const currentPage = navItems.find((item) =>
@@ -217,7 +219,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               return (
                 <Link key={item.href} href={item.href} onClick={() => setMobileNavOpen(false)} aria-current={active ? "page" : undefined}
                   className={cn(
-                    "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                    "group flex items-center gap-3 rounded-lg py-2.5 text-sm font-medium transition-colors",
+                    item.href === "/dashboard/os/wialon" ? "ml-4 px-3 text-xs" : "px-3",
                     active ? "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
                   )}>
                   <item.icon className={cn("h-4 w-4 shrink-0", active ? "text-blue-700 dark:text-blue-300" : "text-slate-400 group-hover:text-slate-600 dark:text-gray-500")} />
