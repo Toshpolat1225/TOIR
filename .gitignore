@@ -36,3 +36,5 @@ backend/scripts/wialon_bootstrap_*.csv
 backend/.venv/
 
 *.dump
+
+wialon_import_assets_*.csv
