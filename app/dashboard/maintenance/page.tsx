@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { api, type Employee, type MaintenanceScheduleItem, type Section, type WorkType } from "@/lib/api"
+import { api, type Employee, type MaintenancePlan, type MaintenanceScheduleItem, type Section, type WorkType } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
+import { useLocale } from "@/lib/i18n"
 import {
   Calendar, Wrench, CheckCircle, Clock, AlertTriangle,
   BarChart3, List, ChevronLeft, ChevronRight, Info, Plus, X, ChevronDown,
@@ -88,6 +89,7 @@ function NotificationBell({
   onMarkAllAsRead: () => void
   onClear: () => void
 }) {
+  const { t, locale } = useLocale()
   const [isOpen, setIsOpen] = useState(false)
   const unreadCount = notifications.filter(n => !n.read).length
   const criticalCount = notifications.filter(n => n.type === "error" && !n.read).length
@@ -112,10 +114,10 @@ function NotificationBell({
     const minutes = Math.floor(diff / 60000)
     const hours = Math.floor(diff / 3600000)
     
-    if (minutes < 1) return "только что"
-    if (minutes < 60) return `${minutes} мин. назад`
-    if (hours < 24) return `${hours} ч. назад`
-    return date.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })
+    if (minutes < 1) return t("только что")
+    if (minutes < 60) return `${minutes} ${t("мин. назад")}`
+    if (hours < 24) return `${hours} ${t("ч. назад")}`
+    return date.toLocaleDateString(locale, { day: "numeric", month: "short" })
   }
 
   return (
@@ -151,10 +153,10 @@ function NotificationBell({
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
               <div className="flex items-center gap-2">
                 <Bell className="w-4 h-4 text-gray-500" />
-                <span className="text-sm font-bold text-gray-900 dark:text-white">Уведомления</span>
+                <span className="text-sm font-bold text-gray-900 dark:text-white">{t("Уведомления")}</span>
                 {unreadCount > 0 && (
                   <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400">
-                    {unreadCount} новых
+                    {unreadCount} {t("новых")}
                   </span>
                 )}
               </div>
@@ -164,7 +166,7 @@ function NotificationBell({
                     onClick={onMarkAllAsRead}
                     className="text-xs text-blue-600 dark:text-blue-400 hover:underline px-2 py-1"
                   >
-                    Прочитать все
+                    {t("Прочитать все")}
                   </button>
                 )}
                 {notifications.length > 0 && (
@@ -172,7 +174,7 @@ function NotificationBell({
                     onClick={onClear}
                     className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 px-2 py-1"
                   >
-                    Очистить
+                    {t("Очистить")}
                   </button>
                 )}
               </div>
@@ -183,7 +185,7 @@ function NotificationBell({
               {notifications.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                   <Bell className="w-10 h-10 opacity-20 mb-2" />
-                  <p className="text-sm">Нет уведомлений</p>
+                  <p className="text-sm">{t("Нет уведомлений")}</p>
                 </div>
               ) : (
                 <div className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -225,7 +227,7 @@ function NotificationBell({
               <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-800 bg-red-50 dark:bg-red-950/30">
                 <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
                   <AlertTriangle className="w-3 h-3" />
-                  {notifications.filter(n => n.type === "error").length} критических уведомлений требуют внимания
+                  {notifications.filter(n => n.type === "error").length} {t("критических уведомлений требуют внимания")}
                 </p>
               </div>
             )}
@@ -287,6 +289,7 @@ function GanttChart({ items, rangeStart, rangeDays, onCreateOrder }: {
   rangeDays: number
   onCreateOrder?: (item: ScheduleItem) => void
 }) {
+  const { t, locale } = useLocale()
   const today = new Date()
   const todayOffset = diffDays(rangeStart, today)
   const todayPct = (todayOffset / rangeDays) * 100
@@ -313,10 +316,10 @@ function GanttChart({ items, rangeStart, rangeDays, onCreateOrder }: {
           {/* Колонка оборудования */}
           <div className="w-[380px] flex-shrink-0">
             <div className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider mb-1">
-              Оборудование
+              {t("Оборудование")}
             </div>
             <div className="text-[10px] text-gray-400">
-              Название · Тип ТО · Пробег
+              {t("Название · Тип ТО · Пробег")}
             </div>
           </div>
           
@@ -345,7 +348,7 @@ function GanttChart({ items, rangeStart, rangeDays, onCreateOrder }: {
                 className="absolute bottom-0 -translate-x-1/2 text-center"
               >
                 <div className="text-[10px] text-gray-400 font-medium">
-                  {['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][d.getDay()]}
+                  {new Intl.DateTimeFormat(locale, { weekday: "short" }).format(d)}
                 </div>
                 <div className="text-xs font-bold text-gray-700 dark:text-gray-300">
                   {d.getDate()}
@@ -360,7 +363,7 @@ function GanttChart({ items, rangeStart, rangeDays, onCreateOrder }: {
                 className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20"
               >
                 <div className="absolute -top-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 bg-red-500 text-white text-[9px] font-bold rounded whitespace-nowrap">
-                  СЕГОДНЯ
+                  {t("Сегодня").toLocaleUpperCase(locale)}
                 </div>
               </div>
             )}
@@ -530,7 +533,7 @@ function GanttChart({ items, rangeStart, rangeDays, onCreateOrder }: {
                                 ${isOver ? 'ring-2 ring-red-400 ring-offset-2 animate-pulse' : ''}
                                 ${isIP ? 'ring-2 ring-white/50 ring-inset' : ''}
                               `}
-                              title={`${item.unit}\n${item.type}\nДата: ${item.startDate}\n${item.mileage ? `Пробег: ${item.mileage} км` : ''}`}
+                              title={`${item.unit}\n${item.type}\n${t("Дата")}: ${item.startDate}\n${item.mileage ? `${t("Пробег")}: ${item.mileage} км` : ""}`}
                             >
                               {/* Иконка типа */}
                               {isOver && <AlertTriangle className="w-5 h-5 text-white flex-shrink-0" />}
@@ -569,7 +572,7 @@ function GanttChart({ items, rangeStart, rangeDays, onCreateOrder }: {
           <div className="flex flex-wrap items-center justify-between gap-4">
             {/* Типы ТО */}
             <div className="flex flex-wrap items-center gap-3">
-              <span className="text-xs font-semibold text-gray-500 uppercase">Виды работ:</span>
+              <span className="text-xs font-semibold text-gray-500 uppercase">{t("Виды работ:")}</span>
               {Object.entries(typeConfig).slice(0, 6).map(([type, cfg]) => (
                 <div key={type} className="flex items-center gap-1.5">
                   <div 
@@ -585,15 +588,15 @@ function GanttChart({ items, rangeStart, rangeDays, onCreateOrder }: {
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1.5">
                 <div className="w-4 h-4 rounded bg-red-500 animate-pulse"/>
-                <span className="text-xs text-gray-600 dark:text-gray-400">Просрочено</span>
+                <span className="text-xs text-gray-600 dark:text-gray-400">{t("Просрочено")}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-1 h-4 bg-red-500 rounded"/>
-                <span className="text-xs text-gray-600 dark:text-gray-400">Сегодня</span>
+                <span className="text-xs text-gray-600 dark:text-gray-400">{t("Сегодня")}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Gauge className="w-4 h-4 text-emerald-500"/>
-                <span className="text-xs text-gray-600 dark:text-gray-400">Данные графика</span>
+                <span className="text-xs text-gray-600 dark:text-gray-400">{t("Данные графика")}</span>
               </div>
             </div>
           </div>
@@ -615,6 +618,7 @@ function QuickOrderModal({ item, onClose, sections, employees, workTypes, onOrde
   onOrderCreated?: () => void
   onNotify?: (n: { type: "warning" | "error" | "success" | "info"; title: string; message: string }, uniqueKey?: string, showToast?: boolean) => void
 }) {
+  const { t } = useLocale()
   const [section,   setSection]   = useState(item.section_id || "")
   const [executorId, setExecutorId] = useState("")
   const [workTypeId, setWorkTypeId] = useState(item.work_type_id || "")
@@ -629,9 +633,9 @@ function QuickOrderModal({ item, onClose, sections, employees, workTypes, onOrde
     : Number(item.nextThreshold).toLocaleString()
 
   const handleSend = async () => {
-    if (!section) { setError("Выберите участок для отправки наряда"); return }
-    if (!executorId) { setError("Выберите исполнителя"); return }
-    if (!workTypeId) { setError("Выберите вид работ для ТО"); return }
+    if (!section) { setError(t("Выберите участок для отправки наряда")); return }
+    if (!executorId) { setError(t("Выберите исполнителя")); return }
+    if (!workTypeId) { setError(t("Выберите вид работ для ТО")); return }
     setError("")
     setSaving(true)
     const mileageInfo = item.mileage !== null
@@ -656,12 +660,12 @@ function QuickOrderModal({ item, onClose, sections, employees, workTypes, onOrde
       setSaved(true)
       onNotify?.({
         type: "success",
-        title: `Наряд ${order.number} создан`,
-        message: `${item.type} для ${item.unit} отправлен на участок ${sections.find((row) => row.id === section)?.name ?? ""}`,
+        title: `${t("Наряд")} ${order.number} ${t("создан")}`,
+        message: `${item.type} ${t("для")} ${item.unit} ${t("отправлен на участок")} ${sections.find((row) => row.id === section)?.name ?? ""}`,
       }, undefined, true)
       onOrderCreated?.()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Ошибка при создании наряда")
+      setError(cause instanceof Error ? cause.message : t("Ошибка при создании наряда"))
     } finally {
       setSaving(false)
     }
@@ -680,7 +684,7 @@ function QuickOrderModal({ item, onClose, sections, employees, workTypes, onOrde
               <Plus className="w-5 h-5"/>
             </div>
             <div>
-              <p className="text-xs text-blue-200 font-medium">Открыть наряд-задание по графику</p>
+              <p className="text-xs text-blue-200 font-medium">{t("Открыть наряд-задание по графику")}</p>
               <p className="text-base font-bold">{item.unit} · {item.type}</p>
             </div>
           </div>
@@ -696,12 +700,12 @@ function QuickOrderModal({ item, onClose, sections, employees, workTypes, onOrde
               <CheckCircle className="w-8 h-8 text-green-500"/>
             </div>
             <div>
-              <p className="text-lg font-bold text-gray-900 dark:text-white">Наряд открыт!</p>
+              <p className="text-lg font-bold text-gray-900 dark:text-white">{t("Наряд открыт!")}</p>
               <p className="text-sm text-gray-500 mt-1">
-                Номер: <span className="font-mono font-bold text-blue-600">{orderId}</span>
+                {t("Номер")}: <span className="font-mono font-bold text-blue-600">{orderId}</span>
               </p>
               <p className="text-sm text-gray-500 mt-1">
-                Участок: <span className="font-semibold text-gray-700 dark:text-gray-300">{section}</span>
+                {t("Участок")}: <span className="font-semibold text-gray-700 dark:text-gray-300">{section}</span>
               </p>
               {false && (
                 <div className="mt-3 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800">
@@ -717,12 +721,12 @@ function QuickOrderModal({ item, onClose, sections, employees, workTypes, onOrde
                 </div>
               )}
               <p className="text-xs text-gray-400 mt-2">
-                Наряд появится в разделе «Запланировано» для выбранного участка.
+                {t("Наряд появится в разделе «Запланировано» для выбранного участка.")}
               </p>
             </div>
             <button onClick={onClose}
               className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors">
-              Готово
+              {t("Готово")}
             </button>
           </div>
         ) : (
@@ -738,7 +742,7 @@ function QuickOrderModal({ item, onClose, sections, employees, workTypes, onOrde
               }`}>
                 <div className="flex items-center gap-2 mb-3">
                   <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
-                    Данные из графика ТО
+                    {t("Данные из графика ТО")}
                   </p>
                   {false && (
                     <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-400">
@@ -749,28 +753,28 @@ function QuickOrderModal({ item, onClose, sections, employees, workTypes, onOrde
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div>
-                    <span className="text-gray-400 text-xs block">Единица ТПС</span>
+                    <span className="text-gray-400 text-xs block">{t("Единица ТПС")}</span>
                     <p className="font-semibold text-gray-900 dark:text-white">{item.unit}</p>
                   </div>
                   <div>
-                    <span className="text-gray-400 text-xs block">Вид ремонта</span>
+                    <span className="text-gray-400 text-xs block">{t("Вид ремонта")}</span>
                     <p className="font-bold text-blue-600 dark:text-blue-400">{item.type}</p>
                   </div>
                   {item.mileage !== null && (
                     <>
                       <div>
-                        <span className="text-gray-400 text-xs block">Текущий пробег</span>
+                        <span className="text-gray-400 text-xs block">{t("Текущий пробег")}</span>
                         <p className="font-bold text-emerald-600 dark:text-emerald-400">{Number(item.mileage).toLocaleString()} км</p>
                       </div>
                       <div>
-                        <span className="text-gray-400 text-xs block">До ТО осталось</span>
+                        <span className="text-gray-400 text-xs block">{t("До ТО осталось")}</span>
                         <p className={`font-bold ${
                           Number(item.remainingKm || 0) <= 0 
                             ? "text-red-600 dark:text-red-400" 
                             : "text-amber-600 dark:text-amber-400"
                         }`}>
                           {Number(item.remainingKm || 0) <= 0 
-                            ? `Просрочено на ${Math.abs(Number(item.remainingKm || 0))} км` 
+                            ? `${t("Просрочено на")} ${Math.abs(Number(item.remainingKm || 0))} км`
                             : `${item.remainingKm} км`
                           }
                         </p>
@@ -778,18 +782,18 @@ function QuickOrderModal({ item, onClose, sections, employees, workTypes, onOrde
                     </>
                   )}
                   <div>
-                    <span className="text-gray-400 text-xs block">Дата начала</span>
+                    <span className="text-gray-400 text-xs block">{t("Дата начала")}</span>
                     <p className="font-medium text-gray-700 dark:text-gray-300">{dateToDdMmYyyy(item.startDate)}</p>
                   </div>
                   <div>
-                    <span className="text-gray-400 text-xs block">Длительность</span>
+                    <span className="text-gray-400 text-xs block">{t("Длительность")}</span>
                     <p className="font-medium text-gray-700 dark:text-gray-300">{item.durationH} ч</p>
                   </div>
                 </div>
                 {item.status === "overdue" && (
                   <div className="mt-3 flex items-center gap-2 p-2 rounded-lg bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300">
                     <AlertTriangle className="w-4 h-4" />
-                    <span className="text-xs font-semibold">Требуется срочный ремонт! Пробег превысил норматив.</span>
+                    <span className="text-xs font-semibold">{t("Требуется срочный ремонт! Пробег превысил норматив.")}</span>
                   </div>
                 )}
               </div>
@@ -797,16 +801,16 @@ function QuickOrderModal({ item, onClose, sections, employees, workTypes, onOrde
               {/* Выбор участка — обязательно */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-                  Участок <span className="text-red-500">*</span>
+                  {t("Участок")} <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <select
                     value={section}
                     onChange={e => { setSection(e.target.value); setError("") }}
                     className={`${selCls} ${error ? "border-red-400 focus:ring-red-400" : ""}`}>
-                    <option value="">Выберите участок...</option>
+                    <option value="">{t("Выберите участок...")}</option>
                     {sections.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
+                      <option key={s.id} value={s.id}>{s.localized_name ?? s.name}</option>
                     ))}
                   </select>
                   <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"/>
@@ -816,10 +820,10 @@ function QuickOrderModal({ item, onClose, sections, employees, workTypes, onOrde
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-                  Вид работ <span className="text-red-500">*</span>
+                  {t("Вид работ")} <span className="text-red-500">*</span>
                 </label>
                 <select value={workTypeId} onChange={e => { setWorkTypeId(e.target.value); setError("") }} className={selCls}>
-                  <option value="">Выберите вид работ...</option>
+                  <option value="">{t("Выберите вид работ...")}</option>
                   {workTypes.map(workType => (
                     <option key={workType.id} value={workType.id}>{workType.code} — {workType.name}</option>
                   ))}
@@ -828,10 +832,10 @@ function QuickOrderModal({ item, onClose, sections, employees, workTypes, onOrde
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-                  Исполнитель <span className="text-red-500">*</span>
+                  {t("Исполнитель")} <span className="text-red-500">*</span>
                 </label>
                 <select value={executorId} onChange={e => { setExecutorId(e.target.value); setError("") }} className={selCls}>
-                  <option value="">Выберите сотрудника...</option>
+                  <option value="">{t("Выберите сотрудника...")}</option>
                   {employees.filter(employee => employee.is_active && (!section || employee.section_id === section)).map(employee => (
                     <option key={employee.id} value={employee.id}>{employee.full_name}</option>
                   ))}
@@ -840,13 +844,13 @@ function QuickOrderModal({ item, onClose, sections, employees, workTypes, onOrde
 
               {/* Приоритет */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Приоритет</label>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">{t("Приоритет")}</label>
                 <div className="grid grid-cols-4 gap-2">
                   {([
-                    ["low",      "Низкий",     "text-gray-600 bg-gray-100 dark:bg-gray-800"],
-                    ["normal",   "Обычный",    "text-blue-700 bg-blue-100 dark:bg-blue-950"],
-                    ["high",     "Высокий",    "text-amber-700 bg-amber-100 dark:bg-amber-950"],
-                    ["critical", "Критич.",    "text-red-700 bg-red-100 dark:bg-red-950"],
+                    ["low",      t("Низкий"),     "text-gray-600 bg-gray-100 dark:bg-gray-800"],
+                      ["normal",   t("Обычный"),    "text-blue-700 bg-blue-100 dark:bg-blue-950"],
+                      ["high",     t("Высокий"),    "text-amber-700 bg-amber-100 dark:bg-amber-950"],
+                      ["critical", t("Критич."),    "text-red-700 bg-red-100 dark:bg-red-950"],
                   ] as [typeof priority,string,string][]).map(([v,l,cls]) => (
                     <button key={v} onClick={() => setPriority(v)}
                       className={`py-1.5 rounded-lg text-xs font-semibold transition-all border-2 ${
@@ -861,10 +865,10 @@ function QuickOrderModal({ item, onClose, sections, employees, workTypes, onOrde
               {/* Примечание */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-                  Примечание <span className="text-gray-400 font-normal">(необязательно)</span>
+                  {t("Примечание")} <span className="text-gray-400 font-normal">({t("необязательно")})</span>
                 </label>
                 <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
-                  placeholder="Особые указания для участка..."
+                  placeholder={t("Особые указания для участка...")}
                   className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"/>
               </div>
             </div>
@@ -872,16 +876,16 @@ function QuickOrderModal({ item, onClose, sections, employees, workTypes, onOrde
             {/* Подвал */}
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
               <p className="text-xs text-gray-400">
-                Статус: <span className="font-semibold text-gray-600 dark:text-gray-300">Запланировано</span>
+                {t("Статус")}: <span className="font-semibold text-gray-600 dark:text-gray-300">{t("Запланировано")}</span>
               </p>
               <div className="flex gap-3">
                 <button onClick={onClose}
                   className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                  Отмена
+                  {t("Отмена")}
                 </button>
                 <button onClick={() => void handleSend()} disabled={saving}
                   className="flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors shadow-sm disabled:opacity-50">
-                  <Plus className="w-4 h-4"/> {saving ? "Создание..." : "Открыть на участок"}
+                  <Plus className="w-4 h-4"/> {saving ? t("Создание...") : t("Открыть на участок")}
                 </button>
               </div>
             </div>
@@ -902,8 +906,10 @@ function dateToDdMmYyyy(isoDate: string): string {
 }
 
 export default function MaintenancePage() {
-  const { hasPermission } = useAuth()
+  const { hasPermission, user } = useAuth()
+  const { t, locale } = useLocale()
   const [schedule,  setSchedule]  = useState<ScheduleItem[]>([])
+  const [plans, setPlans] = useState<MaintenancePlan[]>([])
   const [loading,   setLoading]   = useState(true)
   const [view, setView]           = useState<"gantt"|"table">("gantt")
   const [filter, setFilter]       = useState<Status|"all">("all")
@@ -919,12 +925,20 @@ export default function MaintenancePage() {
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [settingsError, setSettingsError] = useState<string | null>(null)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
+  const [plansError, setPlansError] = useState<string | null>(null)
+  const [planUpdateError, setPlanUpdateError] = useState<string | null>(null)
+  const [updatingPlanId, setUpdatingPlanId] = useState<string | null>(null)
   const shownNotificationsRef = useRef<Set<string>>(new Set())
+  const scheduleRequestIdRef = useRef(0)
+  const plansRequestIdRef = useRef(0)
   
   // Дополнительные фильтры
   const [filterType, setFilterType] = useState<string>("all") // Тип ТО
   const [filterUnit, setFilterUnit] = useState<string>("") // Поиск по названию
+  const [filterUrgency, setFilterUrgency] = useState<"all" | "high" | "medium" | "low">("all")
+  const [filterAssetId, setFilterAssetId] = useState("")
   const [showFilters, setShowFilters] = useState(false)
+  const canUpdatePlans = user?.role === "admin" || user?.role === "operator"
 
   // showToast = true — показать всплывающее уведомление, false — только в колокольчик
   const addNotification = useCallback((n: Omit<ToastNotification, "id" | "timestamp" | "read">, uniqueKey?: string, showToast: boolean = false) => {
@@ -978,6 +992,7 @@ export default function MaintenancePage() {
 
   // Загрузка графика с сервера (даты считаются на сервере)
   const fetchSchedule = useCallback(async (monthOffsetParam?: number) => {
+    const requestId = ++scheduleRequestIdRef.current
     setLoading(true)
     try {
       const offset = monthOffsetParam ?? monthOffset
@@ -987,18 +1002,54 @@ export default function MaintenancePage() {
       const m = ((totalMonth % 12) + 12) % 12 + 1
       const queryMonth = `${y}-${String(m).padStart(2, "0")}`
 
-      const response = await api.maintenanceSchedule.get({ month: queryMonth });
+      const response = await api.maintenanceSchedule.get({ month: queryMonth })
+      if (requestId !== scheduleRequestIdRef.current) return
       setSchedule(response.schedule)
       setScheduleError(null)
     } catch (e) {
+      if (requestId !== scheduleRequestIdRef.current) return
       setSchedule([])
-      setScheduleError(e instanceof Error ? e.message : "Не удалось загрузить график ТО")
+      setScheduleError(e instanceof Error ? e.message : t("Не удалось загрузить график ТО"))
     } finally {
-      setLoading(false)
+      if (requestId === scheduleRequestIdRef.current) setLoading(false)
     }
-  }, [monthOffset])
+  }, [monthOffset, t])
 
   useEffect(() => { fetchSchedule(monthOffset) }, [fetchSchedule, monthOffset])
+
+  const fetchPlans = useCallback(async () => {
+    const requestId = ++plansRequestIdRef.current
+    const now = new Date()
+    const totalMonth = now.getMonth() + monthOffset
+    const year = now.getFullYear() + Math.floor(totalMonth / 12)
+    const month = `${year}-${String(((totalMonth % 12) + 12) % 12 + 1).padStart(2, "0")}`
+    const params: Parameters<typeof api.maintenancePlans.list>[0] = {
+      limit: 1000,
+      offset: 0,
+    }
+    if (filterAssetId) params.asset_id = filterAssetId
+    if (filter !== "overdue") params.month = month
+    if (filter === "in_progress" || filter === "completed") {
+      params.status = filter
+    } else if (filter === "upcoming" || filter === "overdue") {
+      params.status = "scheduled"
+    }
+    if (filterUrgency !== "all") params.urgency = filterUrgency
+
+    setPlansError(null)
+    try {
+      const response = await api.maintenancePlans.list(params)
+      if (requestId === plansRequestIdRef.current) setPlans(response.items)
+    } catch (cause) {
+      if (requestId !== plansRequestIdRef.current) return
+      setPlans([])
+      setPlansError(
+        cause instanceof Error ? cause.message : t("Не удалось загрузить планы ТО")
+      )
+    }
+  }, [filter, filterAssetId, filterUrgency, monthOffset, t])
+
+  useEffect(() => { void fetchPlans() }, [fetchPlans])
 
   useEffect(() => {
     let active = true
@@ -1027,7 +1078,7 @@ export default function MaintenancePage() {
           setSettingsError(
             cause instanceof Error
               ? cause.message
-              : "Не удалось загрузить настройки ТО"
+              : t("Не удалось загрузить настройки ТО")
           )
         }
       } finally {
@@ -1038,15 +1089,34 @@ export default function MaintenancePage() {
     return () => {
       active = false
     }
-  }, [])
+  }, [t])
 
   const canConfigureMaintenance =
     hasPermission("maintenance_settings.update") || hasPermission("maintenance.update")
 
+  const updatePlanStatus = async (
+    item: ScheduleItem,
+    status: MaintenancePlan["status"]
+  ) => {
+    if (!canUpdatePlans || !item.plan_id) return
+    setUpdatingPlanId(item.plan_id)
+    setPlanUpdateError(null)
+    try {
+      await api.maintenancePlans.update(item.plan_id, { status })
+      await Promise.all([fetchSchedule(monthOffset), fetchPlans()])
+    } catch (cause) {
+      setPlanUpdateError(
+        cause instanceof Error ? cause.message : t("Не удалось обновить статус плана ТО")
+      )
+    } finally {
+      setUpdatingPlanId(null)
+    }
+  }
+
   const saveDailyAverageKm = async () => {
     const value = Number(dailyAverageKm)
     if (!Number.isFinite(value) || value <= 0) {
-      setSettingsError("Введите положительный средний пробег в км за день")
+      setSettingsError(t("Введите положительный средний пробег в км за день"))
       return
     }
     setSettingsSaving(true)
@@ -1057,7 +1127,7 @@ export default function MaintenancePage() {
       await fetchSchedule(monthOffset)
     } catch (cause) {
       setSettingsError(
-        cause instanceof Error ? cause.message : "Не удалось сохранить настройку"
+        cause instanceof Error ? cause.message : t("Не удалось сохранить настройку")
       )
     } finally {
       setSettingsSaving(false)
@@ -1070,9 +1140,7 @@ export default function MaintenancePage() {
   const rangeEnd    = new Date(now.getFullYear(), now.getMonth() + monthOffset + 1, 0)
   const rangeDays   = diffDays(rangeStart, rangeEnd) + 1
 
-  const monthNames  = ["Январь","Февраль","Март","Апрель","Май","Июнь",
-                       "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"]
-  const monthLabel  = monthNames[rangeStart.getMonth()] + " " + rangeStart.getFullYear()
+  const monthLabel  = new Intl.DateTimeFormat(locale, { month: "long", year: "numeric" }).format(rangeStart)
 
   // График приходит с сервера с уже рассчитанными датами
   const allSchedule = schedule
@@ -1081,6 +1149,9 @@ export default function MaintenancePage() {
 
   // Уникальные типы ТО для фильтра
   const uniqueTypes = [...new Set(allSchedule.map(s => s.type))].sort()
+  const assetOptions = [
+    ...new Map(allSchedule.map((item) => [item.asset_id, item.unit] as const)).entries(),
+  ]
   
   // Фильтрация — показываем элементы, пересекающиеся с диапазоном
   const visible = allSchedule.filter(item => {
@@ -1092,6 +1163,8 @@ export default function MaintenancePage() {
       
       // Фильтр по статусу
       const statusMatch = filter === "all" || item.status === filter
+      const urgencyMatch = filterUrgency === "all" || item.urgency === filterUrgency
+      const assetMatch = !filterAssetId || item.asset_id === filterAssetId
       
       // Фильтр по типу ТО
       const typeMatch = filterType === "all" || item.type === filterType
@@ -1099,7 +1172,7 @@ export default function MaintenancePage() {
       // Фильтр по названию оборудования (поиск)
       const unitMatch = !filterUnit || item.unit.toLowerCase().includes(filterUnit.toLowerCase())
       
-      return inRange && statusMatch && typeMatch && unitMatch
+      return inRange && statusMatch && urgencyMatch && assetMatch && typeMatch && unitMatch
     } catch { return false }
   })
 
@@ -1114,7 +1187,7 @@ export default function MaintenancePage() {
   if (loading) return (
     <div className="flex items-center justify-center h-96 text-gray-400 text-sm gap-3">
       <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/>
-      Загрузка графика...
+      {t("Загрузка графика...")}
     </div>
   )
 
@@ -1137,9 +1210,9 @@ export default function MaintenancePage() {
       {/* Заголовок */}
       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">ТО и ремонты</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t("ТО и ремонты")}</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            График ТО и ремонтов
+            {t("График ТО и ремонтов")}
           </p>
         </div>
         <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:justify-end">
@@ -1157,13 +1230,13 @@ export default function MaintenancePage() {
               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 view==="gantt" ? "bg-white dark:bg-gray-900 text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
               }`}>
-              <BarChart3 className="w-4 h-4"/> Диаграмма Ганта
+              <BarChart3 className="w-4 h-4"/> {t("Диаграмма Ганта")}
             </button>
             <button onClick={() => setView("table")}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 view==="table" ? "bg-white dark:bg-gray-900 text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
               }`}>
-              <List className="w-4 h-4"/> Список
+              <List className="w-4 h-4"/> {t("Список")}
             </button>
           </div>
         </div>
@@ -1172,15 +1245,15 @@ export default function MaintenancePage() {
       <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Расчётная средняя суточная наработка</h2>
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">{t("Расчётная средняя суточная наработка")}</h2>
             <p className="mt-1 text-xs text-gray-500">
-              Значение используется для прогноза дат ТО по пробегу. Настраивают администратор, оператор или инженер.
+              {t("Значение используется для прогноза дат ТО по пробегу. Настраивают администратор, оператор или инженер.")}
             </p>
           </div>
           {canConfigureMaintenance ? (
             <div className="flex w-full gap-2 md:max-w-sm">
               <label className="flex-1 text-xs text-gray-500">
-                км в день
+                {t("км в день")}
                 <input
                   type="number"
                   min="0.01"
@@ -1197,26 +1270,36 @@ export default function MaintenancePage() {
                 disabled={settingsLoading || settingsSaving}
                 className="self-end rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
-                {settingsSaving ? "Сохранение..." : "Сохранить"}
+                {settingsSaving ? t("Сохранение...") : t("Сохранить")}
               </button>
             </div>
           ) : (
             <p className="text-sm text-gray-700 dark:text-gray-300">
-              {dailyAverageKm ? `${dailyAverageKm} км/день` : "Значение ещё не настроено"}
+              {dailyAverageKm ? `${dailyAverageKm} ${t("км в день")}` : t("Значение ещё не настроено")}
             </p>
           )}
         </div>
         {settingsError && <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">{settingsError}</p>}
         {!settingsLoading && !dailyAverageKm && (
           <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">
-            Суточный пробег не настроен: календарные прогнозы по километровым интервалам не рассчитываются.
+            {t("Суточный пробег не настроен: календарные прогнозы по километровым интервалам не рассчитываются.")}
           </p>
         )}
       </section>
 
       {scheduleError && (
         <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          Не удалось загрузить график: {scheduleError}
+          {t("Не удалось загрузить график:")} {scheduleError}
+        </p>
+      )}
+      {plansError && (
+        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+          {t("Не удалось загрузить планы ТО")}: {plansError}
+        </p>
+      )}
+      {planUpdateError && (
+        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+          {t("Не удалось обновить статус плана ТО")}: {planUpdateError}
         </p>
       )}
 
@@ -1229,16 +1312,16 @@ export default function MaintenancePage() {
         >
           <div className="flex items-center gap-3">
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-              (filterType !== "all" || filterUnit || filter !== "all")
+              (filterType !== "all" || filterUnit || filter !== "all" || filterUrgency !== "all" || filterAssetId)
                 ? "bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400"
                 : "bg-gray-100 dark:bg-gray-800 text-gray-500"
             }`}>
               <Filter className="w-4 h-4" />
             </div>
-            <span className="text-sm font-semibold text-gray-900 dark:text-white">Фильтры</span>
-            {(filterType !== "all" || filterUnit || filter !== "all") && (
+            <span className="text-sm font-semibold text-gray-900 dark:text-white">{t("Фильтры")}</span>
+            {(filterType !== "all" || filterUnit || filter !== "all" || filterUrgency !== "all" || filterAssetId) && (
               <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                Активны
+                {t("Активны")}
               </span>
             )}
           </div>
@@ -1248,12 +1331,12 @@ export default function MaintenancePage() {
         {/* Раскрывающаяся панель фильтров */}
         {showFilters && (
           <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-800">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 pt-4">
               
               {/* Поиск по названию */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wider">
-                  Поиск оборудования
+                  {t("Поиск оборудования")}
                 </label>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -1261,7 +1344,7 @@ export default function MaintenancePage() {
                     type="text"
                     value={filterUnit}
                     onChange={(e) => setFilterUnit(e.target.value)}
-                    placeholder="Введите номер..."
+                    placeholder={t("Введите номер...")}
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
@@ -1270,14 +1353,14 @@ export default function MaintenancePage() {
               {/* Фильтр по типу ТО */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wider">
-                  Тип ТО
+                  {t("Тип ТО")}
                 </label>
                 <select
                   value={filterType}
                   onChange={(e) => setFilterType(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none cursor-pointer"
                 >
-                  <option value="all">Все типы</option>
+                  <option value="all">{t("Все типы")}</option>
                   {uniqueTypes.map(type => (
                     <option key={type} value={type}>{type}</option>
                   ))}
@@ -1287,18 +1370,50 @@ export default function MaintenancePage() {
               {/* Фильтр по статусу */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wider">
-                  Статус
+                  {t("Статус")}
                 </label>
                 <select
                   value={filter}
                   onChange={(e) => setFilter(e.target.value as Status | "all")}
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none cursor-pointer"
                 >
-                  <option value="all">Все статусы</option>
-                  <option value="overdue">🔴 Просрочено ({counts.overdue})</option>
-                  <option value="in_progress">🟡 Выполняется ({counts.in_progress})</option>
-                  <option value="upcoming">⚪ Запланировано ({counts.upcoming})</option>
-                  <option value="completed">🟢 Выполнено ({counts.completed})</option>
+                  <option value="all">{t("Все статусы")}</option>
+                  <option value="overdue">🔴 {t("Просрочено")} ({counts.overdue})</option>
+                  <option value="in_progress">🟡 {t("Выполняется")} ({counts.in_progress})</option>
+                  <option value="upcoming">⚪ {t("Запланировано")} ({counts.upcoming})</option>
+                  <option value="completed">🟢 {t("Выполнено")} ({counts.completed})</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wider">
+                  {t("Уровень срочности")}
+                </label>
+                <select
+                  value={filterUrgency}
+                  onChange={(event) => setFilterUrgency(event.target.value as typeof filterUrgency)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-900 dark:text-white"
+                >
+                  <option value="all">{t("Все уровни срочности")}</option>
+                  <option value="high">{t("Высокая")}</option>
+                  <option value="medium">{t("Средняя")}</option>
+                  <option value="low">{t("Низкая")}</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wider">
+                  {t("Оборудование")}
+                </label>
+                <select
+                  value={filterAssetId}
+                  onChange={(event) => setFilterAssetId(event.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-900 dark:text-white"
+                >
+                  <option value="">{t("Все единицы")}</option>
+                  {assetOptions.map(([assetId, unit]) => (
+                    <option key={assetId} value={assetId}>{unit}</option>
+                  ))}
                 </select>
               </div>
 
@@ -1309,12 +1424,14 @@ export default function MaintenancePage() {
                     setFilterType("all")
                     setFilterUnit("")
                     setFilter("all")
+                    setFilterUrgency("all")
+                    setFilterAssetId("")
                   }}
-                  disabled={filterType === "all" && !filterUnit && filter === "all"}
+                  disabled={filterType === "all" && !filterUnit && filter === "all" && filterUrgency === "all" && !filterAssetId}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   <RotateCcw className="w-4 h-4" />
-                  Сбросить
+                  {t("Сбросить")}
                 </button>
               </div>
             </div>
@@ -1322,7 +1439,7 @@ export default function MaintenancePage() {
             {/* Быстрые фильтры по типу ТО */}
             <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold text-gray-400 mr-2">Быстрый выбор:</span>
+                <span className="text-xs font-semibold text-gray-400 mr-2">{t("Быстрый выбор:")}</span>
                 <button
                   onClick={() => setFilterType("all")}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
@@ -1331,7 +1448,7 @@ export default function MaintenancePage() {
                       : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
                   }`}
                 >
-                  Все
+                  {t("Все")}
                 </button>
                 {uniqueTypes.map(type => {
                   const cfg = typeConfig[type] ?? typeConfig["ВНП"]
@@ -1360,12 +1477,12 @@ export default function MaintenancePage() {
             {/* Результаты фильтрации */}
             <div className="mt-4 flex items-center justify-between text-sm">
               <span className="text-gray-500 dark:text-gray-400">
-                Найдено: <span className="font-bold text-gray-900 dark:text-white">{visible.length}</span> из {allSchedule.length}
+                {t("Найдено:")} <span className="font-bold text-gray-900 dark:text-white">{visible.length}</span> {t("из")} {allSchedule.length}
               </span>
-              {visible.length === 0 && (filterType !== "all" || filterUnit || filter !== "all") && (
+              {visible.length === 0 && (filterType !== "all" || filterUnit || filter !== "all" || filterUrgency !== "all" || filterAssetId) && (
                 <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">
                   <AlertTriangle className="w-4 h-4" />
-                  Нет результатов по заданным фильтрам
+                  {t("Нет результатов по заданным фильтрам")}
                 </span>
               )}
             </div>
@@ -1392,12 +1509,12 @@ export default function MaintenancePage() {
                 </div>
                 <span className="text-2xl font-bold text-gray-900 dark:text-white">{count}</span>
               </div>
-              <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">{cfg.label}</p>
+              <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">              {t(cfg.label)}</p>
               <div className="mt-2 h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
                 <div className={`h-full rounded-full transition-all ${cfg.cls.split(" ")[0].replace("bg-","bg-").replace("-100","-500").replace("-950","-500")}`}
                   style={{ width: `${pct}%` }}/>
               </div>
-              <p className="text-[10px] text-gray-400 mt-1">{pct}% от всех</p>
+              <p className="text-[10px] text-gray-400 mt-1">{pct}% {t("от всех")}</p>
             </button>
           )
         })}
@@ -1405,7 +1522,7 @@ export default function MaintenancePage() {
 
       {/* Легенда типов ремонта */}
       <div className="flex flex-wrap gap-2 items-center">
-        <span className="text-xs text-gray-400 mr-1">Виды работ:</span>
+        <span className="text-xs text-gray-400 mr-1">{t("Виды работ:")}</span>
         {Object.entries(typeConfig).map(([type, cfg]) => (
           <span key={type}
             className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${cfg.text} ${cfg.border} bg-white dark:bg-gray-900`}>
@@ -1432,7 +1549,7 @@ export default function MaintenancePage() {
               </button>
               <button onClick={() => setMonthOffset(0)}
                 className="px-3 py-1 text-xs font-medium rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 hover:bg-blue-200 transition-colors">
-                Сегодня
+                {t("Сегодня")}
               </button>
               <button onClick={() => setMonthOffset(o => o+1)}
                 className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
@@ -1445,8 +1562,16 @@ export default function MaintenancePage() {
             {visible.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400">
                 <Calendar className="w-12 h-12 opacity-20 mb-3"/>
-                <p className="text-sm font-medium">Нет работ в этом периоде</p>
-                <p className="text-xs mt-1">Измените фильтр или перейдите к другому месяцу</p>
+                {scheduleError ? (
+                  <button type="button" onClick={() => void fetchSchedule(monthOffset)} className="text-sm text-blue-600 underline">
+                    {t("Повторить")}
+                  </button>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium">{t("Нет работ в этом периоде")}</p>
+                    <p className="text-xs mt-1">{t("Измените фильтр или перейдите к другому месяцу")}</p>
+                  </>
+                )}
               </div>
             ) : (
               <GanttChart items={visible} rangeStart={rangeStart} rangeDays={rangeDays} onCreateOrder={handleCreateOrder}/>
@@ -1460,20 +1585,29 @@ export default function MaintenancePage() {
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex items-center gap-3">
             <List className="w-4 h-4 text-blue-500"/>
-            <h2 className="text-sm font-bold text-gray-900 dark:text-white">Список работ</h2>
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white">{t("Список работ")}</h2>
             <span className="text-xs text-gray-400">· {visible.length} позиций</span>
           </div>
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200 dark:border-gray-800">
                 {["Ед.ТПС","Пробег","Вид ТО","До ТО","Дата","Статус","Источник","Действие"].map(h => (
-                  <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                  <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{t(h)}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {visible.length === 0 && (
-                <tr><td colSpan={8} className="px-5 py-10 text-center text-sm text-gray-400">Нет данных</td></tr>
+              {visible.length === 0 && !scheduleError && (
+                <tr><td colSpan={8} className="px-5 py-10 text-center text-sm text-gray-400">{t("Нет данных")}</td></tr>
+              )}
+              {visible.length === 0 && scheduleError && (
+                <tr>
+                  <td colSpan={8} className="px-5 py-10 text-center text-sm text-gray-400">
+                    <button type="button" onClick={() => void fetchSchedule(monthOffset)} className="text-blue-600 underline">
+                      {t("Повторить")}
+                    </button>
+                  </td>
+                </tr>
               )}
               {visible.map(item => {
                 const st  = statusConfig[item.status]
@@ -1527,7 +1661,7 @@ export default function MaintenancePage() {
                     <td className="px-5 py-3">
                       <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${st.cls}`}>
                         <st.icon className="w-3 h-3"/>
-                        {st.label}
+                        {t(st.label)}
                       </span>
                     </td>
                     <td className="px-5 py-3">
@@ -1541,6 +1675,27 @@ export default function MaintenancePage() {
                       )}
                     </td>
                     <td className="px-5 py-3">
+                      {canUpdatePlans && item.entity_type === "maintenance_plan" && item.plan_id && (
+                        <label className="sr-only" htmlFor={`plan-status-${item.plan_id}`}>{t("Статус плана")}</label>
+                      )}
+                      {canUpdatePlans && item.entity_type === "maintenance_plan" && item.plan_id && (
+                        <select
+                          id={`plan-status-${item.plan_id}`}
+                          aria-label={t("Статус плана")}
+                          value={
+                            plans.find((plan) => plan.id === item.plan_id)?.status ??
+                            (item.status === "upcoming" || item.status === "overdue" ? "scheduled" : item.status)
+                          }
+                          disabled={updatingPlanId === item.plan_id}
+                          onChange={(event) => void updatePlanStatus(item, event.target.value as MaintenancePlan["status"])}
+                          className="mb-2 w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800"
+                        >
+                          <option value="scheduled">{t("Запланировано")}</option>
+                          <option value="in_progress">{t("Выполняется")}</option>
+                          <option value="completed">{t("Выполнено")}</option>
+                          <option value="cancelled">{t("Отменено")}</option>
+                        </select>
+                      )}
                       {item.entity_type !== "work_order" && <button
                         onClick={() => handleCreateOrder(item)}
                         className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors whitespace-nowrap border ${
@@ -1549,7 +1704,7 @@ export default function MaintenancePage() {
                             : "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-950 border-blue-200 dark:border-blue-800"
                         }`}>
                         <Plus className="w-3 h-3"/> 
-                        Наряд
+                        {t("Наряд")}
                       </button>}
                     </td>
                   </tr>
@@ -1564,11 +1719,11 @@ export default function MaintenancePage() {
       <div className="flex items-start gap-2 text-xs text-gray-400 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl px-4 py-3 border border-emerald-200 dark:border-emerald-700">
         <Gauge className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-emerald-500"/>
         <span>
-          <strong className="text-emerald-700 dark:text-emerald-400">График ТО:</strong>{" "}
-          Данные о пробеге поступают в реальном времени. При приближении к порогу ТО система автоматически показывает уведомление.
-          Нажмите «Открыть наряд» чтобы создать наряд-задание на основе пробега.
+          <strong className="text-emerald-700 dark:text-emerald-400">{t("График ТО:")}</strong>{" "}
+          {t("Данные о пробеге поступают в реальном времени. При приближении к порогу ТО система автоматически показывает уведомление.")}
+          {t("Нажмите «Открыть наряд» чтобы создать наряд-задание на основе пробега.")}{" "}
           <a href="/dashboard/directories/maintenance-intervals" className="ml-1 text-emerald-600 hover:underline">
-            Настроить интервалы ТО →
+            {t("Настроить интервалы ТО →")}
           </a>
         </span>
       </div>

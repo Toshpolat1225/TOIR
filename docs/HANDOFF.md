@@ -646,3 +646,19 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Run the command against the approved database after reviewing interval configuration; inspect the printed counts and logs.
+
+## Maintenance dashboard FastAPI migration follow-up (2026-11-02)
+
+### Verified
+
+- The maintenance page already used the centralized FastAPI client and contained no Supabase imports or calls. It now also queries paginated maintenance plans with month/status/asset/urgency filters and exposes status updates only to admin/operator roles.
+- Schedule month changes continue to request the schedule endpoint. Loading, error, retry, and empty states are present; key dashboard strings use the existing Uzbek Latin, Uzbek Cyrillic, and Russian locale provider.
+- Backend `MaintenancePlanRead`, `MaintenanceScheduleRead`, update schema, and router signatures were inspected as the API contract. `lib/api.ts` uses the shared request layer, which handles auth tokens, refresh, locale header, and API errors.
+- Frontend tests matching test/spec file patterns were not found.
+- Lint and TypeScript checks could not execute: PowerShell blocked npm scripts; `npm.cmd run lint` found no ESLint executable, and no local TypeScript compiler was available. No dependency was installed into the project.
+- Follow-up TS fix: added `MaintenanceScheduleItem.urgency` to the frontend API type after confirming the backend schema defines `MaintenanceUrgency | None`. `asset_id`, `plan_id`, and the other fields used by the page are also present in that backend schema.
+- The follow-up TypeScript fix was not run through lint/tsc because terminal execution was prohibited for that task.
+
+### Next task
+
+- Run frontend lint and `tsc --noEmit` when permitted and the repository's frontend dependencies are available; then verify the Gantt, filters, and role-gated status update in the browser.

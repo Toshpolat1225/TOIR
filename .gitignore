@@ -38,3 +38,5 @@ backend/.venv/
 *.dump
 
 wialon_import_assets_*.csv
+
+docker-compose.override.yml

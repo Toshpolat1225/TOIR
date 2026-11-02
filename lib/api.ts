@@ -864,6 +864,7 @@ export type MaintenanceScheduleItem = {
   depot: string;
   tech: string;
   status: "upcoming" | "in_progress" | "completed" | "overdue";
+  urgency: "high" | "medium" | "low" | null;
   note: string | null;
   mileage: number | string | null;
   remainingKm: number | string | null;
@@ -895,6 +896,7 @@ export type MaintenancePlan = {
   interval_code: string;
   interval_name: string;
   work_type_id: string | null;
+  urgency: "high" | "medium" | "low" | null;
   status: "scheduled" | "in_progress" | "completed" | "cancelled";
   trigger_mileage: number | string | null;
   scheduled_date: string | null;
@@ -920,6 +922,7 @@ const maintenancePlans = {
       month?: string;
       asset_id?: string;
       status?: MaintenancePlan["status"];
+      urgency?: NonNullable<MaintenancePlan["urgency"]>;
     } = {}
   ): Promise<Paginated<MaintenancePlan>> {
     return request<Paginated<MaintenancePlan>>({

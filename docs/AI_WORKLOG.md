@@ -121,3 +121,13 @@ Changed: backend/app/cli.py, maintenance repository/service, maintenance tests, 
 PASS: backend/.venv Python 3.12 pytest for recalculation and maintenance suites: 25 passed.
 NOT RUN: PostgreSQL/CLI DB execution, Docker, or server; no `.env` access or commit.
 Next: inspect results/logs when run against the approved database.
+2026-11-02 | Copilot SDK | Connected maintenance dashboard filters and plan status changes to FastAPI; localized key page text.
+Changed: app/dashboard/maintenance/page.tsx, lib/api.ts, lib/i18n.tsx, docs/HANDOFF.md, docs/AI_WORKLOG.md.
+Attempted: npm run lint and npx tsc --noEmit; PowerShell blocked scripts; npm.cmd lacked ESLint and local TypeScript was unavailable.
+NOT TESTED: frontend lint/typecheck, browser, API runtime; no frontend test files found; no `.env` access or commit.
+Next: rerun lint/tsc with existing frontend dependencies available; verify dashboard in browser.
+2026-11-02 | Copilot SDK | Fixed maintenance schedule TypeScript contract.
+Changed: lib/api.ts adds nullable urgency matching backend MaintenanceScheduleItem; HANDOFF updated.
+Verified by schema inspection: urgency, asset_id, plan_id, interval_id and work_type_id are defined in backend schema.
+NOT TESTED: lint/tsc/build (terminal prohibited); backend, `.env`, and commit untouched.
+Next: rerun `tsc --noEmit` when terminal use is permitted.
