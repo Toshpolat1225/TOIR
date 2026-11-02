@@ -20,6 +20,8 @@ from app.schemas.assets import (
 from app.schemas.asset_catalogs import AssetBehavior
 from app.schemas.common import PaginatedResponse
 from app.services import assets as service
+from app.services import unified_assets as unified_service
+from app.schemas.wialon import UnifiedAssetRead
 
 router = APIRouter(prefix="/fixed-assets", tags=["fixed assets"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
@@ -86,6 +88,43 @@ async def get_fixed_assets(
         sort_order=sort_order,
     )
     return PaginatedResponse[FixedAssetRead](
+        items=items, total=total, limit=limit, offset=offset
+    )
+
+
+@router.get(
+    "/unified",
+    response_model=PaginatedResponse[UnifiedAssetRead],
+)
+async def get_unified_fixed_assets(
+    user: AuthenticatedUser,
+    db: DatabaseSession,
+    source: Literal["toir", "wialon", "both"] | None = None,
+    asset_type: AssetType | None = None,
+    status_filter: Annotated[
+        AssetStatus | None, Query(alias="status")
+    ] = None,
+    section_id: UUID | None = None,
+    q: str | None = Query(default=None, max_length=200),
+    limit: int = Query(default=50, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    sort_by: str = "name",
+    sort_order: SortOrder = "asc",
+) -> PaginatedResponse[UnifiedAssetRead]:
+    items, total = await unified_service.list_unified_assets(
+        db,
+        source=source,
+        asset_type=asset_type,
+        asset_status=status_filter,
+        section_id=section_id,
+        master_section_id=_master_section(user),
+        q=q,
+        limit=limit,
+        offset=offset,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+    return PaginatedResponse[UnifiedAssetRead](
         items=items, total=total, limit=limit, offset=offset
     )
 

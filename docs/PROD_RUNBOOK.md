@@ -7,6 +7,7 @@ Hamma buyruqni O'ZINGIZ prod serverda bajarasiz. Har bosqichdan keyin natijani t
 1. **Audit (o'qish)**: `psql <DB_URL> -f prod/00_audit_readonly.sql > audit_before.txt`
    - dublikat `wialon_id` bo'lmasligi kerak; `mileage > 1 000 000` ro'yxatini saqlang.
 2. **Migratsiya**: `psql <DB_URL> -v ON_ERROR_STOP=1 -f prod/001_wialon_counters.sql`  (faqat 2 ta yangi jadval)
+   - Ushbu eski qadam counter jadvallarining dastlabki o'rnatishiga tegishli. Yangi kod uchun `0012_wialon_units` Alembic migratsiyasi ham talab qilinadi; deploydan oldin amaldagi revisionni tekshirib, tasdiqlangan release migratsiya tartibi bilan `0012_wialon_units` ni qo'llang. Bu qadam uchun `postgres/schema.sql` yoki eski raw SQL faylini tahrirlamang.
 3. **Kod**: fayllarni `backend/` ichiga qo'ying (README.txt), yangi modelni `Base.metadata` import ro'yxatiga qo'shing,
    backendni qayta ishga tushiring. Sinxronlash hali O'CHIQ.
 4. **Bootstrap DRY-RUN** (yozmaydi): `cd backend && python scripts/wialon_bootstrap.py`

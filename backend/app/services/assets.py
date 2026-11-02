@@ -1,5 +1,4 @@
 import logging
-import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
@@ -12,6 +11,8 @@ from app.models.assets import FixedAsset
 from app.repositories import assets as repository
 from app.repositories import references as references_repository
 from app.repositories import maintenance as maintenance_repository
+from app.repositories import wialon_counters as wialon_counters_repository
+from app.repositories import wialon_units as wialon_units_repository
 from app.services import maintenance as maintenance_service
 from app.schemas.assets import (
     AssetStatus,
@@ -174,6 +175,9 @@ async def update_fixed_asset(
 ):
     asset = await _get_scoped_asset(db, asset_id, master_section_id)
     changes = payload.model_dump(exclude_unset=True)
+    wialon_id_changed = (
+        "wialon_id" in changes and changes["wialon_id"] != asset.wialon_id
+    )
     if "asset_type" in changes and not await repository.active_catalog_value_exists(db, kind="types", code=changes["asset_type"]):
         raise HTTPException(status_code=422, detail="Asset type is unavailable")
     if "status" in changes and not await repository.active_catalog_value_exists(db, kind="statuses", code=changes["status"]):
@@ -189,6 +193,23 @@ async def update_fixed_asset(
     for field_name, value in changes.items():
         setattr(asset, field_name, value)
     asset.updated_at = datetime.now(timezone.utc)
+    if wialon_id_changed:
+        linked_unit = (
+            await wialon_units_repository.get_unit_record(db, asset.wialon_id)
+            if asset.wialon_id is not None
+            else None
+        )
+        await wialon_counters_repository.rebaseline(
+            db,
+            asset.id,
+            cnm=linked_unit.cnm if linked_unit is not None else None,
+            cneh=linked_unit.cneh if linked_unit is not None else None,
+            at=(
+                linked_unit.last_message_at
+                if linked_unit is not None and linked_unit.last_message_at is not None
+                else asset.updated_at
+            ),
+        )
     if mileage is not None:
         await _save_mileage_change(db, asset, mileage, "manual")
     await _commit(
@@ -246,36 +267,13 @@ async def get_mileage_history(
     )
 
 
-def _extract_number(value: str | None) -> set[int]:
-    if not value:
-        return set()
-    return {int(match) for match in re.findall(r"(?<!\d)\d{2,4}(?!\d)", value)}
-
-
 async def find_wialon_asset(
     db: AsyncSession, *, unit_id: str | None, unit_name: str | None
 ) -> FixedAsset | None:
-    if unit_id:
-        by_id = await repository.find_asset_by_wialon_id(db, unit_id.strip())
-        if by_id is not None:
-            return by_id
-
-    name = unit_name.strip() if unit_name else ""
-    if name:
-        by_name = await repository.find_assets_by_name(db, name)
-        if len(by_name) == 1:
-            return by_name[0]
-
-    numbers = _extract_number(name)
-    if not numbers:
+    """Resolve only explicit Wialon links; names are for suggestions, not writes."""
+    if not unit_id or not unit_id.strip():
         return None
-    candidates = await repository.list_wialon_assets(db)
-    matches = [
-        asset
-        for asset in candidates
-        if _extract_number(asset.name).intersection(numbers)
-    ]
-    return matches[0] if len(matches) == 1 else None
+    return await repository.find_asset_by_wialon_id(db, unit_id.strip())
 
 
 async def receive_wialon_update(

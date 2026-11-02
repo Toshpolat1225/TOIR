@@ -676,3 +676,20 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Ensure the updated frontend source is on the production host, rebuild/recreate only the TOIR `frontend` service, hard-refresh the browser, then verify the old log is gone and an event burst does not flicker. Rerun lint and `tsc --noEmit` when dependencies are available.
+
+## Wialon unit separation and unified asset view (2026-11-02)
+
+### Verified
+
+- Added `wialon_units` ORM model and Alembic `0012_wialon_units` after revision `0011`; the new table has no fixed-asset foreign key. Its model and migration include the same columns and indexes.
+- Wialon pull now upserts every fetched unit as one batch and commits that snapshot batch before the existing per-asset gate/update flow. Unit API online status is computed from `last_message_at` using the existing 15-minute window.
+- Added authenticated paginated Wialon unit list/detail/suggestions APIs and admin/operator-only asset creation. Creation validates the three existing asset types, writes the unit link, counter baseline, and mileage history in one transaction, and uses mileage zero with a warning for suspect counters.
+- Added a full outer join unified fixed-asset view. TOIR asset fields win for linked rows; master queries force their own section and exclude Wialon-only rows. Existing fixed-asset and stats routes remain based on `fixed_assets`.
+- `fixed_assets.wialon_id` was already nullable and unique in the ORM; PATCH already accepted null. A changed link now rebaselines the counter state. Wialon writes now resolve only exact `wialon_id`; fuzzy name/number matches remain suggestion-only.
+- Backend `.venv` Python 3.12.10 pytest: requested Wialon and maintenance tests passed (72 tests, 17 subtests).
+- Added `backend/scripts/e2e_wialon_units.py` for unit list/detail/suggestions, create/link/unlink, unified rows, and master isolation. Pylance found no syntax errors or diagnostics; the API script was not run.
+- No PostgreSQL migration, API end-to-end, Wialon service, Docker, browser, or server execution was performed.
+
+### Next task
+
+- Apply Alembic `0012_wialon_units` to a disposable PostgreSQL copy, run a test sync to populate `wialon_units`, then execute `backend/scripts/e2e_wialon_units.py` before production rollout.

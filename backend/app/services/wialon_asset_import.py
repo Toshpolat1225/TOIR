@@ -19,6 +19,7 @@ _DIESEL_SERIES = re.compile(
     r"^[тt][эe][мm]\s*\d+[a-zа-яё]*(?:\s+[a-zа-яё]+)?",
     re.IGNORECASE,
 )
+_ASSET_NUMBERS = re.compile(r"(?<!\d)\d{2,4}(?!\d)")
 
 
 def classify_asset_type(name: str | None) -> str | None:
@@ -43,3 +44,8 @@ def extract_asset_series(name: str | None) -> str | None:
     if match is None:
         return None
     return " ".join(match.group(0).split())
+
+
+def extract_asset_numbers(name: str | None) -> frozenset[int]:
+    """Extract unit/serial numbers used only to suggest possible asset links."""
+    return frozenset(int(value) for value in _ASSET_NUMBERS.findall(name or ""))

@@ -13,6 +13,7 @@ from app.core.database import SessionFactory
 from app.integrations.wialon_client import WialonClient, WialonClientError
 from app.repositories import wialon as repository
 from app.repositories import wialon_counters as counters_repo
+from app.repositories import wialon_units as units_repo
 from app.schemas.wialon import WialonSyncResult, WialonSyncStatus
 from app.services import assets as assets_service
 from app.services.wialon_quality import Reading, Verdict, evaluate
@@ -122,6 +123,8 @@ async def sync_wialon_assets(db: AsyncSession) -> WialonSyncResult:
                 token.get_secret_value(),
             )
             units = await client.fetch_units()
+            await units_repo.upsert_units(db, units, synced_at=synced_at)
+            await db.commit()
             updated_names: list[str] = []
             missing_names: list[str] = []
             gate_stats: Counter = Counter()

@@ -1,17 +1,33 @@
 import json
 import hmac
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import parse_qs
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.permissions import require_permission
+from app.models.identity import User
+from app.schemas.common import PaginatedResponse
+from app.schemas.wialon import (
+    WialonAssetSuggestions,
+    WialonCreateAssetRequest,
+    WialonCreateAssetResponse,
+    WialonUnitDetail,
+    WialonUnitRead,
+)
 from app.services import assets as service
+from app.services import wialon_units as units_service
 
 router = APIRouter(prefix="/wialon", tags=["wialon"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
+AuthenticatedUser = Annotated[User, Depends(require_permission("assets.view"))]
+WialonAssetCreator = Annotated[
+    User, Depends(require_permission("assets.create"))
+]
+SortOrder = Literal["asc", "desc"]
 MAX_INPUT_BYTES = 64 * 1024
 UNIT_KEYS = ("i", "unitId", "unit_id", "id", "uid", "unit")
 NAME_KEYS = ("nm", "name", "unit_name", "na")
@@ -25,6 +41,15 @@ MILEAGE_KEYS = (
     "run",
 )
 SPEED_KEYS = ("speed", "spd", "vel")
+
+
+def _master_section(user: User):
+    if user.role == "master" and user.section_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Master user must be assigned to a section",
+        )
+    return user.section_id if user.role == "master" else None
 
 
 def _unauthorized() -> HTTPException:
@@ -202,3 +227,87 @@ async def post_wialon_input(request: Request, db: DatabaseSession):
 @router.get("/input", dependencies=[Depends(require_ingest_token)])
 async def get_wialon_input(request: Request, db: DatabaseSession):
     return await _handle_input(request, db)
+
+
+@router.get(
+    "/units",
+    response_model=PaginatedResponse[WialonUnitRead],
+)
+async def get_wialon_units(
+    user: AuthenticatedUser,
+    db: DatabaseSession,
+    linked: bool | None = None,
+    q: str | None = Query(default=None, max_length=200),
+    online: bool | None = None,
+    suspect: bool | None = None,
+    stale: bool | None = None,
+    limit: int = Query(default=50, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    sort_by: str = "name",
+    sort_order: SortOrder = "asc",
+):
+    items, total = await units_service.list_wialon_units(
+        db,
+        linked=linked,
+        q=q,
+        online=online,
+        suspect=suspect,
+        stale=stale,
+        master_section_id=_master_section(user),
+        limit=limit,
+        offset=offset,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+    return PaginatedResponse[WialonUnitRead](
+        items=items, total=total, limit=limit, offset=offset
+    )
+
+
+@router.get(
+    "/units/{unit_id}/suggestions",
+    response_model=WialonAssetSuggestions,
+)
+async def get_wialon_unit_suggestions(
+    unit_id: str,
+    user: AuthenticatedUser,
+    db: DatabaseSession,
+) -> WialonAssetSuggestions:
+    return await units_service.suggest_wialon_asset_links(
+        db, unit_id, master_section_id=_master_section(user)
+    )
+
+
+@router.get(
+    "/units/{unit_id}",
+    response_model=WialonUnitDetail,
+)
+async def get_wialon_unit(
+    unit_id: str,
+    user: AuthenticatedUser,
+    db: DatabaseSession,
+) -> WialonUnitDetail:
+    return await units_service.get_wialon_unit(
+        db, unit_id, master_section_id=_master_section(user)
+    )
+
+
+@router.post(
+    "/units/{unit_id}/create-asset",
+    response_model=WialonCreateAssetResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def post_wialon_unit_create_asset(
+    unit_id: str,
+    payload: WialonCreateAssetRequest,
+    user: WialonAssetCreator,
+    db: DatabaseSession,
+) -> WialonCreateAssetResponse:
+    if user.role not in {"admin", "operator"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin or operator may create a fixed asset from Wialon",
+        )
+    return await units_service.create_asset_from_wialon_unit(
+        db, unit_id, payload
+    )

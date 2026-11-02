@@ -420,9 +420,14 @@ class WialonClientTests(unittest.IsolatedAsyncioTestCase):
                 "app.services.wialon.repository.save_sync_status",
                 new=AsyncMock(),
             ) as save_status,
+            patch(
+                "app.services.wialon.units_repo.upsert_units",
+                new=AsyncMock(),
+            ) as upsert_units,
         ):
             client_type.return_value.fetch_units = AsyncMock(return_value=units)
-            result = await wialon.sync_wialon_assets(object())
+            db = SimpleNamespace(commit=AsyncMock())
+            result = await wialon.sync_wialon_assets(db)
 
         self.assertEqual(result.found, 1)
         self.assertEqual(result.updated, 1)
@@ -431,6 +436,8 @@ class WialonClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(update_asset.await_args_list[0].kwargs["online"])
         self.assertFalse(update_asset.await_args_list[1].kwargs["online"])
         self.assertNotIn("test-token", save_status.await_args.kwargs["status"])
+        upsert_units.assert_awaited_once_with(db, units, synced_at=unittest.mock.ANY)
+        db.commit.assert_awaited_once()
 
     async def test_login_failure_is_sanitized_and_recorded(self):
         settings = SimpleNamespace(
@@ -518,60 +525,39 @@ class WialonAssetMappingTests(unittest.IsolatedAsyncioTestCase):
         by_id.assert_awaited_once()
         by_name.assert_not_awaited()
 
-    async def test_exact_name_and_unique_number_fallbacks(self):
+    async def test_name_and_number_never_create_an_implicit_asset_link(self):
         asset = SimpleNamespace(id="asset-id", name="ТЭМ 1234")
-        db = object()
         with (
             patch(
                 "app.services.assets.repository.find_asset_by_wialon_id",
                 new=AsyncMock(return_value=None),
-            ),
+            ) as by_id,
             patch(
                 "app.services.assets.repository.find_assets_by_name",
-                new=AsyncMock(return_value=[asset]),
-            ),
-        ):
-            self.assertIs(
-                await assets.find_wialon_asset(
-                    db, unit_id="unknown", unit_name="ТЭМ 1234"
-                ),
-                asset,
-            )
-
-        with (
-            patch(
-                "app.services.assets.repository.find_assets_by_name",
-                new=AsyncMock(return_value=[]),
-            ),
+                new=AsyncMock(),
+            ) as by_name,
             patch(
                 "app.services.assets.repository.list_wialon_assets",
-                new=AsyncMock(return_value=[asset]),
-            ),
-        ):
-            self.assertIs(
-                await assets.find_wialon_asset(
-                    db, unit_id=None, unit_name="Remote locomotive 1234"
-                ),
-                asset,
-            )
-
-    async def test_ambiguous_number_fallback_is_not_matched(self):
-        first = SimpleNamespace(id="one", name="ТЭМ 1234")
-        second = SimpleNamespace(id="two", name="ТЭМ 1234A")
-        with (
-            patch(
-                "app.services.assets.repository.find_assets_by_name",
-                new=AsyncMock(return_value=[]),
-            ),
-            patch(
-                "app.services.assets.repository.list_wialon_assets",
-                new=AsyncMock(return_value=[first, second]),
-            ),
-        ):
+                new=AsyncMock(),
+            ) as by_number,
+            ):
             result = await assets.find_wialon_asset(
-                object(), unit_id=None, unit_name="Remote 1234"
+                object(), unit_id=None, unit_name=asset.name
             )
         self.assertIsNone(result)
+        by_id.assert_not_awaited()
+        by_name.assert_not_awaited()
+        by_number.assert_not_awaited()
+
+        with patch(
+            "app.services.assets.repository.find_asset_by_wialon_id",
+            new=AsyncMock(return_value=None),
+        ) as by_id:
+            result = await assets.find_wialon_asset(
+                object(), unit_id="unlinked-id", unit_name=asset.name
+            )
+        self.assertIsNone(result)
+        by_id.assert_awaited_once_with(unittest.mock.ANY, "unlinked-id")
 
     async def test_lower_odometer_updates_are_recorded_and_zero_is_allowed(self):
         asset = SimpleNamespace(

@@ -140,3 +140,13 @@ Next: run lint/tsc with frontend dependencies available and verify a realtime ev
 Evidence: user's console shows the old callback/log text; exact text is absent from current TS/JS source; HANDOFF updated.
 No application code changed; production/browser was not accessed and frontend service was not rebuilt.
 Next: deploy current frontend source, rebuild only TOIR frontend, hard-refresh, and check console again.
+2026-11-02 | Copilot SDK | Separated Wialon snapshots from fixed assets; added unit APIs and unified view.
+Changed: Wialon model/migration/repository/services/schemas/routes, unified asset query, link rebaseline, tests, DECISIONS, PROD_RUNBOOK, HANDOFF.
+Tested: backend/.venv Python 3.12 pytest for Wialon and maintenance -> 72 passed, 17 subtests passed.
+NOT TESTED: PostgreSQL migration, API E2E, Wialon service, Docker, browser, server; no `.env` access or commit.
+Next: apply 0012 and exercise endpoints against a disposable PostgreSQL test database.
+2026-11-02 | Copilot SDK | Added Wialon unit/unified-view API E2E coverage.
+Changed: backend/scripts/e2e_wialon_units.py, docs/HANDOFF.md, docs/AI_WORKLOG.md.
+Checked: Pylance syntax and diagnostics for the script -> no errors or diagnostics; pytest was not rerun because no test code changed.
+NOT TESTED: API E2E, migration, PostgreSQL, Docker, browser, server.
+Next: apply 0012 on a disposable DB, sync at least one unit, then run the E2E script.

@@ -412,7 +412,7 @@ def main() -> int:
             fallback_asset_response,
             "/api/v1/fixed-assets",
         )
-        wialon_by_number = request(
+        wialon_without_link = request(
             "POST",
             "/api/v1/wialon/input",
             headers={"X-Ingest-Token": ingest_token},
@@ -421,18 +421,47 @@ def main() -> int:
                 "odo": "333.75",
             },
         )
-        number_body = parse_object(wialon_by_number)
+        unlinked_body = parse_object(wialon_without_link)
         check_condition(
             checks,
-            "Wialon matches by number in unit name",
-            wialon_by_number.status == 200
+            "Wialon name/number does not create an asset link",
+            wialon_without_link.status == 200
+            and unlinked_body.get("found") is False,
+            "Name and number remain suggestions only"
+            if wialon_without_link.status == 200
+            and unlinked_body.get("found") is False
+            else f"HTTP {wialon_without_link.status}; expected found=false",
+        )
+        fallback_wialon_id = f"manual-{suffix}"
+        link_asset = request(
+            "PATCH",
+            f"/api/v1/fixed-assets/{fallback_asset_id}",
+            bearer=operator_token,
+            payload={"wialon_id": fallback_wialon_id},
+        )
+        check_status(checks, "PATCH assigns explicit Wialon ID", link_asset, 200)
+        wialon_by_id = request(
+            "POST",
+            "/api/v1/wialon/input",
+            headers={"X-Ingest-Token": ingest_token},
+            payload={
+                "i": fallback_wialon_id,
+                "nm": f"Incoming Wialon Unit #{number_suffix}",
+                "odo": "333.75",
+            },
+        )
+        number_body = parse_object(wialon_by_id)
+        check_condition(
+            checks,
+            "Wialon updates asset after explicit link",
+            wialon_by_id.status == 200
             and number_body.get("found") is True
             and number_body.get("asset_id") == fallback_asset_id,
-            "Name number resolves to the matching locomotive/diesel asset"
-            if wialon_by_number.status == 200
+            "Exact wialon_id updates the selected fixed asset"
+            if wialon_by_id.status == 200
             and number_body.get("found") is True
             and number_body.get("asset_id") == fallback_asset_id
-            else f"HTTP {wialon_by_number.status}; no matching asset returned",
+            else f"HTTP {wialon_by_id.status}; no explicitly linked asset returned",
         )
         check_condition(
             checks,
