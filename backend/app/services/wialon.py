@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import re
+from collections import Counter
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,8 +12,10 @@ from app.core.config import settings
 from app.core.database import SessionFactory
 from app.integrations.wialon_client import WialonClient, WialonClientError
 from app.repositories import wialon as repository
+from app.repositories import wialon_counters as counters_repo
 from app.schemas.wialon import WialonSyncResult, WialonSyncStatus
 from app.services import assets as assets_service
+from app.services.wialon_quality import Reading, Verdict, evaluate
 
 logger = logging.getLogger(__name__)
 _sync_lock = asyncio.Lock()
@@ -76,6 +80,27 @@ async def _record_failure(
     )
 
 
+async def _gated_mileage(db, unit, *, now: datetime, stats: Counter) -> Decimal | None:
+    """Wialon `cnm` ni TOIR mileage'iga ABSOLYUT emas, DELTA sifatida o'tkazadi.
+
+    None qaytsa mileage yangilanmaydi (baseline, o'zgarishsiz, rad etilgan, eski, mapping yo'q).
+    Mapping faqat aniq wialon_id bo'yicha: topilmasa mileage yozilmaydi (tezlik/online avvalgidek yangilanadi).
+    """
+    asset = await counters_repo.get_asset_by_wialon_id(db, unit.unit_id)
+    if asset is None:
+        stats["unmapped"] += 1
+        return None
+    row = await counters_repo.get_state_row(db, asset.id)
+    reading = Reading(unit.mileage, unit.engine_hours, unit.last_message_at)
+    gate = evaluate(counters_repo.to_state(row), reading, now=now)
+    await counters_repo.save_decision(db, asset.id, row, gate, reading, now=now)
+    stats[f"mileage_{gate.mileage.verdict.value}"] += 1
+    stats[f"hours_{gate.hours.verdict.value}"] += 1
+    if gate.mileage.verdict is Verdict.ACCEPTED and gate.mileage.delta:
+        return asset.mileage + gate.mileage.delta
+    return None
+
+
 async def sync_wialon_assets(db: AsyncSession) -> WialonSyncResult:
     if not settings.wialon_pull_enabled or settings.wialon_host is None:
         raise HTTPException(
@@ -99,15 +124,19 @@ async def sync_wialon_assets(db: AsyncSession) -> WialonSyncResult:
             units = await client.fetch_units()
             updated_names: list[str] = []
             missing_names: list[str] = []
+            gate_stats: Counter = Counter()
             for unit in units:
                 is_online = is_wialon_unit_online(
                     unit.last_message_at, now=synced_at
+                )
+                safe_mileage = await _gated_mileage(
+                    db, unit, now=synced_at, stats=gate_stats
                 )
                 result = await assets_service.receive_wialon_update(
                     db,
                     unit_id=unit.unit_id,
                     unit_name=unit.name,
-                    mileage=unit.mileage,
+                    mileage=safe_mileage,
                     speed=unit.speed,
                     online=is_online,
                     allow_zero_mileage=True,
@@ -117,6 +146,7 @@ async def sync_wialon_assets(db: AsyncSession) -> WialonSyncResult:
                 else:
                     missing_names.append(unit.name)
 
+            logger.info("Wialon counter gate: %s", dict(gate_stats))
             result = WialonSyncResult(
                 found=len(updated_names),
                 updated=len(updated_names),

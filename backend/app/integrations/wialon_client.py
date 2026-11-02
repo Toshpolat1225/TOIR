@@ -55,6 +55,9 @@ class WialonUnit:
     last_message_at: datetime | None
     speed: Decimal | None
     mileage: Decimal | None
+    # Yangi (ixtiyoriy, eski chaqiruvlar buzilmaydi): moto-soat hisoblagichi (cneh) va hisoblash bayroqlari (cfl).
+    engine_hours: Decimal | None = None
+    calc_flags: int | None = None
 
 
 def _decimal(value: object) -> Decimal | None:
@@ -130,6 +133,16 @@ def _mileage(item: dict[str, Any]) -> Decimal | None:
         if parsed is not None:
             return parsed
     return None
+
+
+def _calc_flags(item: dict[str, Any]) -> int | None:
+    value = item.get("cfl")
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def item_field_names(item: object, *, max_names: int = 250) -> list[str]:
@@ -223,6 +236,8 @@ def parse_units(payload: object) -> list[WialonUnit]:
                 last_message_at=_last_message_at(item),
                 speed=_speed(item),
                 mileage=_mileage(item),
+                engine_hours=_decimal(item.get("cneh")),
+                calc_flags=_calc_flags(item),
             )
         )
     return units
