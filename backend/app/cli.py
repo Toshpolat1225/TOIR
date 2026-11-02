@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import getpass
 import json
+import logging
 import sys
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -18,9 +19,13 @@ from app.integrations.wialon_client import (
     item_field_names,
     parse_units,
 )
+from app.models.assets import FixedAsset
 from app.models.maintenance import MaintenanceInterval, WorkType
 from app.models.organization import Department, Section
 from app.services.auth import create_initial_admin
+from app.services import maintenance as maintenance_service
+
+logger = logging.getLogger(__name__)
 
 REFERENCE_DEPARTMENTS = (
     ("Участок ПТОВ", "#0ea5e9", "ПТОВ"),
@@ -240,6 +245,52 @@ async def _seed_intervals() -> int:
     return 0
 
 
+async def _recalculate_asset_plans(db, assets: list[FixedAsset]) -> tuple[int, int]:
+    created = 0
+    errors = 0
+    for asset in assets:
+        try:
+            async with db.begin_nested():
+                asset_created = await maintenance_service.reconcile_asset_plans(
+                    db, asset, asset.mileage
+                )
+            await db.commit()
+            created += asset_created
+        except Exception:
+            await db.rollback()
+            errors += 1
+            logger.exception(
+                "Could not recalculate maintenance plans for asset %s", asset.id
+            )
+    return created, errors
+
+
+async def _recalculate_plans() -> int:
+    try:
+        async with SessionFactory() as db:
+            result = await db.execute(
+                select(FixedAsset)
+                .where(
+                    FixedAsset.asset_type.in_(("locomotive", "diesel")),
+                    FixedAsset.status == "operational",
+                )
+                .order_by(FixedAsset.id)
+            )
+            assets = list(result.scalars().all())
+            created, errors = await _recalculate_asset_plans(db, assets)
+    except SQLAlchemyError:
+        logger.exception("Could not load assets for maintenance plan recalculation")
+        return 2
+    finally:
+        await engine.dispose()
+
+    print(
+        "Rejalashtirish yakunlandi: "
+        f"ko‘rib chiqildi: {len(assets)}; yangi rejalar: {created}; xatolar: {errors}."
+    )
+    return 1 if errors else 0
+
+
 def _probe_unit(item: dict[str, object]) -> dict[str, object]:
     item_copy = dict(item)
     item_copy.setdefault("id", "__probe__")
@@ -340,6 +391,10 @@ def main() -> int:
     subparsers.add_parser("create-admin", help="Create the first administrator")
     subparsers.add_parser("seed-reference", help="Create initial directory reference data")
     subparsers.add_parser("seed-intervals", help="Idempotently seed maintenance intervals")
+    subparsers.add_parser(
+        "recalculate-plans",
+        help="Idempotently recalculate plans for operational locomotive and diesel assets",
+    )
     subparsers.add_parser("wialon-probe", help="Read safe Wialon unit diagnostics")
     arguments = parser.parse_args()
     if arguments.command == "create-admin":
@@ -348,6 +403,8 @@ def main() -> int:
         return asyncio.run(_seed_reference())
     if arguments.command == "seed-intervals":
         return asyncio.run(_seed_intervals())
+    if arguments.command == "recalculate-plans":
+        return asyncio.run(_recalculate_plans())
     if arguments.command == "wialon-probe":
         return asyncio.run(_wialon_probe())
     parser.error("Unsupported command")

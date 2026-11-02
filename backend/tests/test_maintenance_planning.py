@@ -125,14 +125,15 @@ class MaintenancePlanPersistenceTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch.object(
                 maintenance_service.repository,
-                "upsert_scheduled_plan",
-                new=AsyncMock(),
+                "upsert_scheduled_plan_with_created",
+                new=AsyncMock(return_value=(SimpleNamespace(), True)),
             ) as upsert,
         ):
-            await maintenance_service.reconcile_asset_plans(
+            created = await maintenance_service.reconcile_asset_plans(
                 db=Mock(), asset=asset, mileage=asset.mileage
             )
 
+        self.assertEqual(created, 1)
         upsert.assert_awaited_once_with(
             unittest.mock.ANY,
             asset_id=asset.id,

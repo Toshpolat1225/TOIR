@@ -101,8 +101,9 @@ async def update_settings(
 
 async def reconcile_asset_plans(
     db: AsyncSession, asset: FixedAsset, mileage: Decimal
-) -> None:
+) -> int:
     today = date.today()
+    created = 0
     intervals = await repository.list_active_intervals(db, asset.asset_type)
     for interval in intervals:
         target = calculate_maintenance_target(
@@ -116,13 +117,15 @@ async def reconcile_asset_plans(
         )
         if target is None:
             continue
-        await repository.upsert_scheduled_plan(
+        _, was_created = await repository.upsert_scheduled_plan_with_created(
             db,
             asset_id=asset.id,
             interval_id=interval.id,
             trigger_mileage=target.trigger_mileage,
             scheduled_date=target.scheduled_date,
         )
+        created += was_created
+    return created
 
 
 def _plan_read(row: dict[str, Any]) -> MaintenancePlanRead:

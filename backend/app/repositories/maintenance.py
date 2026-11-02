@@ -159,6 +159,24 @@ async def upsert_scheduled_plan(
     trigger_mileage: Decimal | None,
     scheduled_date: date,
 ) -> MaintenancePlan:
+    plan, _ = await upsert_scheduled_plan_with_created(
+        db,
+        asset_id=asset_id,
+        interval_id=interval_id,
+        trigger_mileage=trigger_mileage,
+        scheduled_date=scheduled_date,
+    )
+    return plan
+
+
+async def upsert_scheduled_plan_with_created(
+    db: AsyncSession,
+    *,
+    asset_id: UUID,
+    interval_id: UUID,
+    trigger_mileage: Decimal | None,
+    scheduled_date: date,
+) -> tuple[MaintenancePlan, bool]:
     statement = (
         insert(MaintenancePlan)
         .values(
@@ -168,26 +186,25 @@ async def upsert_scheduled_plan(
             scheduled_date=scheduled_date,
             status="scheduled",
         )
-        .on_conflict_do_update(
+        .on_conflict_do_nothing(
             constraint="maintenance_plan_asset_id_interval_id_trigger_mileage_key",
-            set_={
-                "scheduled_date": scheduled_date,
-                "updated_at": func.now(),
-            },
-            where=MaintenancePlan.status == "scheduled",
         )
         .returning(MaintenancePlan)
     )
     result = await db.execute(statement)
     plan = result.scalar_one_or_none()
     if plan is not None:
-        return plan
+        return plan, True
     existing = await get_plan_for_trigger(
         db, asset_id, interval_id, trigger_mileage
     )
     if existing is None:
         raise RuntimeError("Maintenance plan upsert did not return a persisted plan")
-    return existing
+    if existing.status == "scheduled":
+        existing.scheduled_date = scheduled_date
+        existing.updated_at = datetime.now(timezone.utc)
+        await db.flush()
+    return existing, False
 
 
 def _plan_statement() -> Select[Any]:
