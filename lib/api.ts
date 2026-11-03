@@ -519,6 +519,10 @@ const nomenclature = {
 // --- Fixed Assets Module ---
 
 export type FixedAsset = {
+  asset_type_label?: string | null
+  asset_status_label?: string | null
+  asset_type_translation_missing?: boolean
+  asset_status_translation_missing?: boolean
   id: string;
   inv_number: string;
   name: string;
