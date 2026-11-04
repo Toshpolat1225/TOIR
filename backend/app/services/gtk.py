@@ -19,6 +19,7 @@ from app.integrations.gtk_client import (
     GtkLoginError,
     GtkParseError,
 )
+from app.integrations.gtk_adapter import GtkSourceAdapter
 from app.models.gtk import GtkSyncRun, GtkWagonMileageLog
 from app.repositories import asset_source_links as asset_links_repository
 from app.repositories import asset_models as asset_models_repository
@@ -284,15 +285,17 @@ async def sync_gtk(db: AsyncSession) -> GtkSyncRun | None:
             return None
 
         started_at = datetime.now(timezone.utc)
-        client = GtkClient(
-            settings.gtk_host,
-            settings.gtk_user,
-            settings.gtk_password,
-            settings.gtk_page_path,
-            settings.gtk_page_query,
+        adapter = GtkSourceAdapter(
+            GtkClient(
+                settings.gtk_host,
+                settings.gtk_user,
+                settings.gtk_password,
+                settings.gtk_page_path,
+                settings.gtk_page_query,
+            )
         )
         try:
-            snapshot = await client.fetch_snapshot()
+            snapshot = await adapter.fetch_gtk_snapshot()
             counts = _counts(snapshot)
             run_at = datetime.now(timezone.utc)
             previous_memberships: list[TrainMembership] = []

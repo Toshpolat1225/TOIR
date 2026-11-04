@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import String, cast, delete, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -276,6 +276,25 @@ async def list_all_carriages(db: AsyncSession) -> list[tuple[GtkCarriage, bool]]
         select(GtkCarriage, in_train.label("in_train")).order_by(GtkCarriage.gtk_id)
     )
     return list(result.all())
+
+
+async def list_unlinked_source_objects(
+    db: AsyncSession,
+) -> list[GtkLocomotive | GtkCarriage]:
+    records: list[GtkLocomotive | GtkCarriage] = []
+    for model in (GtkLocomotive, GtkCarriage):
+        has_link = exists(
+            select(AssetSourceLink.id).where(
+                AssetSourceLink.source == "gtk",
+                AssetSourceLink.status == "active",
+                AssetSourceLink.external_id == cast(model.gtk_id, String),
+            )
+        )
+        result = await db.execute(
+            select(model).where(~has_link).order_by(model.gtk_id.asc())
+        )
+        records.extend(result.scalars().all())
+    return records
 
 
 async def list_assets_for_kind(db: AsyncSession, kind: str) -> list[FixedAsset]:

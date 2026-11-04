@@ -197,3 +197,8 @@ Added auto-fill/suggestion/conflict/manual journal behavior, guarded accept/reje
 GTK passport proposals run in their own transaction and use only active canonical links; Wialon telemetry code was not changed.
 NOT TESTED: PostgreSQL migration, GTK network sync, API E2E, frontend, production/deploy; no commit. E2E script requires disposable API with GTK configured.
 Next: rehearse 0019 upgrade/downgrade and run asset-conflict E2E on disposable PostgreSQL/API.
+2026-11-04 | Copilot SDK | P4 shared source-matching foundation | shared matcher, GTK compatibility, Wialon suggestions, GTK adapter, unmatched API, tests, E2E, integration contract, HANDOFF | backend/.venv pytest -> 134 passed
+Matching normalization and levels now live in one source-neutral service; GTK and Wialon call it while preserving existing helper exports.
+Added `/asset-links/unmatched` for GTK/Wialon mirrors without active source links, plus protocol/adapter tests and Uzbek onboarding documentation.
+NOT TESTED: API E2E, live mirror query, source connections, frontend, production/deploy; no migrations or new external integrations added, no commit.
+Next: run `e2e_asset_unmatched.py` against the intended test API.

@@ -255,6 +255,24 @@ async def list_unlinked_assets(
     return list(result.scalars().all())
 
 
+async def list_unlinked_source_objects(
+    db: AsyncSession,
+) -> list[WialonUnitRecord]:
+    has_link = exists(
+        select(AssetSourceLink.id).where(
+            AssetSourceLink.source == "wialon",
+            AssetSourceLink.status == "active",
+            AssetSourceLink.external_id == WialonUnitRecord.unit_id,
+        )
+    )
+    result = await db.execute(
+        select(WialonUnitRecord)
+        .where(~has_link)
+        .order_by(WialonUnitRecord.name.asc(), WialonUnitRecord.unit_id.asc())
+    )
+    return list(result.scalars().all())
+
+
 async def get_unit_record(
     db: AsyncSession, unit_id: str, *, master_section_id=None
 ) -> WialonUnitRecord | None:

@@ -1,13 +1,12 @@
 from datetime import datetime, timezone
 from decimal import Decimal
-import re
-import unicodedata
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.integrations.base import SourceObject
 from app.models.assets import FixedAsset
 from app.services import asset_links as asset_links_service
 from app.services import asset_passport
@@ -26,29 +25,14 @@ from app.schemas.wialon import (
     WialonUnitRead,
 )
 from app.services.wialon import is_wialon_unit_online
-from app.services.wialon_asset_import import (
+from app.services.asset_matching import (
+    classify_asset_type,
     extract_asset_numbers,
     extract_asset_series,
+    match_source_objects,
+    normalize_token,
 )
 from app.services.wialon_quality import Reading, evaluate
-
-_SERIES_TRANSLATION = str.maketrans(
-    {
-        "a": "а",
-        "c": "с",
-        "d": "д",
-        "e": "э",
-        "h": "н",
-        "k": "к",
-        "m": "м",
-        "o": "о",
-        "p": "п",
-        "t": "т",
-        "x": "х",
-        "y": "у",
-    }
-)
-
 
 def _not_found() -> HTTPException:
     return HTTPException(status_code=404, detail="Wialon unit not found")
@@ -148,12 +132,8 @@ async def get_wialon_unit(
 
 
 def _normalized_series(value: str | None) -> str | None:
-    if not value:
-        return None
-    normalized = unicodedata.normalize("NFKC", value).casefold().translate(
-        _SERIES_TRANSLATION
-    )
-    return re.sub(r"[\W_]+", "", normalized, flags=re.UNICODE) or None
+    normalized = normalize_token(value)
+    return normalized or None
 
 
 async def suggest_wialon_asset_links(
@@ -166,24 +146,37 @@ async def suggest_wialon_asset_links(
         raise _not_found()
     if await repository.get_linked_asset(db, unit_id) is not None:
         return WialonAssetSuggestions(items=[])
-    unit_series = extract_asset_series(unit.name)
-    unit_numbers = extract_asset_numbers(unit.name) - extract_asset_numbers(
-        unit_series
-    )
-    normalized_unit_series = _normalized_series(unit_series)
-    if normalized_unit_series is None or not unit_numbers:
-        return WialonAssetSuggestions(items=[])
-
     assets = await repository.list_unlinked_assets(
         db, master_section_id=master_section_id
     )
+    source_object = SourceObject(
+        source="wialon",
+        external_id=unit_id,
+        name=unit.name,
+        number=None,
+        serial=None,
+        inventory=None,
+        model=extract_asset_series(unit.name),
+        type=classify_asset_type(unit.name),
+    )
+    matched = match_source_objects([source_object], assets)
+    match = matched[0]
     suggestions: list[WialonAssetSuggestion] = []
+    matched_assets = {
+        str(candidate["asset_id"]): candidate
+        for candidate in match["candidates"]
+        if "series" in candidate["signals"]
+        and "vehicle_number" in candidate["signals"]
+    }
     for asset in assets:
-        asset_series = asset.series or extract_asset_series(asset.name)
-        if _normalized_series(asset_series) != normalized_unit_series:
+        candidate = matched_assets.get(str(asset.id))
+        if candidate is None:
             continue
+        unit_numbers = extract_asset_numbers(unit.name) - extract_asset_numbers(
+            source_object.model
+        )
         asset_numbers = extract_asset_numbers(asset.name) - extract_asset_numbers(
-            asset_series
+            asset.series or extract_asset_series(asset.name)
         )
         matched_numbers = sorted(unit_numbers & asset_numbers)
         if not matched_numbers:

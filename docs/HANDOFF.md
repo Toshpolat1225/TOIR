@@ -846,3 +846,20 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### NOT TESTED
 
 - PostgreSQL migration execution, GTK network sync, API E2E, frontend, production server, and deployment.
+
+## Shared source matching foundation P4 (2026-11-04)
+
+### Verified
+
+- Added source-neutral `SourceObject`, normalization/name extraction, and `high` / `ambiguous` / `none` matching. GTK compatibility helpers and Wialon link suggestions now use the shared matching functions; existing GTK and Wialon tests remain unchanged and pass.
+- Added the `SourceAdapter` protocol and GTK adapter. Existing GTK sync still consumes its full snapshot payload and its prior parsing/network behavior remains unchanged.
+- Added the paginated `/api/v1/asset-links/unmatched?source=gtk|wialon` endpoint. It reads only mirror rows without an active canonical source link and includes candidate level/suggestion data.
+- Added the Uzbek integration onboarding contract in `docs/INTEGRATIONS.md` and an API E2E script for unmatched sources. Backend `.venv` pytest across matching, GTK, P3 passport/conflicts, attribution, unified assets, and Wialon: **134 passed**. No migration or external integration was added; no commit was made.
+
+### Next task
+
+- Run `e2e_asset_unmatched.py` against the intended test API to verify live GTK/Wialon mirror data and the `asset_links.view` role grants.
+
+### NOT TESTED
+
+- API E2E, database-backed unmatched query against PostgreSQL, live GTK/Wialon sources, frontend, production server, or deployment.

@@ -182,6 +182,26 @@ async def list_passport_report_data(db: AsyncSession):
     return await list_report_data(db)
 
 
+async def list_assets_unlinked_from_source(
+    db: AsyncSession, source: str
+) -> list[FixedAsset]:
+    has_link = (
+        select(AssetSourceLink.id)
+        .where(
+            AssetSourceLink.asset_id == FixedAsset.id,
+            AssetSourceLink.source == source,
+            AssetSourceLink.status == "active",
+        )
+        .exists()
+    )
+    result = await db.execute(
+        select(FixedAsset)
+        .where(~has_link)
+        .order_by(FixedAsset.name.asc(), FixedAsset.id.asc())
+    )
+    return list(result.scalars().all())
+
+
 async def add_mileage_history(
     db: AsyncSession, asset_id: UUID, mileage: Decimal, source: str
 ) -> MileageHistory:
