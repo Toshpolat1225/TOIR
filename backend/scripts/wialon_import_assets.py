@@ -32,6 +32,7 @@ from app.services.wialon_asset_import import (  # noqa: E402
 )
 from app.services.wialon_quality import Reading, evaluate, suspect_absolute  # noqa: E402
 from app.services import asset_links as asset_links_service  # noqa: E402
+from app.services import asset_passport  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -204,11 +205,19 @@ async def main(apply: bool) -> int:
             if row.asset_type is None:
                 raise RuntimeError("Import candidate has no asset type")
             unit = units_by_id[row.unit_id]
-            asset = FixedAsset(
-                name=row.name,
+            passport_fields = await asset_passport.prepare_new_asset(
+                db,
                 asset_type=row.asset_type,
-                series=row.series,
+                name=row.name,
+                model_id=None,
+                model_name=row.series,
+                number=None,
+            )
+            asset = FixedAsset(
+                **passport_fields,
+                asset_type=row.asset_type,
                 inv_number=row.inv_number,
+                inv_number_is_provisional=True,
                 status="operational",
                 mileage=row.mileage,
                 section_id=None,

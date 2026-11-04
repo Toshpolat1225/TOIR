@@ -204,18 +204,36 @@ INSERT INTO fixed_asset_statuses(code)
 VALUES ('operational'), ('maintenance'), ('repair'), ('out_of_service');
 UPDATE fixed_asset_statuses SET behavior = code, color = CASE code WHEN 'operational' THEN 'green' WHEN 'maintenance' THEN 'amber' WHEN 'repair' THEN 'orange' ELSE 'gray' END;
 
+CREATE TABLE asset_models (
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name            text NOT NULL,
+    name_normalized text NOT NULL UNIQUE,
+    asset_type      text NOT NULL REFERENCES fixed_asset_types(code) ON UPDATE CASCADE ON DELETE RESTRICT,
+    series          text
+);
+
 CREATE TABLE fixed_assets (
     id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    inv_number           text NOT NULL UNIQUE,
+    inv_number           text NOT NULL,
     name                 text NOT NULL,
     asset_type           text NOT NULL REFERENCES fixed_asset_types(code) ON UPDATE CASCADE ON DELETE RESTRICT,
     series               text,
     depot                text,
     section_id           uuid REFERENCES sections(id) ON DELETE SET NULL,
+    number               text,
+    number_normalized    text,
+    serial_number        text,
+    model_id             uuid REFERENCES asset_models(id) ON DELETE RESTRICT,
+    accounting_inv_number text,
+    org_unit_id          uuid REFERENCES sections(id) ON DELETE SET NULL,
+    commissioned_at      date,
+    decommissioned_at    date,
+    inv_number_is_provisional boolean DEFAULT false,
     status               text NOT NULL DEFAULT 'operational'
                          REFERENCES fixed_asset_statuses(code) ON UPDATE CASCADE ON DELETE RESTRICT,
     comm_date            date,
     year_built           integer,
+    -- Operational maintenance and telemetry fields follow the passport fields.
     mileage              numeric(12,2) NOT NULL DEFAULT 0,
     last_maint_date      date,
     next_maint_date      date,
@@ -234,11 +252,30 @@ CREATE TABLE fixed_assets (
     predicted_failure_km numeric(12,2),
     last_ml_update       timestamptz,
     created_at           timestamptz NOT NULL DEFAULT now(),
-    updated_at           timestamptz NOT NULL DEFAULT now()
+    updated_at           timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_fixed_assets_year_built_min
+        CHECK (year_built IS NULL OR year_built >= 1900),
+    CONSTRAINT ck_fixed_assets_commissioned_at_year_built
+        CHECK (CASE WHEN commissioned_at IS NULL OR year_built IS NULL
+                    OR year_built < 1 OR year_built > 9999 THEN true
+                    ELSE commissioned_at >= make_date(year_built, 1, 1) END),
+    CONSTRAINT ck_fixed_assets_decommissioned_at_commissioned_at
+        CHECK (decommissioned_at IS NULL OR commissioned_at IS NULL
+               OR decommissioned_at >= commissioned_at)
 );
 CREATE INDEX ix_assets_type_status ON fixed_assets(asset_type, status);
 CREATE INDEX ix_assets_section     ON fixed_assets(section_id);
 CREATE INDEX ix_assets_series      ON fixed_assets(series);
+CREATE INDEX ix_fixed_assets_model_id ON fixed_assets(model_id);
+CREATE INDEX ix_fixed_assets_org_unit_id ON fixed_assets(org_unit_id);
+CREATE UNIQUE INDEX uq_fixed_assets_inv_number_real
+    ON fixed_assets(inv_number) WHERE inv_number_is_provisional IS FALSE;
+CREATE UNIQUE INDEX uq_fixed_assets_accounting_inv_number
+    ON fixed_assets(accounting_inv_number) WHERE accounting_inv_number IS NOT NULL;
+CREATE UNIQUE INDEX uq_fixed_assets_active_model_number
+    ON fixed_assets(asset_type, model_id, number_normalized)
+    WHERE decommissioned_at IS NULL AND model_id IS NOT NULL
+      AND number_normalized IS NOT NULL;
 
 CREATE TABLE asset_source_links (
     id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),

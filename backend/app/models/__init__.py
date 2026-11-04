@@ -1,4 +1,5 @@
 from app.models.assets import FixedAsset, MileageHistory, WialonSettings
+from app.models.asset_models import AssetModel
 from app.models.analytics import DailyReadinessSnapshot
 from app.models.asset_source_links import AssetSourceLink
 from app.models.base import Base
@@ -40,6 +41,7 @@ from app.models.work_records import AiInsight, MaintenanceLog
 __all__ = [
     "AiInsight",
     "AssetSourceLink",
+    "AssetModel",
     "Base",
     "Department",
     "DepartmentTranslation",

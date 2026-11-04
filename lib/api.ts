@@ -753,6 +753,15 @@ export type FixedAsset = {
   series: string | null;
   depot: string | null;
   section_id: string | null;
+  number: string | null;
+  number_normalized: string | null;
+  serial_number: string | null;
+  model_id: string | null;
+  accounting_inv_number: string | null;
+  org_unit_id: string | null;
+  commissioned_at: string | null;
+  decommissioned_at: string | null;
+  inv_number_is_provisional: boolean | null;
   status: string;
   comm_date: string | null;
   year_built: number | null;
@@ -860,6 +869,8 @@ export type WialonCreateAssetRequest = {
   name?: string | null;
   asset_type: "locomotive" | "diesel" | "wagon";
   series?: string | null;
+  model_id?: string | null;
+  number?: string | null;
   section_id?: string | null;
 };
 
@@ -922,14 +933,45 @@ export type MileageHistory = {
   recorded_at: string;
 };
 
-export type FixedAssetCreate = Pick<FixedAsset, "inv_number" | "name" | "asset_type"> &
+export type FixedAssetCreate = Pick<FixedAsset, "inv_number" | "asset_type"> &
   Partial<Omit<FixedAsset, "id" | "inv_number" | "name" | "asset_type" | "created_at" | "updated_at" |
     "wialon_last_sync" | "wialon_speed" | "wialon_online" | "failure_probability" |
-    "health_score" | "predicted_failure_km" | "last_ml_update">>;
+    "health_score" | "predicted_failure_km" | "last_ml_update">> & {
+      name?: string | null;
+    };
 
 export type FixedAssetUpdate = Partial<Omit<FixedAsset, "id" | "created_at" | "updated_at" |
   "wialon_last_sync" | "wialon_speed" | "wialon_online" | "failure_probability" |
   "health_score" | "predicted_failure_km" | "last_ml_update">>;
+
+export type FixedAssetPassportReport = {
+  depot_matches: Array<{
+    asset_id: string;
+    inv_number: string;
+    depot: string;
+    candidate_sections: Array<{ id: string; name: string }>;
+    org_unit_id: string | null;
+  }>;
+  depot_unmatched: Array<{
+    asset_id: string;
+    inv_number: string;
+    depot: string;
+    candidate_sections: Array<{ id: string; name: string }>;
+    org_unit_id: string | null;
+    status: "no_match" | "ambiguous";
+  }>;
+  duplicate_numbers: Array<{
+    asset_type: string;
+    model_id: string;
+    number_normalized: string;
+    assets: Array<{ asset_id: string; inv_number: string }>;
+  }>;
+  invalid_values: Array<{
+    asset_id: string;
+    inv_number: string;
+    issues: string[];
+  }>;
+};
 
 const fixedAssets = {
   async list(params: FixedAssetListParams): Promise<Paginated<FixedAsset>> {
@@ -943,6 +985,12 @@ const fixedAssets = {
   },
   async stats(params: Omit<FixedAssetListParams, "limit" | "offset" | "sort_by" | "sort_order"> = {}): Promise<FixedAssetStats> {
     return request<FixedAssetStats>({ method: "GET", path: "/fixed-assets/stats", params });
+  },
+  async passportReport(): Promise<FixedAssetPassportReport> {
+    return request<FixedAssetPassportReport>({
+      method: "GET",
+      path: "/fixed-assets/passport-report",
+    });
   },
   async mileageHistory(id: string, params: { days?: number; limit?: number } = {}): Promise<{
     items: MileageHistory[];

@@ -83,6 +83,8 @@ class WialonCreateAssetRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     asset_type: Literal["locomotive", "diesel", "wagon"]
     series: str | None = None
+    model_id: UUID | None = None
+    number: str | None = None
     section_id: UUID | None = None
 
     @model_validator(mode="after")
@@ -94,8 +96,10 @@ class WialonCreateAssetRequest(BaseModel):
             self.name = self.name.strip()
             if not self.name:
                 raise ValueError("Name must not be empty")
-        if self.series is not None:
-            self.series = self.series.strip() or None
+        for field_name in ("series", "number"):
+            value = getattr(self, field_name)
+            if value is not None:
+                setattr(self, field_name, value.strip() or None)
         return self
 
 

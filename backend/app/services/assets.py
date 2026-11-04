@@ -17,6 +17,8 @@ from app.repositories import wialon_units as wialon_units_repository
 from app.repositories import gtk as gtk_repository
 from app.services import maintenance as maintenance_service
 from app.services import asset_links as asset_links_service
+from app.services import asset_passport
+from app.repositories import asset_models as asset_models_repository
 from app.schemas.assets import (
     AssetStatus,
     AssetType,
@@ -127,9 +129,22 @@ async def get_fixed_asset_stats(
     )
 
 
+async def get_fixed_asset_passport_report(db: AsyncSession) -> dict:
+    assets, sections = await repository.list_passport_report_data(db)
+    return asset_passport.build_passport_report(assets, sections)
+
+
 async def create_fixed_asset(
     db: AsyncSession, payload: FixedAssetCreate, *, by: UUID | None = None
 ):
+    try:
+        asset_passport.validate_passport_values(
+            year_built=payload.year_built,
+            commissioned_at=payload.commissioned_at,
+            decommissioned_at=payload.decommissioned_at,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     await _validate_gtk_link(db, payload.gtk_id, payload.asset_type)
     if payload.section_id is not None and await references_repository.get_non_archived_section(
         db, payload.section_id
@@ -138,11 +153,29 @@ async def create_fixed_asset(
             status_code=422,
             detail="Cannot assign an archived or missing section to a fixed asset",
         )
+    if payload.org_unit_id is not None and await references_repository.get_non_archived_section(
+        db, payload.org_unit_id
+    ) is None:
+        raise HTTPException(status_code=422, detail="Organization unit is unavailable")
     if not await repository.active_catalog_value_exists(db, kind="types", code=payload.asset_type):
         raise HTTPException(status_code=422, detail="Asset type is unavailable")
     if not await repository.active_catalog_value_exists(db, kind="statuses", code=payload.status):
         raise HTTPException(status_code=422, detail="Asset status is unavailable")
-    asset = FixedAsset(**payload.model_dump())
+    passport_fields = await asset_passport.prepare_new_asset(
+        db,
+        asset_type=payload.asset_type,
+        name=payload.name,
+        model_id=payload.model_id,
+        model_name=payload.series,
+        number=payload.number,
+    )
+    asset_values = payload.model_dump()
+    asset_values.update(passport_fields)
+    asset_values["number_normalized"] = passport_fields["number_normalized"]
+    asset_values["inv_number_is_provisional"] = payload.inv_number.upper().startswith(
+        "WIALON-"
+    )
+    asset = FixedAsset(**asset_values)
     await repository.add_asset(db, asset)
     if payload.wialon_id is not None or payload.gtk_id is not None:
         await db.flush()
@@ -179,7 +212,7 @@ async def create_fixed_asset(
                 )
     await _commit(
         db,
-        "Inventory number, Wialon ID, or GTK ID already exists, or section is invalid",
+        "Inventory number, accounting number, model, number, source ID, or section conflicts",
     )
     await db.refresh(asset)
     return asset_read(asset)
@@ -239,6 +272,47 @@ async def update_fixed_asset(
     )
     if "status" in changes and not await repository.active_catalog_value_exists(db, kind="statuses", code=changes["status"]):
         raise HTTPException(status_code=422, detail="Asset status is unavailable")
+    if "org_unit_id" in changes and changes["org_unit_id"] is not None:
+        if await references_repository.get_non_archived_section(
+            db, changes["org_unit_id"]
+        ) is None:
+            raise HTTPException(status_code=422, detail="Organization unit is unavailable")
+    passport_fields_changed = {
+        "year_built",
+        "commissioned_at",
+        "decommissioned_at",
+    }.intersection(changes)
+    if passport_fields_changed:
+        try:
+            asset_passport.validate_passport_values(
+                year_built=changes.get("year_built", asset.year_built),
+                commissioned_at=changes.get(
+                    "commissioned_at", asset.commissioned_at
+                ),
+                decommissioned_at=changes.get(
+                    "decommissioned_at", asset.decommissioned_at
+                ),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    model_id = changes.get("model_id", asset.model_id)
+    if model_id is not None:
+        model = await asset_models_repository.get_model(db, model_id)
+        if model is None or model.asset_type != next_asset_type:
+            raise HTTPException(
+                status_code=422, detail="Asset model type does not match asset type"
+            )
+    if "number" in changes or "number_normalized" in changes:
+        number = changes.get("number", asset.number)
+        changes["number_normalized"] = (
+            asset_passport.normalize_token(number) if number else None
+        )
+    if "inv_number" in changes or "inv_number_is_provisional" in changes:
+        inv_number = changes.get("inv_number", asset.inv_number)
+        changes["inv_number_is_provisional"] = inv_number.upper().startswith(
+            "WIALON-"
+        )
     section_id = changes.get("section_id")
     if section_id is not None and section_id != asset.section_id:
         if await references_repository.get_non_archived_section(db, section_id) is None:
@@ -322,7 +396,7 @@ async def update_fixed_asset(
         await _save_mileage_change(db, asset, mileage, "manual")
     await _commit(
         db,
-        "Inventory number, Wialon ID, or GTK ID already exists, or section is invalid",
+        "Inventory number, accounting number, model, number, source ID, or section conflicts",
     )
     await db.refresh(asset)
     return asset_read(asset)

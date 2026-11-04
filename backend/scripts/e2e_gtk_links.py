@@ -150,6 +150,8 @@ def main() -> int:
                 "inv_number": f"GTK-LINK-E2E-{suffix}",
                 "name": f"GTK link test {suffix}",
                 "asset_type": "wagon",
+                "series": "GTK-E2E-WAGON",
+                "number": f"1{suffix[-4:]}",
                 "status": "operational",
                 "mileage": 0,
             },
@@ -190,6 +192,8 @@ def main() -> int:
                 "inv_number": f"GTK-DUP-E2E-{suffix}",
                 "name": f"GTK duplicate test {suffix}",
                 "asset_type": "wagon",
+                "series": "GTK-E2E-WAGON",
+                "number": f"2{suffix[-4:]}",
                 "gtk_id": str(gtk_id),
             },
         )
@@ -207,6 +211,8 @@ def main() -> int:
                 "inv_number": f"GTK-TYPE-E2E-{suffix}",
                 "name": f"GTK type test {suffix}",
                 "asset_type": "locomotive",
+                "series": "GTK-E2E-LOCO",
+                "number": f"3{suffix[-4:]}",
                 "gtk_id": str(gtk_id),
             },
         )

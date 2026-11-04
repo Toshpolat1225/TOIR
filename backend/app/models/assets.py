@@ -28,12 +28,39 @@ class FixedAsset(Base):
         Index("ix_assets_type_status", "asset_type", "status"),
         Index("ix_assets_section", "section_id"),
         Index("ix_assets_series", "series"),
+        Index(
+            "uq_fixed_assets_inv_number_real",
+            "inv_number",
+            unique=True,
+            postgresql_where=text("inv_number_is_provisional IS FALSE"),
+        ),
+        Index(
+            "uq_fixed_assets_accounting_inv_number",
+            "accounting_inv_number",
+            unique=True,
+            postgresql_where=text("accounting_inv_number IS NOT NULL"),
+        ),
+        CheckConstraint(
+            "year_built IS NULL OR year_built >= 1900",
+            name="ck_fixed_assets_year_built_min",
+        ),
+        CheckConstraint(
+            "CASE WHEN commissioned_at IS NULL OR year_built IS NULL "
+            "OR year_built < 1 OR year_built > 9999 THEN true "
+            "ELSE commissioned_at >= make_date(year_built, 1, 1) END",
+            name="ck_fixed_assets_commissioned_at_year_built",
+        ),
+        CheckConstraint(
+            "decommissioned_at IS NULL OR commissioned_at IS NULL "
+            "OR decommissioned_at >= commissioned_at",
+            name="ck_fixed_assets_decommissioned_at_commissioned_at",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
     )
-    inv_number: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    inv_number: Mapped[str] = mapped_column(Text, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     asset_type: Mapped[str] = mapped_column(
         Text, ForeignKey("fixed_asset_types.code", onupdate="CASCADE", ondelete="RESTRICT"), nullable=False
@@ -60,6 +87,22 @@ class FixedAsset(Base):
     owner: Mapped[str | None] = mapped_column(Text)
     wialon_id: Mapped[str | None] = mapped_column(String(100), unique=True)
     gtk_id: Mapped[str | None] = mapped_column(String(100), unique=True)
+    number: Mapped[str | None] = mapped_column(Text)
+    number_normalized: Mapped[str | None] = mapped_column(Text)
+    serial_number: Mapped[str | None] = mapped_column(Text)
+    model_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("asset_models.id", ondelete="RESTRICT")
+    )
+    accounting_inv_number: Mapped[str | None] = mapped_column(Text)
+    org_unit_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sections.id", ondelete="SET NULL")
+    )
+    commissioned_at: Mapped[date | None] = mapped_column(Date)
+    decommissioned_at: Mapped[date | None] = mapped_column(Date)
+    inv_number_is_provisional: Mapped[bool | None] = mapped_column(
+        Boolean, server_default=text("false")
+    )
+    # Operational telemetry and maintenance state are not passport identity.
     wialon_last_sync: Mapped[datetime | None]
     wialon_speed: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     wialon_online: Mapped[bool] = mapped_column(

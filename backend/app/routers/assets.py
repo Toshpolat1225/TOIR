@@ -1,5 +1,7 @@
 from typing import Annotated, Literal
 from uuid import UUID
+import csv
+import io
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +37,12 @@ AssetCreator = Annotated[User, Depends(require_permission("assets.create"))]
 AssetUpdater = Annotated[User, Depends(require_permission("assets.update"))]
 AssetDeleter = Annotated[User, Depends(require_permission("assets.delete"))]
 SortOrder = Literal["asc", "desc"]
+
+
+def _safe_csv_cell(value):
+    if isinstance(value, str) and value[:1] in {"=", "+", "-", "@"}:
+        return f"'{value}"
+    return value
 
 
 def _master_section(user: User) -> UUID | None:
@@ -185,6 +193,99 @@ async def get_fixed_asset_links(
         db, asset_id, include_ended=include_ended
     )
     return AssetSourceLinksRead(asset_id=asset_id, items=items)
+
+
+@router.get("/passport-report")
+async def get_fixed_asset_passport_report(
+    user: AssetCreator,
+    db: DatabaseSession,
+    format: Literal["json", "csv"] = Query(default="json"),
+):
+    if user.role not in {"admin", "operator"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    report = await service.get_fixed_asset_passport_report(db)
+    if format == "json":
+        return report
+
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "category",
+            "asset_id",
+            "inv_number",
+            "asset_type",
+            "depot",
+            "org_unit_id",
+            "number_normalized",
+            "details",
+        ]
+    )
+    for row in report["depot_matches"]:
+        writer.writerow(
+            _safe_csv_cell(value)
+            for value in [
+                "depot_match",
+                row["asset_id"],
+                row["inv_number"],
+                "",
+                row["depot"],
+                row["org_unit_id"] or row["candidate_sections"][0]["id"],
+                "",
+                "exact section name",
+            ]
+        )
+    for row in report["depot_unmatched"]:
+        writer.writerow(
+            _safe_csv_cell(value)
+            for value in [
+                row["status"],
+                row["asset_id"],
+                row["inv_number"],
+                "",
+                row["depot"],
+                row["org_unit_id"],
+                "",
+                "; ".join(section["name"] for section in row["candidate_sections"]),
+            ]
+        )
+    for group in report["duplicate_numbers"]:
+        for asset in group["assets"]:
+            writer.writerow(
+                _safe_csv_cell(value)
+                for value in [
+                    "duplicate_number",
+                    asset["asset_id"],
+                    asset["inv_number"],
+                    group["asset_type"],
+                    "",
+                    "",
+                    group["number_normalized"],
+                    str(group["model_id"]),
+                ]
+            )
+    for row in report["invalid_values"]:
+        writer.writerow(
+            _safe_csv_cell(value)
+            for value in [
+                "invalid_passport",
+                row["asset_id"],
+                row["inv_number"],
+                "",
+                "",
+                "",
+                "",
+                "; ".join(row["issues"]),
+            ]
+        )
+    return Response(
+        output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="asset-passport-report.csv"'},
+    )
 
 
 @router.get("/{asset_id}", response_model=FixedAssetRead)

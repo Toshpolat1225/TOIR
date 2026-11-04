@@ -182,6 +182,7 @@ def main() -> int:
                 "name": "Reference Wialon Unit",
                 "asset_type": "locomotive",
                 "series": "TEST",
+                "number": f"1{number_suffix}",
                 "depot": "ASSET TEST",
                 "section_id": own_section_id,
                 "status": "operational",
@@ -200,6 +201,8 @@ def main() -> int:
                 "inv_number": f"ASSET-FOREIGN-{suffix}",
                 "name": "Foreign reference asset",
                 "asset_type": "wagon",
+                "series": "TEST-WAGON",
+                "number": f"2{number_suffix}",
                 "section_id": other_section_id,
             },
         )
@@ -252,7 +255,9 @@ def main() -> int:
                 payload={
                     "inv_number": inv_number,
                     "name": "Duplicate inventory test",
-                    "asset_type": "diesel",
+                    "asset_type": "locomotive",
+                    "series": "TEST",
+                    "number": f"3{number_suffix}",
                 },
             ),
             409,
@@ -267,7 +272,9 @@ def main() -> int:
                 payload={
                     "inv_number": f"ASSET-OTHER-{suffix}",
                     "name": "Duplicate Wialon test",
-                    "asset_type": "diesel",
+                    "asset_type": "locomotive",
+                    "series": "TEST",
+                    "number": f"4{number_suffix}",
                     "wialon_id": wialon_id,
                 },
             ),
@@ -278,6 +285,50 @@ def main() -> int:
             "Fixed-asset statistics",
             request("GET", "/api/v1/fixed-assets/stats", bearer=operator_token),
             200,
+        )
+        passport_report = request(
+            "GET", "/api/v1/fixed-assets/passport-report", bearer=operator_token
+        )
+        require_status(checks, "Passport report JSON", passport_report, 200)
+        passport_body = parse_object(passport_report)
+        check_condition(
+            checks,
+            "Passport report JSON shape",
+            all(
+                isinstance(passport_body.get(key), list)
+                for key in (
+                    "depot_matches",
+                    "depot_unmatched",
+                    "duplicate_numbers",
+                    "invalid_values",
+                )
+            ),
+            "Report includes depot, duplicate, and invalid-value groups",
+        )
+        passport_csv = request(
+            "GET",
+            "/api/v1/fixed-assets/passport-report?format=csv",
+            bearer=operator_token,
+        )
+        check_condition(
+            checks,
+            "Passport report CSV",
+            passport_csv.status == 200
+            and "text/csv" in passport_csv.headers.get("content-type", "")
+            and passport_csv.body.startswith(b"category,asset_id,inv_number"),
+            "CSV content type and header are present"
+            if passport_csv.status == 200
+            else f"HTTP {passport_csv.status}",
+        )
+        check_status(
+            checks,
+            "Master cannot read passport report",
+            request(
+                "GET",
+                "/api/v1/fixed-assets/passport-report",
+                bearer=master_token,
+            ),
+            403,
         )
         check_status(
             checks,

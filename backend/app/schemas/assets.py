@@ -20,11 +20,20 @@ class PatchModel(BaseModel):
 
 class FixedAssetCreate(BaseModel):
     inv_number: str = Field(min_length=1)
-    name: str = Field(min_length=1)
+    name: str | None = Field(default=None, min_length=1)
     asset_type: AssetType
     series: str | None = None
     depot: str | None = None
     section_id: UUID | None = None
+    number: str | None = None
+    number_normalized: str | None = None
+    serial_number: str | None = None
+    model_id: UUID | None = None
+    accounting_inv_number: str | None = None
+    org_unit_id: UUID | None = None
+    commissioned_at: date | None = None
+    decommissioned_at: date | None = None
+    inv_number_is_provisional: bool | None = None
     status: AssetStatus = "operational"
     comm_date: date | None = None
     year_built: int | None = None
@@ -39,11 +48,23 @@ class FixedAssetCreate(BaseModel):
     @model_validator(mode="after")
     def normalize_text(self):
         for field_name in ("inv_number", "name"):
-            value = getattr(self, field_name).strip()
+            value = getattr(self, field_name)
+            if value is None and field_name == "name":
+                continue
+            value = value.strip()
             if not value:
                 raise ValueError(f"{field_name} must not be empty")
             setattr(self, field_name, value)
-        for field_name in ("series", "depot", "owner", "wialon_id", "gtk_id"):
+        for field_name in (
+            "series",
+            "depot",
+            "owner",
+            "wialon_id",
+            "gtk_id",
+            "number",
+            "serial_number",
+            "accounting_inv_number",
+        ):
             value = getattr(self, field_name)
             if value is not None:
                 setattr(self, field_name, value.strip() or None)
@@ -61,6 +82,15 @@ class FixedAssetUpdate(PatchModel):
     series: str | None = None
     depot: str | None = None
     section_id: UUID | None = None
+    number: str | None = None
+    number_normalized: str | None = None
+    serial_number: str | None = None
+    model_id: UUID | None = None
+    accounting_inv_number: str | None = None
+    org_unit_id: UUID | None = None
+    commissioned_at: date | None = None
+    decommissioned_at: date | None = None
+    inv_number_is_provisional: bool | None = None
     status: AssetStatus | None = None
     comm_date: date | None = None
     year_built: int | None = None
@@ -80,7 +110,16 @@ class FixedAssetUpdate(PatchModel):
                 if value is None or not value.strip():
                     raise ValueError(f"{field_name} must not be empty")
                 setattr(self, field_name, value.strip())
-        for field_name in ("series", "depot", "owner", "wialon_id", "gtk_id"):
+        for field_name in (
+            "series",
+            "depot",
+            "owner",
+            "wialon_id",
+            "gtk_id",
+            "number",
+            "serial_number",
+            "accounting_inv_number",
+        ):
             if field_name in self.model_fields_set:
                 value = getattr(self, field_name)
                 if value is not None:
@@ -105,9 +144,19 @@ class FixedAssetRead(BaseModel):
     series: str | None
     depot: str | None
     section_id: UUID | None
+    number: str | None
+    number_normalized: str | None
+    serial_number: str | None
+    model_id: UUID | None
+    accounting_inv_number: str | None
+    org_unit_id: UUID | None
+    commissioned_at: date | None
+    decommissioned_at: date | None
+    inv_number_is_provisional: bool | None
     status: AssetStatus
     comm_date: date | None
     year_built: int | None
+    # Operational fields are maintained independently from passport identity.
     mileage: Decimal
     last_maint_date: date | None
     next_maint_date: date | None

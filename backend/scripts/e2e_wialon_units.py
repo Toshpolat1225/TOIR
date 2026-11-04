@@ -211,6 +211,8 @@ def main() -> int:
             payload={
                 "inv_number": f"WIALON-E2E-{suffix}",
                 "asset_type": "diesel",
+                "series": "WIALON-E2E-DIESEL",
+                "number": number_suffix,
                 "section_id": section_id,
             },
         )

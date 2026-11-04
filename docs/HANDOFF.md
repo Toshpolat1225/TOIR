@@ -812,3 +812,20 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### NOT TESTED
 
 - PostgreSQL migration execution/rollback, API E2E, full backend suite, concurrency under real PostgreSQL, production server, or deployment.
+
+## Fixed asset passport P2 (2026-11-04)
+
+### Verified
+
+- Read existing `inv_number`, `series`, `depot`, `comm_date`, `year_built`, and `owner` usage across backend and frontend; existing fields remain. Wialon and GTK matching normalization helpers are reused.
+- Added Alembic `0018_asset_passport` after `0017_asset_source_links`, passport columns and `asset_models`, backfill/report logic, validation, and the admin/operator passport report endpoint. `sections` is used as the canonical org unit; no automatic `departments` mapping was added.
+- Updated fixed-asset, GTK, and Wialon asset-creation paths and TypeScript API types without removing existing type fields. Added passport-report E2E coverage and updated fixed-asset E2E payloads for required model/number data.
+- Backend `.venv` pytest for passport, source links, GTK, matching, unified assets, and Wialon: **102 passed**. No commit was made.
+
+### Next task
+
+- Rehearse Alembic `0018` upgrade/downgrade and backfill on a disposable PostgreSQL database, then run fixed-asset/passport API E2E checks against the intended test API.
+
+### NOT TESTED
+
+- PostgreSQL migration execution and real-data backfill, API E2E, frontend TypeScript/build, browser, production server, and deployment.

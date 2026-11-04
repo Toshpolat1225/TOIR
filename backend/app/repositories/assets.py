@@ -19,6 +19,14 @@ ASSET_SORT_FIELDS = frozenset(
         "asset_type",
         "series",
         "depot",
+        "number",
+        "number_normalized",
+        "serial_number",
+        "model_id",
+        "accounting_inv_number",
+        "org_unit_id",
+        "commissioned_at",
+        "decommissioned_at",
         "section_id",
         "status",
         "comm_date",
@@ -157,6 +165,12 @@ async def asset_stats(
 
 async def add_asset(db: AsyncSession, asset: FixedAsset) -> None:
     db.add(asset)
+
+
+async def list_passport_report_data(db: AsyncSession):
+    from app.repositories.asset_models import list_report_data
+
+    return await list_report_data(db)
 
 
 async def add_mileage_history(

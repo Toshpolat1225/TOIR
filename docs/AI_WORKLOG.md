@@ -187,3 +187,8 @@ Old Wialon/GTK references were mapped to fixed_assets mirror columns and the upd
 Legacy columns remain in place and are dual-written as compatibility mirrors; no existing migration was edited.
 NOT TESTED: PostgreSQL migration/rollback, API E2E, full suite, real concurrency, production or deployment; no commit.
 Next: rehearse migration 0017 and link-history API on a disposable PostgreSQL test database.
+2026-11-04 | Copilot SDK | P2 fixed-asset passport | migration 0018, passport model/service/report, API types, E2E payloads, tests, postgres schema, docs | backend/.venv targeted pytest -> 102 passed
+Preserved existing fixed-asset fields; added normalized model/number, conditional indexes, data report, and exact-name section matching.
+Updated GTK/Wialon creation paths and E2E fixtures for required passport values; no migration execution or API E2E was run.
+NOT TESTED: PostgreSQL backfill/upgrade/downgrade, frontend build/typecheck, browser, production, or deployment; no commit.
+Next: rehearse 0018 on disposable PostgreSQL and run the fixed-asset/passport API E2E checks.

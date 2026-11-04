@@ -29,6 +29,15 @@ def _fixed_asset_read() -> FixedAssetRead:
         series=None,
         depot=None,
         section_id=None,
+        number=None,
+        number_normalized=None,
+        serial_number=None,
+        model_id=None,
+        accounting_inv_number=None,
+        org_unit_id=None,
+        commissioned_at=None,
+        decommissioned_at=None,
+        inv_number_is_provisional=False,
         status="operational",
         comm_date=None,
         year_built=None,
@@ -167,6 +176,19 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(),
             ) as add_asset,
             patch.object(
+                wialon_units.asset_passport,
+                "prepare_new_asset",
+                new=AsyncMock(
+                    return_value={
+                        "name": "HILUX 366",
+                        "model_id": uuid4(),
+                        "series": "HILUX",
+                        "number": "366",
+                        "number_normalized": "366",
+                    }
+                ),
+            ),
+            patch.object(
                 wialon_units.asset_links_service,
                 "link",
                 new=AsyncMock(),
@@ -286,6 +308,7 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
             gtk_id=None,
             asset_type="locomotive",
             wialon_id="unit-1",
+            model_id=None,
             updated_at=None,
         )
         db = SimpleNamespace(refresh=AsyncMock())
@@ -335,6 +358,7 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
             gtk_id=None,
             asset_type="locomotive",
             wialon_id=None,
+            model_id=None,
             updated_at=None,
         )
         unit = SimpleNamespace(

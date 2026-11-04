@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assets import FixedAsset
 from app.services import asset_links as asset_links_service
+from app.services import asset_passport
 from app.repositories import assets as assets_repository
 from app.repositories import wialon_counters as counters_repository
 from app.repositories import wialon_units as repository
@@ -234,11 +235,22 @@ async def create_asset_from_wialon_unit(
 
     now = datetime.now(timezone.utc)
     mileage = Decimal("0") if unit.suspect_absolute else (unit.cnm or Decimal("0"))
+    passport_fields = await asset_passport.prepare_new_asset(
+        db,
+        asset_type=payload.asset_type,
+        name=payload.name or unit.name,
+        model_id=payload.model_id,
+        model_name=payload.series,
+        number=payload.number,
+    )
+    if payload.name is None:
+        passport_fields["name"] = (
+            f"{passport_fields['series']} {passport_fields['number']}"
+        )
     asset = FixedAsset(
         inv_number=payload.inv_number,
-        name=payload.name or unit.name,
+        **passport_fields,
         asset_type=payload.asset_type,
-        series=payload.series,
         section_id=payload.section_id,
         status="operational",
         mileage=mileage,
@@ -247,6 +259,9 @@ async def create_asset_from_wialon_unit(
         wialon_speed=unit.speed,
         wialon_online=is_wialon_unit_online(
             unit.last_message_at, now=now
+        ),
+        inv_number_is_provisional=(
+            payload.inv_number.upper().startswith("WIALON-")
         ),
         updated_at=now,
     )

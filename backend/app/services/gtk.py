@@ -26,6 +26,7 @@ from app.models.assets import FixedAsset
 from app.schemas.gtk import GtkLinkBatchRequest
 from app.services import assets as assets_service
 from app.services import asset_links as asset_links_service
+from app.services import asset_passport
 from app.services import gtk_matching
 from app.services.mileage_attribution import (
     LocomotiveMileage,
@@ -663,6 +664,16 @@ async def _carriage_preview(db: AsyncSession, carriage) -> tuple[dict[str, Any] 
         return None, "inactive"
     if not _clean_gtk_name(carriage.name):
         return None, "empty_name"
+    model_name = asset_passport.derive_model_name(
+        carriage.name, series=carriage.model_name
+    )
+    number = (getattr(carriage, "reg_number", None) or "").strip() or (
+        asset_passport.extract_passport_number(carriage.name, series=model_name)
+    )
+    if not model_name:
+        return None, "missing_model"
+    if not number:
+        return None, "missing_number"
     if await repository.get_linked_assets(db, {str(carriage.gtk_id)}):
         return None, "already_linked"
     inventory = (carriage.inventory_number or "").strip()
@@ -673,10 +684,13 @@ async def _carriage_preview(db: AsyncSession, carriage) -> tuple[dict[str, Any] 
     return {
         "name": _clean_gtk_name(carriage.name),
         "asset_type": "wagon",
-        "series": carriage.model_name,
+        "series": model_name,
         "inv_number": inventory,
         "mileage": Decimal("0"),
         "gtk_id": str(carriage.gtk_id),
+        "number": number,
+        "number_normalized": asset_passport.normalize_token(number),
+        "inv_number_is_provisional": inventory.upper().startswith("WIALON-"),
     }, None
 
 
@@ -710,7 +724,15 @@ async def create_carriage_asset(
             ],
         }
     await _ensure_wagon_catalog(db)
-    asset = FixedAsset(**preview)
+    passport_fields = await asset_passport.prepare_new_asset(
+        db,
+        asset_type="wagon",
+        name=preview["name"],
+        model_id=None,
+        model_name=preview["series"],
+        number=preview["number"],
+    )
+    asset = FixedAsset(**(preview | passport_fields))
     try:
         db.add(asset)
         await db.flush()
@@ -792,28 +814,47 @@ async def create_carriage_assets(
         elif not _clean_gtk_name(carriage.name):
             reason = "empty_name"
         else:
-            inventory = (carriage.inventory_number or "").strip()
-            if (
-                not inventory
-                or inventory in reserved_inventories
-                or await repository.inventory_number_exists(db, inventory)
-            ):
-                inventory = f"GTK-{carriage.gtk_id}"
-            if (
-                inventory in reserved_inventories
-                or await repository.inventory_number_exists(db, inventory)
-            ):
-                reason = "inventory_number_in_use"
+            model_name = asset_passport.derive_model_name(
+                carriage.name, series=carriage.model_name
+            )
+            number = (
+                (getattr(carriage, "reg_number", None) or "").strip()
+                or asset_passport.extract_passport_number(
+                    carriage.name, series=model_name
+                )
+            )
+            if not model_name:
+                reason = "missing_model"
+            elif not number:
+                reason = "missing_number"
             else:
-                reserved_inventories.add(inventory)
-                preview = {
-                    "name": _clean_gtk_name(carriage.name),
-                    "asset_type": "wagon",
-                    "series": carriage.model_name,
-                    "inv_number": inventory,
-                    "mileage": Decimal("0"),
-                    "gtk_id": str(carriage.gtk_id),
-                }
+                inventory = (carriage.inventory_number or "").strip()
+                if (
+                    not inventory
+                    or inventory in reserved_inventories
+                    or await repository.inventory_number_exists(db, inventory)
+                ):
+                    inventory = f"GTK-{carriage.gtk_id}"
+                if (
+                    inventory in reserved_inventories
+                    or await repository.inventory_number_exists(db, inventory)
+                ):
+                    reason = "inventory_number_in_use"
+                else:
+                    reserved_inventories.add(inventory)
+                    preview = {
+                        "name": _clean_gtk_name(carriage.name),
+                        "asset_type": "wagon",
+                        "series": model_name,
+                        "inv_number": inventory,
+                        "mileage": Decimal("0"),
+                        "gtk_id": str(carriage.gtk_id),
+                        "number": number,
+                        "number_normalized": asset_passport.normalize_token(number),
+                        "inv_number_is_provisional": inventory.upper().startswith(
+                            "WIALON-"
+                        ),
+                    }
         if reason:
             reports.append(
                 {"gtk_id": carriage.gtk_id, "status": "skipped", "reason": reason}
@@ -840,7 +881,15 @@ async def create_carriage_assets(
     try:
         new_assets = []
         for carriage, preview in eligible:
-            asset = FixedAsset(**preview)
+            passport_fields = await asset_passport.prepare_new_asset(
+                db,
+                asset_type="wagon",
+                name=preview["name"],
+                model_id=None,
+                model_name=preview["series"],
+                number=preview["number"],
+            )
+            asset = FixedAsset(**(preview | passport_fields))
             db.add(asset)
             new_assets.append((carriage, asset))
         await db.flush()

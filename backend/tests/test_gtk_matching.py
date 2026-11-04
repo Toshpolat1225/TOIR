@@ -182,6 +182,19 @@ class GtkLinkServiceTests(unittest.IsolatedAsyncioTestCase):
                 "reset_locomotive_mileage_checkpoint",
                 new=AsyncMock(),
             ),
+            patch.object(
+                assets_service.asset_passport,
+                "prepare_new_asset",
+                new=AsyncMock(
+                    return_value={
+                        "name": "Test locomotive",
+                        "model_id": uuid4(),
+                        "series": "ТЭМ18ДМ",
+                        "number": "8",
+                        "number_normalized": "8",
+                    }
+                ),
+            ),
         ):
             with self.assertRaises(HTTPException) as create_error:
                 await assets_service.create_fixed_asset(
@@ -201,6 +214,7 @@ class GtkLinkServiceTests(unittest.IsolatedAsyncioTestCase):
             gtk_id=None,
             asset_type="locomotive",
             wialon_id=None,
+            model_id=None,
             updated_at=None,
         )
         patch_db = SimpleNamespace(
@@ -378,9 +392,10 @@ class GtkLinkServiceTests(unittest.IsolatedAsyncioTestCase):
             result = await gtk_service.create_carriage_assets(db, dry_run=True)
 
         by_id = {item["gtk_id"]: item for item in result["items"]}
-        self.assertEqual(result["would_create"], 2)
-        self.assertEqual(result["skipped"], 3)
+        self.assertEqual(result["would_create"], 1)
+        self.assertEqual(result["skipped"], 4)
         self.assertEqual(by_id[1]["reason"], "duplicate_reg_number")
+        self.assertEqual(by_id[2]["reason"], "missing_model")
         self.assertEqual(by_id[3]["reason"], "inactive")
         self.assertEqual(by_id[4]["reason"], "already_linked")
         self.assertEqual(by_id[5]["asset"]["name"], "E 5")
