@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.assets import FixedAsset
 from app.services import asset_links as asset_links_service
 from app.services import asset_passport
+from app.services import asset_field_changes as field_changes_service
 from app.repositories import assets as assets_repository
 from app.repositories import wialon_counters as counters_repository
 from app.repositories import wialon_units as repository
@@ -268,6 +269,15 @@ async def create_asset_from_wialon_unit(
     try:
         await assets_repository.add_asset(db, asset)
         await db.flush()
+        field_changes_service.record_manual_changes(
+            db,
+            asset,
+            old_values={},
+            new_values={
+                field: getattr(asset, field)
+                for field in field_changes_service.PASSPORT_FIELD_NAMES
+            },
+        )
         await asset_links_service.link(
             db,
             asset.id,

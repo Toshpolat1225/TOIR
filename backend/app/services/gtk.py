@@ -21,12 +21,14 @@ from app.integrations.gtk_client import (
 )
 from app.models.gtk import GtkSyncRun, GtkWagonMileageLog
 from app.repositories import asset_source_links as asset_links_repository
+from app.repositories import asset_models as asset_models_repository
 from app.repositories import gtk as repository
 from app.models.assets import FixedAsset
 from app.schemas.gtk import GtkLinkBatchRequest
 from app.services import assets as assets_service
 from app.services import asset_links as asset_links_service
 from app.services import asset_passport
+from app.services import asset_field_changes as field_changes_service
 from app.services import gtk_matching
 from app.services.mileage_attribution import (
     LocomotiveMileage,
@@ -212,6 +214,69 @@ async def _attribute_snapshot_mileage(
         return attribution_counts
 
 
+async def _propose_gtk_passport_fields(
+    db: AsyncSession, snapshot: dict[str, Any]
+) -> None:
+    carriages = snapshot["carriages"]
+    linked_assets = await repository.get_linked_assets_for_update(
+        db, {str(row["gtk_id"]) for row in carriages}
+    )
+    for row in carriages:
+        asset = linked_assets.get(str(row["gtk_id"]))
+        if asset is None:
+            continue
+        registration = row.get("reg_number")
+        if registration:
+            await field_changes_service.propose_field(
+                db,
+                asset_id=asset.id,
+                field="number",
+                value=registration,
+                source="gtk",
+            )
+        model_name = (row.get("model_name") or "").strip()
+        if not model_name:
+            continue
+        normalized_name = asset_passport.normalize_token(model_name)
+        if not normalized_name:
+            continue
+        model = await asset_models_repository.get_by_normalized_name(
+            db, normalized_name
+        )
+        if model is None and asset.model_id is None:
+            model = await asset_models_repository.add_if_missing(
+                db,
+                name=model_name,
+                name_normalized=normalized_name,
+                asset_type="wagon",
+                series=model_name,
+            )
+        if model is None or model.asset_type != "wagon":
+            logger.warning(
+                "GTK carriage model proposal could not be resolved for asset %s",
+                asset.id,
+            )
+            continue
+        await field_changes_service.propose_field(
+            db,
+            asset_id=asset.id,
+            field="model_id",
+            value=model.id,
+            source="gtk",
+        )
+
+
+async def _run_gtk_passport_proposals(snapshot: dict[str, Any]) -> None:
+    try:
+        async with SessionFactory() as proposal_db:
+            async with proposal_db.begin():
+                await _propose_gtk_passport_fields(proposal_db, snapshot)
+    except Exception:
+        logger.exception(
+            "GTK passport field proposals failed; the GTK snapshot was retained"
+        )
+
+
 async def sync_gtk(db: AsyncSession) -> GtkSyncRun | None:
     global _consecutive_login_failures, _auto_sync_stopped
     async with _sync_lock:
@@ -277,6 +342,7 @@ async def sync_gtk(db: AsyncSession) -> GtkSyncRun | None:
                     logger.exception(
                         "GTK locomotive mileage attribution failed; GTK snapshot was retained"
                     )
+                await _run_gtk_passport_proposals(snapshot)
             _consecutive_login_failures = 0
             logger.info("GTK sync finished with status=%s counts=%s", run.status, counts)
             return run
@@ -736,6 +802,17 @@ async def create_carriage_asset(
     try:
         db.add(asset)
         await db.flush()
+        field_changes_service.record_changes(
+            db,
+            asset,
+            old_values={},
+            new_values={
+                field: getattr(asset, field)
+                for field in field_changes_service.PASSPORT_FIELD_NAMES
+            },
+            source="gtk",
+            kind="manual",
+        )
         await asset_links_service.link(
             db,
             asset.id,
@@ -894,6 +971,17 @@ async def create_carriage_assets(
             new_assets.append((carriage, asset))
         await db.flush()
         for carriage, asset in new_assets:
+            field_changes_service.record_changes(
+                db,
+                asset,
+                old_values={},
+                new_values={
+                    field: getattr(asset, field)
+                    for field in field_changes_service.PASSPORT_FIELD_NAMES
+                },
+                source="gtk",
+                kind="manual",
+            )
             await asset_links_service.link(
                 db,
                 asset.id,

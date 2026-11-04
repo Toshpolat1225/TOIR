@@ -4,7 +4,7 @@ import sqlite3
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
 import pytest
@@ -203,13 +203,15 @@ async def test_patch_recomputes_normalized_number():
         patch.object(assets_service, "_commit", new=AsyncMock()),
         patch.object(assets_service, "asset_read", return_value=asset),
     ):
+        db = SimpleNamespace(refresh=AsyncMock(), add=Mock())
         await assets_service.update_fixed_asset(
-            SimpleNamespace(refresh=AsyncMock()),
+            db,
             asset.id,
             FixedAssetUpdate(number="ПЭ-2М 111"),
         )
     assert asset.number == "ПЭ-2М 111"
     assert asset.number_normalized == normalize_token("ПЭ-2М 111")
+    assert db.add.call_args.args[0].field == "number"
 
 
 @pytest.mark.asyncio

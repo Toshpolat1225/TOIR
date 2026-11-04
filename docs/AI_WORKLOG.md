@@ -192,3 +192,8 @@ Preserved existing fixed-asset fields; added normalized model/number, conditiona
 Updated GTK/Wialon creation paths and E2E fixtures for required passport values; no migration execution or API E2E was run.
 NOT TESTED: PostgreSQL backfill/upgrade/downgrade, frontend build/typecheck, browser, production, or deployment; no commit.
 Next: rehearse 0018 on disposable PostgreSQL and run the fixed-asset/passport API E2E checks.
+2026-11-04 | Copilot SDK | P3 source-to-passport field policy | policy, migration 0019, field-change model/service/API, GTK sync hook, tests, E2E, postgres schema, docs | backend/.venv targeted pytest -> 128 passed
+Added auto-fill/suggestion/conflict/manual journal behavior, guarded accept/reject, paginated API, and migration-seeded admin/operator permission.
+GTK passport proposals run in their own transaction and use only active canonical links; Wialon telemetry code was not changed.
+NOT TESTED: PostgreSQL migration, GTK network sync, API E2E, frontend, production/deploy; no commit. E2E script requires disposable API with GTK configured.
+Next: rehearse 0019 upgrade/downgrade and run asset-conflict E2E on disposable PostgreSQL/API.

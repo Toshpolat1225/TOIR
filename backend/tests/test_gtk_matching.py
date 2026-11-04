@@ -146,6 +146,7 @@ class GtkLinkServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_duplicate_gtk_id_conflicts_with_409_on_asset_create_and_patch(self):
         duplicate_error = IntegrityError("duplicate", {}, Exception())
         create_db = SimpleNamespace(
+            add=Mock(),
             flush=AsyncMock(),
             commit=AsyncMock(side_effect=duplicate_error),
             rollback=AsyncMock(),

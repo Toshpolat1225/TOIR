@@ -300,6 +300,26 @@ CREATE UNIQUE INDEX uq_asset_source_links_asset_source_active
 CREATE INDEX ix_asset_source_links_asset_time
     ON asset_source_links(asset_id, linked_at);
 
+CREATE TABLE asset_field_changes (
+    id           bigserial PRIMARY KEY,
+    asset_id     uuid NOT NULL REFERENCES fixed_assets(id) ON DELETE CASCADE,
+    field        varchar(100) NOT NULL,
+    old_value    jsonb,
+    new_value    jsonb,
+    source       varchar(20) NOT NULL,
+    kind         varchar(20) NOT NULL
+                 CHECK (kind IN ('auto_fill','conflict','manual')),
+    status       varchar(20) NOT NULL
+                 CHECK (status IN ('applied','pending','accepted','rejected')),
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    resolved_by  uuid REFERENCES users(id) ON DELETE SET NULL,
+    resolved_at  timestamptz
+);
+CREATE INDEX ix_asset_field_changes_status_created
+    ON asset_field_changes(status, created_at);
+CREATE INDEX ix_asset_field_changes_asset_field_status
+    ON asset_field_changes(asset_id, field, status);
+
 CREATE TABLE mileage_history (
     id           bigserial PRIMARY KEY,
     asset_id     uuid NOT NULL REFERENCES fixed_assets(id) ON DELETE CASCADE,

@@ -15,6 +15,7 @@ from app.core.localization import parse_locale
 from app.core.translation_response import localize_reference_response
 from app.routers.auth import router as auth_router
 from app.routers.assets import router as assets_router
+from app.routers.asset_conflicts import router as asset_conflicts_router
 from app.routers.analytics import router as analytics_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.health import router as health_router
@@ -177,6 +178,7 @@ app.include_router(permissions_router, prefix="/api/v1")
 app.include_router(references_router, prefix="/api/v1")
 app.include_router(nomenclature_router, prefix="/api/v1")
 app.include_router(assets_router, prefix="/api/v1")
+app.include_router(asset_conflicts_router, prefix="/api/v1")
 app.include_router(wialon_router, prefix="/api/v1")
 app.include_router(wialon_pull_router, prefix="/api/v1")
 app.include_router(gtk_router, prefix="/api/v1")

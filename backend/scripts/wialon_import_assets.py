@@ -32,6 +32,7 @@ from app.services.wialon_asset_import import (  # noqa: E402
 )
 from app.services.wialon_quality import Reading, evaluate, suspect_absolute  # noqa: E402
 from app.services import asset_links as asset_links_service  # noqa: E402
+from app.services import asset_field_changes as field_changes_service  # noqa: E402
 from app.services import asset_passport  # noqa: E402
 
 
@@ -226,6 +227,15 @@ async def main(apply: bool) -> int:
             )
             db.add(asset)
             await db.flush()
+            field_changes_service.record_manual_changes(
+                db,
+                asset,
+                old_values={},
+                new_values={
+                    field: getattr(asset, field)
+                    for field in field_changes_service.PASSPORT_FIELD_NAMES
+                },
+            )
             await asset_links_service.link(
                 db,
                 asset.id,

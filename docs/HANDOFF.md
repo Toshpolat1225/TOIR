@@ -829,3 +829,20 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### NOT TESTED
 
 - PostgreSQL migration execution and real-data backfill, API E2E, frontend TypeScript/build, browser, production server, and deployment.
+
+## Asset source-to-passport policy P3 (2026-11-04)
+
+### Verified
+
+- Added one field-policy table for TOIR, GTK, OneC, and Wialon-owned fields. GTK proposals only load assets through active canonical GTK links; auto-fill, normalized conflict detection, duplicate pending suppression, and manual passport change journaling are implemented.
+- Added Alembic `0019_asset_field_changes`, its ORM/repository/schemas, and `asset_conflicts.manage` permission grants for admin/operator only. Added paginated conflict listing and accept/reject endpoints; stale acceptance returns 409.
+- Added the GTK sync proposal transaction in an isolated session; proposal failures are logged and do not escape the sync helper. Wialon telemetry behavior was not changed; Wialon-created assets now record their initial passport values.
+- Added an E2E script requiring a disposable API with GTK configured. Backend `.venv` pytest for field changes, passport, source links, GTK, matching, attribution, unified assets, and Wialon: **128 passed**. No commit was made.
+
+### Next task
+
+- Rehearse Alembic `0019` upgrade/downgrade on disposable PostgreSQL, then run `e2e_asset_conflicts.py` against a disposable API with GTK connected.
+
+### NOT TESTED
+
+- PostgreSQL migration execution, GTK network sync, API E2E, frontend, production server, and deployment.

@@ -114,6 +114,15 @@ async def get_asset(
     return (await db.execute(query)).scalar_one_or_none()
 
 
+async def get_asset_for_update(
+    db: AsyncSession, asset_id: UUID, *, master_section_id: UUID | None = None
+) -> FixedAsset | None:
+    query = select(FixedAsset).where(FixedAsset.id == asset_id)
+    if master_section_id is not None:
+        query = query.where(FixedAsset.section_id == master_section_id)
+    return (await db.execute(query.with_for_update())).scalar_one_or_none()
+
+
 async def asset_stats(
     db: AsyncSession, *, master_section_id: UUID | None, asset_type: str | None = None,
     status: str | None = None, status_behavior: str | None = None,

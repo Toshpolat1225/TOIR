@@ -18,6 +18,7 @@ from app.repositories import gtk as gtk_repository
 from app.services import maintenance as maintenance_service
 from app.services import asset_links as asset_links_service
 from app.services import asset_passport
+from app.services import asset_field_changes as field_changes_service
 from app.repositories import asset_models as asset_models_repository
 from app.schemas.assets import (
     AssetStatus,
@@ -54,11 +55,14 @@ async def _commit(db: AsyncSession, detail: str) -> None:
 
 
 async def _get_scoped_asset(
-    db: AsyncSession, asset_id: UUID, master_section_id: UUID | None = None
+    db: AsyncSession,
+    asset_id: UUID,
+    master_section_id: UUID | None = None,
+    *,
+    for_update: bool = False,
 ) -> FixedAsset:
-    asset = await repository.get_asset(
-        db, asset_id, master_section_id=master_section_id
-    )
+    getter = repository.get_asset_for_update if for_update else repository.get_asset
+    asset = await getter(db, asset_id, master_section_id=master_section_id)
     if asset is None:
         raise _not_found()
     return asset
@@ -177,6 +181,16 @@ async def create_fixed_asset(
     )
     asset = FixedAsset(**asset_values)
     await repository.add_asset(db, asset)
+    await db.flush()
+    field_changes_service.record_manual_changes(
+        db,
+        asset,
+        old_values={},
+        new_values={
+            field: getattr(asset, field)
+            for field in field_changes_service.PASSPORT_FIELD_NAMES
+        },
+    )
     if payload.wialon_id is not None or payload.gtk_id is not None:
         await db.flush()
         if payload.wialon_id is not None:
@@ -247,7 +261,9 @@ async def update_fixed_asset(
     master_section_id: UUID | None = None,
     by: UUID | None = None,
 ):
-    asset = await _get_scoped_asset(db, asset_id, master_section_id)
+    asset = await _get_scoped_asset(
+        db, asset_id, master_section_id, for_update=True
+    )
     changes = payload.model_dump(exclude_unset=True)
     active_links = {
         link.source: link
@@ -321,6 +337,21 @@ async def update_fixed_asset(
                 detail="Cannot assign an archived or missing section to a fixed asset",
             )
     mileage = changes.pop("mileage", None)
+    old_passport_values = {
+        field: getattr(asset, field, None)
+        for field in field_changes_service.PASSPORT_FIELD_NAMES
+    }
+    new_passport_values = {
+        field: changes[field]
+        for field in field_changes_service.PASSPORT_FIELD_NAMES
+        if field in changes
+    }
+    field_changes_service.record_manual_changes(
+        db,
+        asset,
+        old_values=old_passport_values,
+        new_values=new_passport_values,
+    )
     for field_name, value in changes.items():
         setattr(asset, field_name, value)
     asset.updated_at = datetime.now(timezone.utc)
