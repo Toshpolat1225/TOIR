@@ -1,12 +1,13 @@
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.wialon_client import WialonUnit
 from app.models.assets import FixedAsset
+from app.models.asset_source_links import AssetSourceLink
 from app.models.organization import Section
 from app.models.wialon_counters import WialonCounterState, WialonRejectedReading
 from app.models.wialon_units import WialonUnitRecord
@@ -116,6 +117,13 @@ def _unit_filters(
     return filters
 
 
+def _active_asset_links():
+    return and_(
+        AssetSourceLink.source == "wialon",
+        AssetSourceLink.status == "active",
+    )
+
+
 def _unit_rows_query():
     rejected_count = (
         select(func.count(WialonRejectedReading.id))
@@ -130,7 +138,17 @@ def _unit_rows_query():
             WialonCounterState,
             rejected_count.label("rejected_count"),
         )
-        .outerjoin(FixedAsset, FixedAsset.wialon_id == WialonUnitRecord.unit_id)
+        .select_from(
+            WialonUnitRecord.__table__
+            .outerjoin(
+                AssetSourceLink.__table__,
+                and_(
+                    AssetSourceLink.external_id == WialonUnitRecord.unit_id,
+                    _active_asset_links(),
+                ),
+            )
+            .outerjoin(FixedAsset.__table__, FixedAsset.id == AssetSourceLink.asset_id)
+        )
         .outerjoin(WialonCounterState, WialonCounterState.asset_id == FixedAsset.id)
     )
 
@@ -164,7 +182,14 @@ async def list_units(
     count_query = (
         select(func.count())
         .select_from(WialonUnitRecord)
-        .outerjoin(FixedAsset, FixedAsset.wialon_id == WialonUnitRecord.unit_id)
+        .outerjoin(
+            AssetSourceLink,
+            and_(
+                AssetSourceLink.external_id == WialonUnitRecord.unit_id,
+                _active_asset_links(),
+            ),
+        )
+        .outerjoin(FixedAsset, FixedAsset.id == AssetSourceLink.asset_id)
     )
     rows_query = _unit_rows_query()
     if filters:
@@ -184,15 +209,10 @@ async def list_units(
 async def get_unit(
     db: AsyncSession, unit_id: str, *, master_section_id
 ):
-    result = await db.execute(
-        _unit_rows_query()
-        .where(WialonUnitRecord.unit_id == unit_id)
-        .where(
-            FixedAsset.section_id == master_section_id
-            if master_section_id is not None
-            else True
-        )
-    )
+    query = _unit_rows_query().where(WialonUnitRecord.unit_id == unit_id)
+    if master_section_id is not None:
+        query = query.where(FixedAsset.section_id == master_section_id)
+    result = await db.execute(query)
     return result.one_or_none()
 
 
@@ -214,10 +234,17 @@ async def list_rejected_readings(
 async def list_unlinked_assets(
     db: AsyncSession, *, master_section_id
 ) -> list[FixedAsset]:
+    has_link = exists(
+        select(AssetSourceLink.id).where(
+            AssetSourceLink.asset_id == FixedAsset.id,
+            AssetSourceLink.source == "wialon",
+            AssetSourceLink.status == "active",
+        )
+    )
     query = (
         select(FixedAsset)
         .where(
-            FixedAsset.wialon_id.is_(None),
+            ~has_link,
             FixedAsset.asset_type.in_(("locomotive", "diesel")),
         )
         .order_by(FixedAsset.name.asc(), FixedAsset.id.asc())
@@ -234,8 +261,14 @@ async def get_unit_record(
     query = select(WialonUnitRecord).where(WialonUnitRecord.unit_id == unit_id)
     if master_section_id is not None:
         query = query.join(
-            FixedAsset, FixedAsset.wialon_id == WialonUnitRecord.unit_id
-        ).where(FixedAsset.section_id == master_section_id)
+            AssetSourceLink,
+            and_(
+                AssetSourceLink.external_id == WialonUnitRecord.unit_id,
+                _active_asset_links(),
+            ),
+        ).join(FixedAsset, FixedAsset.id == AssetSourceLink.asset_id).where(
+            FixedAsset.section_id == master_section_id
+        )
     result = await db.execute(query)
     return result.scalar_one_or_none()
 
@@ -244,7 +277,13 @@ async def get_linked_asset(
     db: AsyncSession, unit_id: str
 ) -> FixedAsset | None:
     result = await db.execute(
-        select(FixedAsset).where(FixedAsset.wialon_id == unit_id)
+        select(FixedAsset)
+        .join(AssetSourceLink, AssetSourceLink.asset_id == FixedAsset.id)
+        .where(
+            AssetSourceLink.source == "wialon",
+            AssetSourceLink.status == "active",
+            AssetSourceLink.external_id == unit_id,
+        )
     )
     return result.scalar_one_or_none()
 

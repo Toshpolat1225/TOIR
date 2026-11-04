@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assets import FixedAsset
+from app.services import asset_links as asset_links_service
 from app.repositories import assets as assets_repository
 from app.repositories import wialon_counters as counters_repository
 from app.repositories import wialon_units as repository
@@ -204,6 +205,8 @@ async def create_asset_from_wialon_unit(
     db: AsyncSession,
     unit_id: str,
     payload: WialonCreateAssetRequest,
+    *,
+    by: UUID | None = None,
 ) -> WialonCreateAssetResponse:
     unit = await repository.get_unit_record(db, unit_id)
     if unit is None:
@@ -250,6 +253,14 @@ async def create_asset_from_wialon_unit(
     try:
         await assets_repository.add_asset(db, asset)
         await db.flush()
+        await asset_links_service.link(
+            db,
+            asset.id,
+            "wialon",
+            unit_id,
+            by,
+            external_name=unit.name,
+        )
         reading = Reading(unit.cnm, unit.cneh, unit.last_message_at)
         gate = evaluate(None, reading, now=now)
         await counters_repository.save_decision(

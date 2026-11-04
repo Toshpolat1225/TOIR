@@ -8,6 +8,7 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assets import FixedAsset, MileageHistory
+from app.models.asset_source_links import AssetSourceLink
 from app.models.localization import FixedAssetStatus, FixedAssetType
 from app.models.work_orders import WorkOrder
 
@@ -199,8 +200,12 @@ async def find_asset_by_wialon_id(
     db: AsyncSession, wialon_id: str
 ) -> FixedAsset | None:
     result = await db.execute(
-        select(FixedAsset).where(
-            FixedAsset.wialon_id == wialon_id,
+        select(FixedAsset)
+        .join(AssetSourceLink, AssetSourceLink.asset_id == FixedAsset.id)
+        .where(
+            AssetSourceLink.source == "wialon",
+            AssetSourceLink.external_id == wialon_id,
+            AssetSourceLink.status == "active",
             FixedAsset.asset_type.in_(("locomotive", "diesel")),
         )
     )

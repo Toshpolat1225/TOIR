@@ -240,6 +240,29 @@ CREATE INDEX ix_assets_type_status ON fixed_assets(asset_type, status);
 CREATE INDEX ix_assets_section     ON fixed_assets(section_id);
 CREATE INDEX ix_assets_series      ON fixed_assets(series);
 
+CREATE TABLE asset_source_links (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    asset_id     uuid NOT NULL REFERENCES fixed_assets(id) ON DELETE CASCADE,
+    source       varchar(20) NOT NULL
+                 CHECK (source IN ('wialon','gtk','vesavoy','onec')),
+    external_id  varchar(100) NOT NULL,
+    external_name text,
+    status       varchar(20) NOT NULL DEFAULT 'active'
+                 CHECK (status IN ('active','ended')),
+    link_method  varchar(20) NOT NULL DEFAULT 'manual'
+                 CHECK (link_method IN ('manual','migrated','import')),
+    linked_by    uuid REFERENCES users(id) ON DELETE SET NULL,
+    linked_at    timestamptz NOT NULL DEFAULT now(),
+    unlinked_at  timestamptz,
+    note         text
+);
+CREATE UNIQUE INDEX uq_asset_source_links_source_external_active
+    ON asset_source_links(source, external_id) WHERE status = 'active';
+CREATE UNIQUE INDEX uq_asset_source_links_asset_source_active
+    ON asset_source_links(asset_id, source) WHERE status = 'active';
+CREATE INDEX ix_asset_source_links_asset_time
+    ON asset_source_links(asset_id, linked_at);
+
 CREATE TABLE mileage_history (
     id           bigserial PRIMARY KEY,
     asset_id     uuid NOT NULL REFERENCES fixed_assets(id) ON DELETE CASCADE,

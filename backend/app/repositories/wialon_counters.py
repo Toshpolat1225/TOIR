@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assets import FixedAsset
+from app.models.asset_source_links import AssetSourceLink
 from app.models.wialon_counters import WialonCounterState, WialonRejectedReading
 from app.services import wialon_quality
 from app.services.wialon_quality import CounterState, GateResult, Reading, Verdict
@@ -15,7 +16,13 @@ from app.services.wialon_quality import CounterState, GateResult, Reading, Verdi
 async def get_asset_by_wialon_id(db: AsyncSession, unit_id: str) -> FixedAsset | None:
     """Faqat ANIQ wialon_id bo'yicha (nom bo'yicha taxminiy moslash yo'q)."""
     result = await db.execute(
-        select(FixedAsset).where(FixedAsset.wialon_id == unit_id)
+        select(FixedAsset)
+        .join(AssetSourceLink, AssetSourceLink.asset_id == FixedAsset.id)
+        .where(
+            AssetSourceLink.source == "wialon",
+            AssetSourceLink.external_id == unit_id,
+            AssetSourceLink.status == "active",
+        )
     )
     return result.scalar_one_or_none()
 

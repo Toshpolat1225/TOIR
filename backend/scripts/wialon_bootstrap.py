@@ -11,6 +11,7 @@ TOIR mileage'iga HECH QACHON tegmaydi. Backend papkasida ishga tushiring (app pa
 import argparse, asyncio, csv, sys
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -20,10 +21,12 @@ from app.core.config import settings  # noqa: E402
 from app.core.database import SessionFactory  # noqa: E402
 from app.integrations.wialon_client import WialonClient  # noqa: E402
 from app.models.assets import FixedAsset  # noqa: E402
+from app.models.asset_source_links import AssetSourceLink  # noqa: E402
 from app.models.wialon_counters import WialonCounterState  # noqa: E402
 from app.repositories import wialon_counters as repo  # noqa: E402
 from app.services.wialon_bootstrap_plan import plan_bootstrap, summarize  # noqa: E402
 from app.services.wialon_quality import Reading, evaluate  # noqa: E402
+from app.services import asset_links as asset_links_service  # noqa: E402
 
 
 async def main(apply: bool, map_exact: bool) -> int:
@@ -33,8 +36,26 @@ async def main(apply: bool, map_exact: bool) -> int:
     units = await WialonClient(settings.wialon_host, settings.wialon_token.get_secret_value()).fetch_units()
     async with SessionFactory() as db:
         assets = (await db.execute(select(FixedAsset))).scalars().all()
+        active_links = (
+            await db.execute(
+                select(AssetSourceLink.asset_id, AssetSourceLink.external_id).where(
+                    AssetSourceLink.source == "wialon",
+                    AssetSourceLink.status == "active",
+                )
+            )
+        ).all()
+        linked_ids = {asset_id: external_id for asset_id, external_id in active_links}
+        planning_assets = [
+            SimpleNamespace(
+                id=asset.id,
+                name=asset.name,
+                mileage=asset.mileage,
+                wialon_id=linked_ids.get(asset.id),
+            )
+            for asset in assets
+        ]
         state_ids = set((await db.execute(select(WialonCounterState.asset_id))).scalars().all())
-        rows = plan_bootstrap(units, assets, state_ids)
+        rows = plan_bootstrap(units, planning_assets, state_ids)
         print(f"Rejim: {'APPLY (yozadi)' if apply else 'DRY-RUN (yozmaydi)'} | Wialon birliklari: {len(units)} | TOIR aktivlari: {len(assets)}")
         for k, v in sorted(summarize(rows).items()):
             print(f"  {k:<24} {v}")
@@ -58,8 +79,16 @@ async def main(apply: bool, map_exact: bool) -> int:
         mapped = baselined = 0
         for r in rows:
             if r.status == "name_unique" and map_exact:
-                by_asset[r.asset_id].wialon_id = r.unit_id          # unique constraint buzilsa commit xato beradi
-                await db.flush()
+                await asset_links_service.link(
+                    db,
+                    r.asset_id,
+                    "wialon",
+                    r.unit_id,
+                    None,
+                    external_name=r.unit_name,
+                    method="import",
+                )
+                mapped += 1
             elif r.status != "mapped":
                 continue
             if r.has_state:

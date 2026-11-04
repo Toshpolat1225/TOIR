@@ -132,7 +132,9 @@ class UnifiedAssetTests(unittest.IsolatedAsyncioTestCase):
             str(statement.compile(dialect=postgresql.dialect()))
             for statement in db.statements
         )
-        self.assertIn("FULL OUTER JOIN wialon_units", page_sql)
+        self.assertIn("FULL OUTER JOIN (SELECT", page_sql)
+        self.assertIn("asset_source_links", page_sql)
+        self.assertIn("wialon_units.unit_id = asset_source_links.external_id", page_sql)
         self.assertIn("fixed_assets.section_id", count_sql)
         self.assertIn("fixed_assets.asset_type", count_sql)
         self.assertIn("fixed_assets.status", count_sql)

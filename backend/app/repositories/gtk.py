@@ -15,6 +15,7 @@ from app.models.gtk import (
     GtkWagonMileageLog,
 )
 from app.models.assets import FixedAsset
+from app.models.asset_source_links import AssetSourceLink
 
 LOCOMOTIVE_SORT_FIELDS = frozenset(
     {
@@ -281,11 +282,20 @@ async def list_assets_for_kind(db: AsyncSession, kind: str) -> list[FixedAsset]:
     asset_types = (
         ("locomotive", "diesel") if kind == "locomotive" else ("wagon",)
     )
+    linked = (
+        select(AssetSourceLink.id)
+        .where(
+            AssetSourceLink.asset_id == FixedAsset.id,
+            AssetSourceLink.source == "gtk",
+            AssetSourceLink.status == "active",
+        )
+        .exists()
+    )
     result = await db.execute(
         select(FixedAsset)
         .where(
             FixedAsset.asset_type.in_(asset_types),
-            FixedAsset.gtk_id.is_(None),
+            ~linked,
         )
         .order_by(FixedAsset.id)
     )
@@ -298,9 +308,15 @@ async def get_linked_assets(
     if not gtk_ids:
         return {}
     result = await db.execute(
-        select(FixedAsset).where(FixedAsset.gtk_id.in_(gtk_ids))
+        select(AssetSourceLink.external_id, FixedAsset)
+        .join(FixedAsset, FixedAsset.id == AssetSourceLink.asset_id)
+        .where(
+            AssetSourceLink.source == "gtk",
+            AssetSourceLink.status == "active",
+            AssetSourceLink.external_id.in_(gtk_ids),
+        )
     )
-    return {asset.gtk_id: asset for asset in result.scalars().all() if asset.gtk_id}
+    return {external_id: asset for external_id, asset in result.all()}
 
 
 async def get_linked_assets_for_update(
@@ -309,11 +325,16 @@ async def get_linked_assets_for_update(
     if not gtk_ids:
         return {}
     result = await db.execute(
-        select(FixedAsset)
-        .where(FixedAsset.gtk_id.in_(gtk_ids))
+        select(AssetSourceLink.external_id, FixedAsset)
+        .join(FixedAsset, FixedAsset.id == AssetSourceLink.asset_id)
+        .where(
+            AssetSourceLink.source == "gtk",
+            AssetSourceLink.status == "active",
+            AssetSourceLink.external_id.in_(gtk_ids),
+        )
         .with_for_update()
     )
-    return {asset.gtk_id: asset for asset in result.scalars().all() if asset.gtk_id}
+    return {external_id: asset for external_id, asset in result.all()}
 
 
 async def get_asset(db: AsyncSession, asset_id: Any) -> FixedAsset | None:
@@ -323,9 +344,16 @@ async def get_asset(db: AsyncSession, asset_id: Any) -> FixedAsset | None:
 
 
 async def get_asset_by_gtk_id(db: AsyncSession, gtk_id: str) -> FixedAsset | None:
-    return (
-        await db.execute(select(FixedAsset).where(FixedAsset.gtk_id == gtk_id))
-    ).scalar_one_or_none()
+    result = await db.execute(
+        select(FixedAsset)
+        .join(AssetSourceLink, AssetSourceLink.asset_id == FixedAsset.id)
+        .where(
+            AssetSourceLink.source == "gtk",
+            AssetSourceLink.external_id == gtk_id,
+            AssetSourceLink.status == "active",
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 async def inventory_number_exists(db: AsyncSession, inv_number: str) -> bool:
@@ -369,7 +397,12 @@ async def get_linked_asset_for_update(
 ) -> FixedAsset | None:
     result = await db.execute(
         select(FixedAsset)
-        .where(FixedAsset.gtk_id == gtk_id)
+        .join(AssetSourceLink, AssetSourceLink.asset_id == FixedAsset.id)
+        .where(
+            AssetSourceLink.source == "gtk",
+            AssetSourceLink.external_id == gtk_id,
+            AssetSourceLink.status == "active",
+        )
         .with_for_update()
     )
     return result.scalar_one_or_none()

@@ -28,6 +28,9 @@ router = APIRouter(prefix="/gtk", tags=["GTK source"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
 GtkViewer = Annotated[User, Depends(require_permission("gtk.view"))]
 GtkManager = Annotated[User, Depends(require_permission("gtk.manage"))]
+AssetLinkManager = Annotated[
+    User, Depends(require_permission("asset_links.manage"))
+]
 SortOrder = Literal["asc", "desc"]
 LocomotiveSort = Literal[
     "gtk_id",
@@ -99,16 +102,20 @@ async def get_gtk_match_report(
 @router.post("/links", response_model=GtkLinkBatchResponse)
 async def post_gtk_links(
     payload: GtkLinkBatchRequest,
-    _: GtkManager,
+    user: GtkManager,
+    __: AssetLinkManager,
     db: DatabaseSession,
 ) -> GtkLinkBatchResponse:
-    return GtkLinkBatchResponse(updated=await service.save_links(db, payload))
+    return GtkLinkBatchResponse(
+        updated=await service.save_links(db, payload, by=user.id)
+    )
 
 
 @router.delete("/links/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_gtk_link(
     asset_id: UUID,
     _: GtkManager,
+    __: AssetLinkManager,
     db: DatabaseSession,
 ) -> Response:
     await service.delete_link(db, asset_id)
@@ -175,11 +182,14 @@ async def get_gtk_carriages(
 
 @router.post("/carriages/create-assets", response_model=GtkCreateAssetsResponse)
 async def post_create_gtk_carriage_assets(
-    _: GtkManager,
+    user: GtkManager,
+    __: AssetLinkManager,
     db: DatabaseSession,
     payload: GtkCreateAssetRequest = Body(default=GtkCreateAssetRequest()),
 ) -> GtkCreateAssetsResponse:
-    return await service.create_carriage_assets(db, dry_run=payload.dry_run)
+    return await service.create_carriage_assets(
+        db, dry_run=payload.dry_run, by=user.id
+    )
 
 
 @router.post(
@@ -187,12 +197,13 @@ async def post_create_gtk_carriage_assets(
 )
 async def post_create_gtk_carriage_asset(
     gtk_id: int,
-    _: GtkManager,
+    user: GtkManager,
+    __: AssetLinkManager,
     db: DatabaseSession,
     payload: GtkCreateAssetRequest = Body(default=GtkCreateAssetRequest()),
 ) -> GtkCreateAssetsResponse:
     return await service.create_carriage_asset(
-        db, gtk_id, dry_run=payload.dry_run
+        db, gtk_id, dry_run=payload.dry_run, by=user.id
     )
 
 

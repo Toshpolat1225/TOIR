@@ -146,6 +146,7 @@ class GtkLinkServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_duplicate_gtk_id_conflicts_with_409_on_asset_create_and_patch(self):
         duplicate_error = IntegrityError("duplicate", {}, Exception())
         create_db = SimpleNamespace(
+            flush=AsyncMock(),
             commit=AsyncMock(side_effect=duplicate_error),
             rollback=AsyncMock(),
         )
@@ -162,6 +163,19 @@ class GtkLinkServiceTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch.object(
                 assets_service.repository, "add_asset", new=AsyncMock()
+            ),
+            patch.object(
+                assets_service.asset_links_service, "link", new=AsyncMock()
+            ),
+            patch.object(
+                assets_service.gtk_repository,
+                "gtk_kind",
+                new=AsyncMock(return_value="locomotive"),
+            ),
+            patch.object(
+                assets_service.gtk_repository,
+                "get_locomotive",
+                new=AsyncMock(return_value=SimpleNamespace(name="GTK locomotive")),
             ),
             patch.object(
                 assets_service.gtk_repository,
@@ -205,6 +219,26 @@ class GtkLinkServiceTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(),
             ),
             patch.object(
+                assets_service.asset_links_repository,
+                "get_active",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch.object(
+                assets_service.asset_links_service,
+                "link",
+                new=AsyncMock(),
+            ),
+            patch.object(
+                assets_service.gtk_repository,
+                "gtk_kind",
+                new=AsyncMock(return_value="locomotive"),
+            ),
+            patch.object(
+                assets_service.gtk_repository,
+                "get_locomotive",
+                new=AsyncMock(return_value=SimpleNamespace(name="GTK loco")),
+            ),
+            patch.object(
                 assets_service.gtk_repository,
                 "reset_locomotive_mileage_checkpoint",
                 new=AsyncMock(),
@@ -224,7 +258,7 @@ class GtkLinkServiceTests(unittest.IsolatedAsyncioTestCase):
         asset = _asset("Wagon", asset_type="wagon")
         asset.id = asset_id
         asset.gtk_id = None
-        carriage = SimpleNamespace(gtk_id=8)
+        carriage = SimpleNamespace(gtk_id=8, name="GTK carriage")
         async def rollback():
             asset.gtk_id = None
 
@@ -250,8 +284,22 @@ class GtkLinkServiceTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch.object(
                 gtk_service.repository,
-                "get_linked_asset_for_update",
+                "gtk_kind",
+                new=AsyncMock(return_value="carriage"),
+            ),
+            patch.object(
+                gtk_service.asset_links_repository,
+                "get_active_for_update",
                 new=AsyncMock(return_value=None),
+            ),
+            patch.object(
+                gtk_service.asset_links_service,
+                "link",
+                new=AsyncMock(
+                    side_effect=HTTPException(
+                        status_code=409, detail="Duplicate GTK link"
+                    )
+                ),
             ),
         ):
             with self.assertRaises(HTTPException) as raised:

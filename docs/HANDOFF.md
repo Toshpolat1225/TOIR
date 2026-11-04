@@ -794,3 +794,21 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Run frontend `npx tsc --noEmit` and `npm run build`, then check the OS page's Network panel during a real-time update burst. Rehearse Alembic `0012`–`0016` upgrade/downgrade on a disposable PostgreSQL database before deployment.
+
+## Canonical external asset links P1 (2026-11-04)
+
+### Verified
+
+- Before this change, GTK links were stored in `fixed_assets.gtk_id`; Wialon mapping used `fixed_assets.wialon_id` (including Wialon counter lookup). GTK links were handled in `services/gtk.py` and Wialon links in asset/unit services and import/bootstrap scripts.
+- Added Alembic `0017_asset_source_links` after head `0016_gtk_mirror_cleanup`. It creates active-link uniqueness constraints, seeds `asset_links.view/manage`, and backfills non-empty legacy GTK/Wialon IDs as `migrated` with `ON CONFLICT DO NOTHING`. Existing columns remain unchanged.
+- Added the shared asset-link service and history API. GTK and Wialon link writes now use the shared service and mirror the old columns; Wialon/GTK lookup paths read active canonical links.
+- Backend `.venv` pytest for source links, GTK, matching, attribution, unified assets, and Wialon: **102 passed**. `git diff --check` reported no whitespace errors.
+- No commit was made.
+
+### Next task
+
+- Rehearse migration `0017` upgrade and downgrade, including backfill and permission grants, on a disposable PostgreSQL database; then run API E2E checks for link, unlink, duplicate, type mismatch, and history behavior.
+
+### NOT TESTED
+
+- PostgreSQL migration execution/rollback, API E2E, full backend suite, concurrency under real PostgreSQL, production server, or deployment.

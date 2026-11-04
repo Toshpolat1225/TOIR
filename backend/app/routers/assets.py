@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.permissions import require_permission
+from app.core.permissions import require_permission, user_has_permission
 from app.models.identity import User
 from app.schemas.assets import (
     AssetStatus,
@@ -20,7 +20,9 @@ from app.schemas.assets import (
 from app.schemas.asset_catalogs import AssetBehavior
 from app.schemas.common import PaginatedResponse
 from app.schemas.gtk import GtkFixedAssetSourceDetail
+from app.schemas.asset_source_links import AssetSourceLinksRead
 from app.services import assets as service
+from app.services import asset_links as asset_links_service
 from app.services import gtk as gtk_service
 from app.services import unified_assets as unified_service
 from app.schemas.wialon import UnifiedAssetRead
@@ -28,6 +30,7 @@ from app.schemas.wialon import UnifiedAssetRead
 router = APIRouter(prefix="/fixed-assets", tags=["fixed assets"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
 AuthenticatedUser = Annotated[User, Depends(require_permission("assets.view"))]
+AssetLinksViewer = Annotated[User, Depends(require_permission("asset_links.view"))]
 AssetCreator = Annotated[User, Depends(require_permission("assets.create"))]
 AssetUpdater = Annotated[User, Depends(require_permission("assets.update"))]
 AssetDeleter = Annotated[User, Depends(require_permission("assets.delete"))]
@@ -170,6 +173,20 @@ async def get_fixed_asset_gtk_detail(
     return GtkFixedAssetSourceDetail.model_validate(result)
 
 
+@router.get("/{asset_id}/links", response_model=AssetSourceLinksRead)
+async def get_fixed_asset_links(
+    asset_id: UUID,
+    _: AssetLinksViewer,
+    db: DatabaseSession,
+    include_ended: bool = Query(default=False),
+) -> AssetSourceLinksRead:
+    await service.get_fixed_asset(db, asset_id, master_section_id=None)
+    items = await asset_links_service.list_for_asset(
+        db, asset_id, include_ended=include_ended
+    )
+    return AssetSourceLinksRead(asset_id=asset_id, items=items)
+
+
 @router.get("/{asset_id}", response_model=FixedAssetRead)
 async def get_fixed_asset(
     asset_id: UUID, user: AuthenticatedUser, db: DatabaseSession
@@ -185,19 +202,33 @@ async def get_fixed_asset(
     status_code=status.HTTP_201_CREATED,
 )
 async def post_fixed_asset(
-    payload: FixedAssetCreate, _: AssetCreator, db: DatabaseSession
+    payload: FixedAssetCreate, user: AssetCreator, db: DatabaseSession
 ) -> FixedAssetRead:
-    return await service.create_fixed_asset(db, payload)
+    if (payload.gtk_id is not None or payload.wialon_id is not None) and not await user_has_permission(
+        db, user, "asset_links.manage"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    return await service.create_fixed_asset(db, payload, by=user.id)
 
 
 @router.patch("/{asset_id}", response_model=FixedAssetRead)
 async def patch_fixed_asset(
     asset_id: UUID,
     payload: FixedAssetUpdate,
-    _: AssetUpdater,
+    user: AssetUpdater,
     db: DatabaseSession,
 ) -> FixedAssetRead:
-    return await service.update_fixed_asset(db, asset_id, payload)
+    if {"gtk_id", "wialon_id"} & payload.model_fields_set and not await user_has_permission(
+        db, user, "asset_links.manage"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    return await service.update_fixed_asset(db, asset_id, payload, by=user.id)
 
 
 @router.delete("/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)

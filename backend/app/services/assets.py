@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assets import FixedAsset
+from app.repositories import asset_source_links as asset_links_repository
 from app.repositories import assets as repository
 from app.repositories import references as references_repository
 from app.repositories import maintenance as maintenance_repository
@@ -15,6 +16,7 @@ from app.repositories import wialon_counters as wialon_counters_repository
 from app.repositories import wialon_units as wialon_units_repository
 from app.repositories import gtk as gtk_repository
 from app.services import maintenance as maintenance_service
+from app.services import asset_links as asset_links_service
 from app.schemas.assets import (
     AssetStatus,
     AssetType,
@@ -126,7 +128,7 @@ async def get_fixed_asset_stats(
 
 
 async def create_fixed_asset(
-    db: AsyncSession, payload: FixedAssetCreate
+    db: AsyncSession, payload: FixedAssetCreate, *, by: UUID | None = None
 ):
     await _validate_gtk_link(db, payload.gtk_id, payload.asset_type)
     if payload.section_id is not None and await references_repository.get_non_archived_section(
@@ -141,11 +143,40 @@ async def create_fixed_asset(
     if not await repository.active_catalog_value_exists(db, kind="statuses", code=payload.status):
         raise HTTPException(status_code=422, detail="Asset status is unavailable")
     asset = FixedAsset(**payload.model_dump())
-    if payload.gtk_id is not None and payload.asset_type in {"locomotive", "diesel"}:
-        await gtk_repository.reset_locomotive_mileage_checkpoint(
-            db, int(payload.gtk_id)
-        )
     await repository.add_asset(db, asset)
+    if payload.wialon_id is not None or payload.gtk_id is not None:
+        await db.flush()
+        if payload.wialon_id is not None:
+            wialon_unit = await wialon_units_repository.get_unit_record(
+                db, payload.wialon_id
+            )
+            await asset_links_service.link(
+                db,
+                asset.id,
+                "wialon",
+                payload.wialon_id,
+                by,
+                external_name=wialon_unit.name if wialon_unit is not None else None,
+            )
+        if payload.gtk_id is not None:
+            gtk_kind = await gtk_repository.gtk_kind(db, payload.gtk_id)
+            gtk_object = (
+                await gtk_repository.get_locomotive(db, int(payload.gtk_id))
+                if gtk_kind == "locomotive"
+                else await gtk_repository.get_carriage(db, int(payload.gtk_id))
+            )
+            await asset_links_service.link(
+                db,
+                asset.id,
+                "gtk",
+                payload.gtk_id,
+                by,
+                external_name=gtk_object.name if gtk_object is not None else None,
+            )
+            if gtk_kind == "locomotive":
+                await gtk_repository.reset_locomotive_mileage_checkpoint(
+                    db, int(payload.gtk_id)
+                )
     await _commit(
         db,
         "Inventory number, Wialon ID, or GTK ID already exists, or section is invalid",
@@ -181,31 +212,31 @@ async def update_fixed_asset(
     payload: FixedAssetUpdate,
     *,
     master_section_id: UUID | None = None,
+    by: UUID | None = None,
 ):
     asset = await _get_scoped_asset(db, asset_id, master_section_id)
     changes = payload.model_dump(exclude_unset=True)
-    previous_gtk_id = asset.gtk_id
-    await _validate_gtk_link(
-        db,
-        changes.get("gtk_id", asset.gtk_id),
-        changes.get("asset_type", asset.asset_type),
+    active_links = {
+        link.source: link
+        for link in await asset_links_repository.get_active(db, asset.id)
+    }
+    previous_gtk_id = active_links.get("gtk").external_id if "gtk" in active_links else None
+    previous_wialon_id = (
+        active_links.get("wialon").external_id if "wialon" in active_links else None
     )
-    wialon_id_changed = (
-        "wialon_id" in changes and changes["wialon_id"] != asset.wialon_id
-    )
+    next_asset_type = changes.get("asset_type", asset.asset_type)
     if "asset_type" in changes and not await repository.active_catalog_value_exists(db, kind="types", code=changes["asset_type"]):
         raise HTTPException(status_code=422, detail="Asset type is unavailable")
+    for source, link_row in active_links.items():
+        field_name = f"{source}_id"
+        if field_name not in changes or changes[field_name] == link_row.external_id:
+            await asset_links_service.validate_asset_type(
+                db, next_asset_type, source, link_row.external_id
+            )
     next_gtk_id = changes.get("gtk_id", previous_gtk_id)
-    next_asset_type = changes.get("asset_type", asset.asset_type)
-    if previous_gtk_id != next_gtk_id:
-        if previous_gtk_id is not None and asset.asset_type in {"locomotive", "diesel"}:
-            await gtk_repository.reset_locomotive_mileage_checkpoint(
-                db, int(previous_gtk_id)
-            )
-        if next_gtk_id is not None and next_asset_type in {"locomotive", "diesel"}:
-            await gtk_repository.reset_locomotive_mileage_checkpoint(
-                db, int(next_gtk_id)
-            )
+    wialon_id_changed = (
+        "wialon_id" in changes and changes["wialon_id"] != previous_wialon_id
+    )
     if "status" in changes and not await repository.active_catalog_value_exists(db, kind="statuses", code=changes["status"]):
         raise HTTPException(status_code=422, detail="Asset status is unavailable")
     section_id = changes.get("section_id")
@@ -219,10 +250,61 @@ async def update_fixed_asset(
     for field_name, value in changes.items():
         setattr(asset, field_name, value)
     asset.updated_at = datetime.now(timezone.utc)
+    if "wialon_id" in changes:
+        next_wialon_id = changes["wialon_id"]
+        if next_wialon_id is None:
+            if previous_wialon_id is not None:
+                await asset_links_service.unlink(db, asset.id, "wialon")
+        else:
+            wialon_unit = await wialon_units_repository.get_unit_record(
+                db, next_wialon_id
+            )
+            await asset_links_service.link(
+                db,
+                asset.id,
+                "wialon",
+                next_wialon_id,
+                by,
+                external_name=wialon_unit.name if wialon_unit is not None else None,
+            )
+    if "gtk_id" in changes:
+        if next_gtk_id is None:
+            if previous_gtk_id is not None:
+                await asset_links_service.unlink(db, asset.id, "gtk")
+        else:
+            gtk_kind = await gtk_repository.gtk_kind(db, next_gtk_id)
+            gtk_object = (
+                await gtk_repository.get_locomotive(db, int(next_gtk_id))
+                if gtk_kind == "locomotive"
+                else await gtk_repository.get_carriage(db, int(next_gtk_id))
+            )
+            await asset_links_service.link(
+                db,
+                asset.id,
+                "gtk",
+                next_gtk_id,
+                by,
+                external_name=gtk_object.name if gtk_object is not None else None,
+            )
+    if previous_gtk_id != next_gtk_id:
+        if previous_gtk_id is not None:
+            previous_kind = await gtk_repository.gtk_kind(db, previous_gtk_id)
+            if previous_kind == "locomotive":
+                await gtk_repository.reset_locomotive_mileage_checkpoint(
+                    db, int(previous_gtk_id)
+                )
+        if next_gtk_id is not None:
+            next_kind = await gtk_repository.gtk_kind(db, next_gtk_id)
+            if next_kind == "locomotive":
+                await gtk_repository.reset_locomotive_mileage_checkpoint(
+                    db, int(next_gtk_id)
+                )
     if wialon_id_changed:
         linked_unit = (
-            await wialon_units_repository.get_unit_record(db, asset.wialon_id)
-            if asset.wialon_id is not None
+            await wialon_units_repository.get_unit_record(
+                db, changes.get("wialon_id")
+            )
+            if changes.get("wialon_id") is not None
             else None
         )
         await wialon_counters_repository.rebaseline(
@@ -319,7 +401,7 @@ async def find_wialon_asset(
     """Resolve only explicit Wialon links; names are for suggestions, not writes."""
     if not unit_id or not unit_id.strip():
         return None
-    return await repository.find_asset_by_wialon_id(db, unit_id.strip())
+    return await asset_links_service.find_asset(db, "wialon", unit_id.strip())
 
 
 async def receive_wialon_update(

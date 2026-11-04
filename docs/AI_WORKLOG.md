@@ -182,3 +182,8 @@ Next: apply migrations through 0016 to a disposable PostgreSQL database and veri
 Realtime listeners now keep the newest handler without channel churn; OS row notifications are coalesced before stats/unified refresh.
 Added GTK text-hygiene, 0012–0016 offline migration-render, and Docker-ignore regression tests; Alembic logging is isolated during SQL rendering.
 No commit; next verify TypeScript/build and browser request volume, then rehearse migrations on disposable PostgreSQL.
+2026-11-04 | Copilot SDK | P1 canonical external asset links | migration 0017, asset link model/service/repository/API, Wialon/GTK integration, tests, postgres schema, HANDOFF/DECISIONS | backend/.venv pytest -> 102 passed; git diff --check clean
+Old Wialon/GTK references were mapped to fixed_assets mirror columns and the updated runtime lookups now use active asset_source_links.
+Legacy columns remain in place and are dual-written as compatibility mirrors; no existing migration was edited.
+NOT TESTED: PostgreSQL migration/rollback, API E2E, full suite, real concurrency, production or deployment; no commit.
+Next: rehearse migration 0017 and link-history API on a disposable PostgreSQL test database.

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.permissions import require_permission
+from app.core.permissions import require_permission, user_has_permission
 from app.models.identity import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.wialon import (
@@ -26,6 +26,9 @@ DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
 AuthenticatedUser = Annotated[User, Depends(require_permission("assets.view"))]
 WialonAssetCreator = Annotated[
     User, Depends(require_permission("assets.create"))
+]
+AssetLinkManager = Annotated[
+    User, Depends(require_permission("asset_links.manage"))
 ]
 SortOrder = Literal["asc", "desc"]
 MAX_INPUT_BYTES = 64 * 1024
@@ -301,6 +304,7 @@ async def post_wialon_unit_create_asset(
     unit_id: str,
     payload: WialonCreateAssetRequest,
     user: WialonAssetCreator,
+    _: AssetLinkManager,
     db: DatabaseSession,
 ) -> WialonCreateAssetResponse:
     if user.role not in {"admin", "operator"}:
@@ -309,5 +313,5 @@ async def post_wialon_unit_create_asset(
             detail="Only admin or operator may create a fixed asset from Wialon",
         )
     return await units_service.create_asset_from_wialon_unit(
-        db, unit_id, payload
+        db, unit_id, payload, by=user.id
     )

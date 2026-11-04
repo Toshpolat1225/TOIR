@@ -20,10 +20,12 @@ from app.integrations.gtk_client import (
     GtkParseError,
 )
 from app.models.gtk import GtkSyncRun, GtkWagonMileageLog
+from app.repositories import asset_source_links as asset_links_repository
 from app.repositories import gtk as repository
 from app.models.assets import FixedAsset
 from app.schemas.gtk import GtkLinkBatchRequest
 from app.services import assets as assets_service
+from app.services import asset_links as asset_links_service
 from app.services import gtk_matching
 from app.services.mileage_attribution import (
     LocomotiveMileage,
@@ -425,11 +427,11 @@ async def get_fixed_asset_gtk_detail(
     asset = await assets_service.get_fixed_asset(
         db, asset_id, master_section_id=master_section_id
     )
-    if asset.gtk_id is None:
+    active_links = await asset_links_service.get_active(db, asset_id)
+    gtk_link = next((row for row in active_links if row.source == "gtk"), None)
+    if gtk_link is None or not gtk_link.external_id.isdigit():
         raise HTTPException(status_code=404, detail="GTK link not found")
-    if not asset.gtk_id.isdigit():
-        raise HTTPException(status_code=404, detail="GTK link not found")
-    gtk_id = int(asset.gtk_id)
+    gtk_id = int(gtk_link.external_id)
     if asset.asset_type in {"locomotive", "diesel"}:
         kind = "locomotive"
         gtk_object = await repository.get_locomotive(db, gtk_id)
@@ -562,7 +564,9 @@ def match_report_csv(report: dict[str, Any]) -> str:
     return output.getvalue()
 
 
-async def save_links(db: AsyncSession, payload: GtkLinkBatchRequest) -> int:
+async def save_links(
+    db: AsyncSession, payload: GtkLinkBatchRequest, *, by: UUID | None = None
+) -> int:
     links = payload.links
     asset_ids = [link.asset_id for link in links]
     keys = [(link.kind, link.gtk_id) for link in links]
@@ -592,23 +596,29 @@ async def save_links(db: AsyncSession, payload: GtkLinkBatchRequest) -> int:
                 raise HTTPException(status_code=422, detail="GTK locomotive needs a locomotive or diesel asset")
             if link.kind == "carriage" and asset.asset_type != "wagon":
                 raise HTTPException(status_code=422, detail="GTK carriage needs a wagon asset")
-            existing = await repository.get_linked_asset_for_update(
-                db, str(link.gtk_id)
+            current = await asset_links_repository.get_active_for_update(
+                db, asset.id, "gtk"
             )
-            if existing is not None and existing.id != asset.id:
-                raise HTTPException(
-                    status_code=409, detail="GTK record is already linked to another asset"
-                )
-            if asset.gtk_id != str(link.gtk_id):
-                if asset.gtk_id and asset.asset_type in {"locomotive", "diesel"}:
+            previous_id = current.external_id if current is not None else None
+            await asset_links_service.link(
+                db,
+                asset.id,
+                "gtk",
+                str(link.gtk_id),
+                by,
+                external_name=gtk_object.name,
+            )
+            if previous_id != str(link.gtk_id):
+                if previous_id is not None and await repository.gtk_kind(
+                    db, previous_id
+                ) == "locomotive":
                     await repository.reset_locomotive_mileage_checkpoint(
-                        db, int(asset.gtk_id)
+                        db, int(previous_id)
                     )
                 if link.kind == "locomotive":
                     await repository.reset_locomotive_mileage_checkpoint(
                         db, link.gtk_id
                     )
-            asset.gtk_id = str(link.gtk_id)
         await db.commit()
         return len(links)
     except HTTPException:
@@ -627,14 +637,17 @@ async def save_links(db: AsyncSession, payload: GtkLinkBatchRequest) -> int:
 
 async def delete_link(db: AsyncSession, asset_id: UUID) -> None:
     asset = await repository.get_asset(db, asset_id)
-    if asset is None or asset.gtk_id is None:
+    current = await asset_links_repository.get_active_for_update(
+        db, asset_id, "gtk"
+    )
+    if asset is None or current is None:
         raise HTTPException(status_code=404, detail="GTK link not found")
-    if asset.asset_type in {"locomotive", "diesel"}:
+    if await repository.gtk_kind(db, current.external_id) == "locomotive":
         await repository.reset_locomotive_mileage_checkpoint(
-            db, int(asset.gtk_id)
+            db, int(current.external_id)
         )
-    asset.gtk_id = None
     try:
+        await asset_links_service.unlink(db, asset_id, "gtk")
         await db.commit()
     except Exception:
         await db.rollback()
@@ -668,7 +681,7 @@ async def _carriage_preview(db: AsyncSession, carriage) -> tuple[dict[str, Any] 
 
 
 async def create_carriage_asset(
-    db: AsyncSession, gtk_id: int, *, dry_run: bool
+    db: AsyncSession, gtk_id: int, *, dry_run: bool, by: UUID | None = None
 ) -> dict[str, Any]:
     carriage = await repository.get_carriage(db, gtk_id)
     if carriage is None:
@@ -700,6 +713,15 @@ async def create_carriage_asset(
     asset = FixedAsset(**preview)
     try:
         db.add(asset)
+        await db.flush()
+        await asset_links_service.link(
+            db,
+            asset.id,
+            "gtk",
+            str(gtk_id),
+            by,
+            external_name=carriage.name,
+        )
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
@@ -726,7 +748,7 @@ async def create_carriage_asset(
                     "series": asset.series,
                     "inv_number": asset.inv_number,
                     "mileage": asset.mileage,
-                    "gtk_id": asset.gtk_id,
+                    "gtk_id": str(gtk_id),
                 },
             }
         ],
@@ -745,7 +767,7 @@ async def _ensure_wagon_catalog(db: AsyncSession) -> None:
 
 
 async def create_carriage_assets(
-    db: AsyncSession, *, dry_run: bool
+    db: AsyncSession, *, dry_run: bool, by: UUID | None = None
 ) -> dict[str, Any]:
     rows = await repository.list_all_carriages(db)
     carriages = [row for row, _ in rows]
@@ -816,8 +838,21 @@ async def create_carriage_assets(
 
     await _ensure_wagon_catalog(db)
     try:
-        for _, preview in eligible:
-            db.add(FixedAsset(**preview))
+        new_assets = []
+        for carriage, preview in eligible:
+            asset = FixedAsset(**preview)
+            db.add(asset)
+            new_assets.append((carriage, asset))
+        await db.flush()
+        for carriage, asset in new_assets:
+            await asset_links_service.link(
+                db,
+                asset.id,
+                "gtk",
+                str(carriage.gtk_id),
+                by,
+                external_name=carriage.name,
+            )
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()

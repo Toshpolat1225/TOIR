@@ -510,7 +510,7 @@ class WialonAssetMappingTests(unittest.IsolatedAsyncioTestCase):
         asset = SimpleNamespace(id="asset-id", name="ТЭМ 1234")
         with (
             patch(
-                "app.services.assets.repository.find_asset_by_wialon_id",
+                "app.services.assets.asset_links_service.find_asset",
                 new=AsyncMock(return_value=asset),
             ) as by_id,
             patch(
@@ -529,7 +529,7 @@ class WialonAssetMappingTests(unittest.IsolatedAsyncioTestCase):
         asset = SimpleNamespace(id="asset-id", name="ТЭМ 1234")
         with (
             patch(
-                "app.services.assets.repository.find_asset_by_wialon_id",
+                "app.services.assets.asset_links_service.find_asset",
                 new=AsyncMock(return_value=None),
             ) as by_id,
             patch(
@@ -550,14 +550,14 @@ class WialonAssetMappingTests(unittest.IsolatedAsyncioTestCase):
         by_number.assert_not_awaited()
 
         with patch(
-            "app.services.assets.repository.find_asset_by_wialon_id",
+            "app.services.assets.asset_links_service.find_asset",
             new=AsyncMock(return_value=None),
         ) as by_id:
             result = await assets.find_wialon_asset(
                 object(), unit_id="unlinked-id", unit_name=asset.name
             )
         self.assertIsNone(result)
-        by_id.assert_awaited_once_with(unittest.mock.ANY, "unlinked-id")
+        by_id.assert_awaited_once_with(unittest.mock.ANY, "wialon", "unlinked-id")
 
     async def test_lower_odometer_updates_are_recorded_and_zero_is_allowed(self):
         asset = SimpleNamespace(

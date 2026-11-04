@@ -123,6 +123,7 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
                 ),
                 SimpleNamespace(role="management"),
                 object(),
+                object(),
             )
         self.assertEqual(raised.exception.status_code, 403)
 
@@ -141,6 +142,7 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
         db = SimpleNamespace(
             flush=AsyncMock(),
             commit=AsyncMock(),
+            rollback=AsyncMock(),
             refresh=AsyncMock(),
         )
         with (
@@ -165,6 +167,11 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(),
             ) as add_asset,
             patch.object(
+                wialon_units.asset_links_service,
+                "link",
+                new=AsyncMock(),
+            ) as save_link,
+            patch.object(
                 wialon_units.counters_repository,
                 "save_decision",
                 new=AsyncMock(),
@@ -188,6 +195,7 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
         created_asset = add_asset.await_args.args[1]
         self.assertEqual(created_asset.mileage, Decimal("0"))
         self.assertEqual(created_asset.wialon_id, "unit-1")
+        save_link.assert_awaited_once()
         self.assertIn("manual correction", result.warning)
         save_decision.assert_awaited_once()
         self.assertEqual(save_decision.await_args.args[3].mileage.verdict.value, "baseline")
@@ -288,6 +296,20 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=asset),
             ),
             patch.object(
+                assets.asset_links_repository,
+                "get_active",
+                new=AsyncMock(
+                    return_value=[
+                        SimpleNamespace(source="wialon", external_id="unit-1")
+                    ]
+                ),
+            ),
+            patch.object(
+                assets.asset_links_service,
+                "unlink",
+                new=AsyncMock(),
+            ),
+            patch.object(
                 assets.wialon_counters_repository,
                 "rebaseline",
                 new=AsyncMock(),
@@ -316,6 +338,7 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
             updated_at=None,
         )
         unit = SimpleNamespace(
+            name="ТЭМ 1234",
             cnm=Decimal("1234.5"),
             cneh=Decimal("80.25"),
             last_message_at=observed_at,
@@ -326,6 +349,16 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
                 assets,
                 "_get_scoped_asset",
                 new=AsyncMock(return_value=asset),
+            ),
+            patch.object(
+                assets.asset_links_repository,
+                "get_active",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch.object(
+                assets.asset_links_service,
+                "link",
+                new=AsyncMock(),
             ),
             patch.object(
                 assets.wialon_units_repository,

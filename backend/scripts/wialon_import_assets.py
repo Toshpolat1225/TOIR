@@ -23,6 +23,7 @@ from app.core.config import settings  # noqa: E402
 from app.core.database import SessionFactory  # noqa: E402
 from app.integrations.wialon_client import WialonClient, WialonUnit  # noqa: E402
 from app.models.assets import FixedAsset  # noqa: E402
+from app.models.asset_source_links import AssetSourceLink  # noqa: E402
 from app.repositories import assets as assets_repo  # noqa: E402
 from app.repositories import wialon_counters as counters_repo  # noqa: E402
 from app.services.wialon_asset_import import (  # noqa: E402
@@ -30,6 +31,7 @@ from app.services.wialon_asset_import import (  # noqa: E402
     extract_asset_series,
 )
 from app.services.wialon_quality import Reading, evaluate, suspect_absolute  # noqa: E402
+from app.services import asset_links as asset_links_service  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -109,12 +111,19 @@ async def main(apply: bool) -> int:
 
     async with SessionFactory() as db:
         existing_rows = (
-            await db.execute(select(FixedAsset.wialon_id, FixedAsset.inv_number))
+            await db.execute(
+                select(AssetSourceLink.external_id).where(
+                    AssetSourceLink.source == "wialon",
+                    AssetSourceLink.status == "active",
+                )
+            )
         ).all()
         existing_wialon_ids = {
-            wialon_id for wialon_id, _ in existing_rows if wialon_id is not None
+            row[0] for row in existing_rows
         }
-        existing_inv_numbers = {inv_number for _, inv_number in existing_rows}
+        existing_inv_numbers = set(
+            (await db.execute(select(FixedAsset.inv_number))).scalars().all()
+        )
         rows = build_import_rows(
             units, existing_wialon_ids, existing_inv_numbers
         )
@@ -199,7 +208,6 @@ async def main(apply: bool) -> int:
                 name=row.name,
                 asset_type=row.asset_type,
                 series=row.series,
-                wialon_id=row.unit_id,
                 inv_number=row.inv_number,
                 status="operational",
                 mileage=row.mileage,
@@ -209,6 +217,15 @@ async def main(apply: bool) -> int:
             )
             db.add(asset)
             await db.flush()
+            await asset_links_service.link(
+                db,
+                asset.id,
+                "wialon",
+                row.unit_id,
+                None,
+                external_name=row.name,
+                method="import",
+            )
             reading = Reading(unit.mileage, unit.engine_hours, unit.last_message_at)
             gate = evaluate(None, reading, now=now)
             await counters_repo.save_decision(

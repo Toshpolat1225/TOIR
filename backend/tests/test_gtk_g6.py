@@ -27,6 +27,7 @@ def test_gtk_alembic_chain_has_one_head_and_is_contiguous():
         ("0014_fixed_assets_gtk_id", "0013_gtk_source"),
         ("0015_gtk_wagon_mileage", "0014_fixed_assets_gtk_id"),
         ("0016_gtk_mirror_cleanup", "0015_gtk_wagon_mileage"),
+        ("0017_asset_source_links", "0016_gtk_mirror_cleanup"),
     ]
 
     assert len(script.get_heads()) == 1
@@ -42,21 +43,24 @@ def test_gtk_migrations_render_offline_upgrade_and_downgrade_sql():
     downgrade_output = StringIO()
     with patch("logging.config.fileConfig"):
         command.upgrade(
-            _migration_config(upgrade_output), "0016_gtk_mirror_cleanup", sql=True
+            _migration_config(upgrade_output), "0017_asset_source_links", sql=True
         )
         command.downgrade(
             _migration_config(downgrade_output),
-            "0016_gtk_mirror_cleanup:0012_wialon_units",
+            "0017_asset_source_links:0012_wialon_units",
             sql=True,
         )
 
     upgrade_sql = upgrade_output.getvalue()
     assert "CREATE TABLE gtk_sync_runs" in upgrade_sql
     assert "gtk_wagon_mileage_log" in upgrade_sql
+    assert "CREATE TABLE asset_source_links" in upgrade_sql
+    assert "ON CONFLICT DO NOTHING" in upgrade_sql
 
     downgrade_sql = downgrade_output.getvalue()
     assert "DROP TABLE gtk_sync_runs" in downgrade_sql
     assert "DROP TABLE gtk_wagon_mileage_log" in downgrade_sql
+    assert "DROP TABLE asset_source_links" in downgrade_sql
 
 
 def test_gtk_related_sources_have_no_foreign_alphabet_characters():
