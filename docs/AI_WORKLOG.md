@@ -155,3 +155,30 @@ Changed: lib/api.ts, app/dashboard/os/page.tsx, app/dashboard/os/wialon/page.tsx
 Checked: VS Code Problems -> no errors in changed TS/TSX; OS source scan -> no Supabase calls.
 NOT TESTED: tsc/build blocked by missing local TypeScript/Next dependencies; browser/API behavior not tested; no packages installed.
 Next: provide existing frontend dependencies, run allowed tsc/build, then browser-check with test API.
+2026-11-04 | Copilot SDK | Added GTK as a separate read-only source with guarded snapshot sync and APIs.
+Changed: backend GTK integration/model/migration/repository/service/schema/router/tests/scripts, config, permissions, main.py, docker-compose.yml, .gitignore, HANDOFF, DECISIONS.
+Tested: backend/.venv pytest for GTK and existing Wialon tests -> 62 passed (pytest-asyncio deprecation warning).
+NOT TESTED: live GTK network, migration/PostgreSQL, API E2E, Docker, server; no secrets inspected and no commit.
+Next: apply 0013 to a disposable database, configure GTK, sync once, then run the GTK API E2E script.
+2026-11-04 | Copilot SDK | Added human-confirmed GTK links and suggestion-only matching for fixed assets.
+Changed: fixed-asset model/schema/service, Alembic 0014, GTK matching/repository/service/router, focused tests, GTK link E2E script, HANDOFF, DECISIONS.
+Tested: backend/.venv pytest for GTK matching, links, unified assets, and existing GTK/Wialon tests -> 74 passed; Pylance syntax checks passed (pytest-asyncio deprecation warning).
+NOT TESTED: Alembic/PostgreSQL, API E2E, Docker, browser, server, or live GTK; no secrets or GTK raw files inspected; no commit.
+Next: apply 0014 to a disposable database and run e2e_gtk_links.py against the intended test API.
+2026-11-04 | Copilot SDK | Added GTK locomotive mileage attribution to eligible linked wagons.
+Changed: pure attribution service, GTK checkpoint/log models and repository/service/routes, fixed-asset GTK detail route, Alembic 0015, mileage source schema, tests, HANDOFF, DECISIONS.
+Tested: backend/.venv pytest for GTK mileage, GTK, unified assets, and Wialon -> 83 passed; Pylance syntax checks passed.
+NOT TESTED: Alembic/PostgreSQL, API E2E, Docker, browser, server, and live GTK; `.env`/GTK raw files not opened; Wialon implementation unchanged; no commit.
+Next: apply migrations through 0015 to a disposable database and verify attribution and read endpoints with test data.
+2026-11-04 | Copilot SDK | Added GTK data page and GTK detail block in fixed-asset modal | app/dashboard/os/gtk/page.tsx, app/dashboard/layout.tsx, app/dashboard/os/page.tsx, lib/api.ts, docs/HANDOFF.md
+Tested: NOT TESTED; `npx.cmd tsc --noEmit` could not find TypeScript and `npm.cmd run build` could not find Next.js. The first `npx` attempt was blocked by PowerShell policy.
+NOT TESTED: browser, live GTK/API, database migrations, or server; `.env.local` untouched; no Supabase calls or commit.
+Next: restore the declared frontend dependencies in the local environment, then rerun the two required checks.
+2026-11-04 | Copilot SDK | Offline G1-G4 GTK consistency review and corrections | GTK config/sync/models/API, migrations 0013/0016, postgres/schema.sql, GTK frontend/API types, backend/tests/test_gtk.py, HANDOFF
+Tested: backend/.venv pytest for GTK, matching, attribution, unified assets, and Wialon -> 90 passed, 17 subtests passed; existing pytest-asyncio deprecation warning.
+NOT TESTED: PostgreSQL migration execution/rollback, frontend tsc/build/browser, API E2E, live GTK, Docker, or server; `.env*` and GTK raw files not opened; no commit.
+Next: apply migrations through 0016 to a disposable PostgreSQL database and verify upgrade/downgrade.
+2026-11-04 | Copilot SDK | G6 GTK residual cleanup | OS realtime handler, useRealtime, Docker ignore files, tests, DECISIONS/HANDOFF | backend/.venv pytest -> 94 passed | frontend build and database/Docker/browser checks remain
+Realtime listeners now keep the newest handler without channel churn; OS row notifications are coalesced before stats/unified refresh.
+Added GTK text-hygiene, 0012–0016 offline migration-render, and Docker-ignore regression tests; Alembic logging is isolated during SQL rendering.
+No commit; next verify TypeScript/build and browser request volume, then rehearse migrations on disposable PostgreSQL.

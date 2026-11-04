@@ -11,6 +11,7 @@ import {
   type UnifiedAsset,
   type WialonUnit,
   type WialonUnitDetail,
+  type GtkFixedAssetDetail,
   type AssetCatalogItem,
   type FixedAssetStats,
 } from "@/lib/api"
@@ -101,6 +102,8 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, statuses, canW
   const [availableUnits, setAvailableUnits] = useState<WialonUnit[]>([])
   const [wialonDetail, setWialonDetail] = useState<WialonUnitDetail | null>(null)
   const [unitLoadError, setUnitLoadError] = useState("")
+  const [gtkDetail, setGtkDetail] = useState<GtkFixedAssetDetail | null>(null)
+  const [gtkLoadState, setGtkLoadState] = useState<"loading" | "linked" | "unlinked" | "error">("loading")
 
   useEffect(() => {
     let active = true
@@ -114,6 +117,29 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, statuses, canW
     }
     return () => { active = false }
   }, [asset.wialonId])
+
+  useEffect(() => {
+    let active = true
+    api.fixedAssets.get(asset.id)
+      .then((fixedAsset) => {
+        if (!active) return
+        if (!fixedAsset.gtk_id) {
+          setGtkLoadState("unlinked")
+          return
+        }
+        return api.gtk.fixedAssetDetail(asset.id)
+          .then((detail) => {
+            if (active) {
+              setGtkDetail(detail)
+              setGtkLoadState("linked")
+            }
+          })
+      })
+      .catch(() => {
+        if (active) setGtkLoadState("error")
+      })
+    return () => { active = false }
+  }, [asset.id])
 
   const st = statusConfig[status] || { label: asset.statusLabel || status, icon: CheckCircle, cls: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300", dot: "bg-blue-500" }
   const typeLabels: Record<string, { label: string; gradient: string; Icon: React.ElementType }> = {
@@ -277,6 +303,53 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, statuses, canW
                 {wialonDetail?.suspect_absolute && <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">⚠ Подозрительное значение счётчика</p>}
               </div>
             )}
+
+            <div className="col-span-2 rounded-xl border border-slate-200 dark:border-gray-700 bg-slate-50 dark:bg-gray-800/50 p-3">
+              <p className="text-xs font-semibold text-slate-700 dark:text-gray-200 mb-2">Данные GTK</p>
+              {gtkLoadState === "loading" && <p className="text-xs text-gray-500">Загрузка данных GTK…</p>}
+              {gtkLoadState === "error" && <p role="alert" className="text-xs text-red-600 dark:text-red-400">Не удалось загрузить данные GTK.</p>}
+              {gtkLoadState === "unlinked" && <p className="text-xs text-gray-500">Объект не привязан к GTK.</p>}
+              {gtkDetail && (
+                <div className="space-y-3 text-xs text-gray-700 dark:text-gray-300">
+                  <p>
+                    <span className="text-gray-500">GTK ID:</span>{" "}
+                    <b>{gtkDetail.gtk_id}</b>
+                    {" · "}
+                    {gtkDetail.kind === "locomotive" ? "Локомотив" : "Вагон"}
+                    {" · "}
+                    <b>{gtkDetail.gtk_object.name || "—"}</b>
+                  </p>
+                  <div>
+                    <p className="font-semibold mb-1">Текущий состав</p>
+                    {gtkDetail.current_trains.length === 0 ? (
+                      <p className="text-gray-500">Сейчас не входит в состав.</p>
+                    ) : gtkDetail.current_trains.map((train) => (
+                      <p key={train.gtk_id}>
+                        {train.number || train.title || `Состав ${train.gtk_id}`} · {train.carriages.length} ваг.
+                      </p>
+                    ))}
+                  </div>
+                  {gtkDetail.kind === "carriage" && (
+                    <div>
+                      <p className="font-semibold mb-1">Последние начисления пробега</p>
+                      {gtkDetail.recent_mileage_logs.length === 0 ? (
+                        <p className="text-gray-500">Начислений пока нет.</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {gtkDetail.recent_mileage_logs.map((log) => (
+                            <li key={log.id}>
+                              {Number(log.km).toLocaleString("ru-RU")} км · состав {log.train_gtk_id}
+                              {" · "}
+                              {new Date(log.period_from).toLocaleDateString("ru-RU")}–{new Date(log.period_to).toLocaleDateString("ru-RU")}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Номер вагона</p>
@@ -666,8 +739,9 @@ export default function OsPage() {
   const [loadError, setLoadError] = useState("")
   const [statsError, setStatsError] = useState("")
   
-  // Ref для фильтров в real-time подписке (чтобы не пересоздавать канал)
+  // Keep the latest filters available to the realtime listener.
   const filtersRef = useRef({ page: 0, search: "", fType: "" as AssetType | "", fSource: "" as UnifiedAsset["source"] | "", fSection: "", fStatus: "" as AssetStatus | "", fBehavior: "" })
+  const realtimeRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Загружаем счётчики и список депо один раз (оптимизированные запросы)
   const fetchCounts = useCallback(async () => {
@@ -735,6 +809,12 @@ export default function OsPage() {
     }
   }, [fSection, fBehavior])
 
+  const realtimeFetchersRef = useRef({ fetchAssets, fetchCounts })
+
+  useEffect(() => {
+    realtimeFetchersRef.current = { fetchAssets, fetchCounts }
+  }, [fetchAssets, fetchCounts])
+
   useEffect(() => { fetchCounts() }, [fetchCounts])
 
   // Обновляем ref при изменении фильтров
@@ -742,14 +822,22 @@ export default function OsPage() {
     filtersRef.current = { page, search: debouncedSearch, fType, fSource, fSection, fStatus, fBehavior }
   }, [page, debouncedSearch, fType, fSource, fSection, fStatus, fBehavior])
 
-  // New WebSocket-based real-time updates
+  // Coalesce bursts of row-level notifications into one refresh.
   useRealtime(useCallback((event) => {
-    if (event.resource === "fixed_assets") {
-      console.log("Realtime [OS]: fixed_assets updated, refetching...");
-      fetchAssets(filtersRef.current.page, filtersRef.current.search, filtersRef.current.fType, filtersRef.current.fSource, filtersRef.current.fStatus, filtersRef.current.fSection, filtersRef.current.fBehavior);
-      fetchCounts();
-    }
-  }, [fetchAssets, fetchCounts]), ["fixed_assets"]);
+    if (event.resource !== "fixed_assets") return
+    if (realtimeRefreshTimerRef.current) return
+    realtimeRefreshTimerRef.current = setTimeout(() => {
+      realtimeRefreshTimerRef.current = null
+      const filters = filtersRef.current
+      const { fetchAssets: refreshAssets, fetchCounts: refreshCounts } = realtimeFetchersRef.current
+      void refreshAssets(filters.page, filters.search, filters.fType, filters.fSource, filters.fStatus, filters.fSection, filters.fBehavior)
+      void refreshCounts()
+    }, 750)
+  }, []), ["fixed_assets"])
+
+  useEffect(() => () => {
+    if (realtimeRefreshTimerRef.current) clearTimeout(realtimeRefreshTimerRef.current)
+  }, [])
 
   // Сброс страницы при смене фильтров
   useEffect(() => {

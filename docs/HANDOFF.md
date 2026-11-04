@@ -708,3 +708,89 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Make the already-declared frontend dependencies available in the local environment, then run `npx tsc --noEmit` and `npm run build`; after that, verify OS/Wialon flows in a browser against a test API.
+
+## GTK separate read-only source (2026-11-04)
+
+### Verified
+
+- Added GTK HTML parsing and an HTTP client that uses the configured login form and a single authenticated report-page fetch. Missing required data blocks raise a parse error.
+- Added the separate GTK mirror tables, membership history, guarded sync service, RBAC, paginated APIs, periodic worker, one-shot script, and read-only API E2E script. `fixed_assets` and existing migrations were not changed.
+- GTK synthetic parsing/config/upsert/membership/guard tests and existing Wialon tests passed with `backend/.venv` pytest: 62 passed. The test runner reported the existing `pytest-asyncio` loop-scope deprecation warning.
+- No live GTK request, server access, database migration, API E2E, Docker, or production run was performed. `.env*` and `gtk_*.json/html` files were not inspected.
+
+### Next task
+
+- Configure GTK values in the intended environment, apply `0013_gtk_source` to a disposable database, run one sync, then run `backend/scripts/e2e_gtk.py` before deployment.
+
+## GTK links to fixed assets (2026-11-04)
+
+### Verified
+
+- Added nullable unique `fixed_assets.gtk_id` in Alembic `0014_fixed_assets_gtk_id`. Fixed-asset create/PATCH accept optional numeric GTK IDs, validate locomotive/carriage type compatibility, and map uniqueness conflicts to 409.
+- Added suggestion-only matching, normalization, linked-asset fields, JSON/CSV match reports, transactional manual link/unlink, and single/bulk carriage-asset creation with `dry_run=true` by default. Bulk creation excludes inactive, duplicate, and linked carriages.
+- GTK reads remain under `gtk.view`; link and creation writes require `gtk.manage`. Masters remain denied. `/fixed-assets/unified` and stats were not changed.
+- `backend/.venv` pytest for GTK matching, links, unified-asset regression, and existing GTK/Wialon tests: 74 passed. The existing pytest-asyncio loop-scope deprecation warning remains.
+- Pylance syntax checks found no syntax errors in the new E2E script and modified GTK matcher/repository/tests. The E2E script was not run. No `.env*` or `gtk_*.json/html` files were opened, and no live GTK/server access occurred.
+
+### Next task
+
+- Apply `0014_fixed_assets_gtk_id` to a disposable database, then run `backend/scripts/e2e_gtk_links.py` against the intended test API. Migration, PostgreSQL, API E2E, Docker, deployment, and browser behavior remain NOT TESTED.
+
+## GTK locomotive-to-wagon mileage attribution (2026-11-04)
+
+### Verified
+
+- Added pure attribution for a linked main locomotive’s TOIR mileage increase to linked, active wagons present in the same train in both snapshots. New/detached wagons, inactive wagons, and wagons seen in multiple trains are excluded. Non-positive and over-limit deltas are not attributed.
+- Added a separate TOIR mileage checkpoint table so GTK’s imported `gtk_locomotives.checkpoint_mileage` remains unchanged. A newly linked locomotive starts at its current TOIR mileage; link changes reset its checkpoint.
+- Added migration `0015_gtk_wagon_mileage`, `gtk` as a mileage-history source, wagon attribution logs, run-count metrics, `GET /gtk/wagon-mileage`, and `GET /fixed-assets/{id}/gtk`.
+- Focused GTK mileage, GTK, unified-assets regression, and existing Wialon tests passed with `backend/.venv` pytest: 83 passed. Pylance syntax checks found no syntax errors in changed Python files. The existing pytest-asyncio loop-scope deprecation warning remains.
+- Migration/PostgreSQL, API E2E, Docker, server, and live GTK were NOT TESTED. `.env` and GTK raw JSON/HTML files were not opened; Wialon implementation files were not changed.
+
+### Next task
+
+- Apply migrations through `0015_gtk_wagon_mileage` to a disposable database and verify the GTK sync attribution and both read endpoints against test data before deployment.
+
+## GTK frontend page (2026-11-04)
+
+### Verified
+
+- Added `/dashboard/os/gtk` with GTK status/quality indicators and locomotive, carriage, and train tabs. Admin/operator-only controls cover locomotive link confirmation, unlinking, and carriage bulk-create dry-run review and confirmation.
+- Added API types and methods for GTK list/detail, matching, links, carriage creation, status, mileage, and fixed-asset GTK detail. `FixedAsset.gtk_id` is optional and `MileageHistory.source` includes `gtk`; no existing type fields were removed.
+- Added a GTK information section to the existing fixed-asset view modal. The main fixed-assets table and `/fixed-assets/unified` behavior were not changed. The sidebar hides GTK for master.
+- `npx tsc --noEmit` and `npm run build` were NOT TESTED successfully: PowerShell blocked `npx.ps1`; `npx.cmd tsc --noEmit` reported TypeScript is not installed; `npm.cmd run build` reported `next` is unavailable. No dependencies were installed.
+- No `.env.local` was opened or changed; no Supabase calls or commits were added.
+
+### Next task
+
+- Make the already-declared frontend dependencies available in the local environment, then rerun `npx tsc --noEmit` and `npm run build`. Browser behavior, GTK API, migrations, and server remain NOT TESTED.
+
+## GTK offline consistency review (2026-11-04)
+
+### Verified
+
+- Migration IDs `0013`–`0016` form a linear chain and are within Alembic’s 32-character limit. The `mileage_history_source_check` name matches the PostgreSQL-generated baseline name, ORM constraint, and `0015` upgrade/downgrade definitions.
+- The canonical SQL schema was missing GTK mirror tables and `fixed_assets.gtk_id`; it now matches the GTK ORM table columns. GTK permission seeding in `0013` was already present; conflict-safe inserts now avoid collision with permissions seeded by the existing `0008` mechanism while preserving role overrides.
+- GTK source-side locomotive checkpoint fields were only copied/stored/exposed, not used by G3 attribution. Migration `0016_gtk_mirror_cleanup` removes them; the separate TOIR checkpoint model remains.
+- Empty GTK credentials with `GTK_SYNC_ENABLED=true` now produce a value-free warning and disable the background task. Sync failures use fixed safe error text; tests cover logs, saved runs, status output, and enabled state.
+- GTK API/UI contract and Russian status/skip-reason labels have regression checks. Master-role page data loading is gated until authorization resolves.
+- Backend `.venv` pytest for GTK, matching, mileage attribution, unified assets, and Wialon: **90 passed, 17 subtests passed**. Pytest emitted the existing `pytest-asyncio` loop-scope deprecation warning.
+- `.env*`, GTK raw JSON/HTML, and secrets were not opened or printed; no commit was made.
+
+### Next task
+
+- Apply Alembic through `0016_gtk_mirror_cleanup` to a disposable PostgreSQL database and verify upgrade/downgrade. Frontend TypeScript/build, browser, API E2E, live GTK, Docker, and server remain NOT TESTED.
+
+## GTK residual issues G6 (2026-11-04)
+
+### Verified
+
+- The OS page's real-time callback previously caused its WebSocket listener to be replaced whenever the callback identity changed; one `fixed_assets` event also launched both stats and unified-list requests. The hook now retains the latest callback without resubscribing, and the OS page coalesces row events into a single refresh within 750 ms. Browser Network-panel behavior was not verified.
+- Root and backend `.dockerignore` files now exclude environment files, GTK snapshots/pages/data, CSV/dump files, dependency/build directories, and TypeScript build metadata. The frontend Dockerfile still contains `COPY . .`; its ignore coverage is checked by pytest. Docker was not run and build-context size was not measured.
+- `next.config.mjs` does not set `typescript.ignoreBuildErrors` or `eslint.ignoreDuringBuilds`; it was not changed.
+- Added tests for forbidden alphabet characters in the specified GTK/frontend/backend/docs files, migration chain `0012`–`0016`, and offline upgrade/downgrade SQL rendering. The offline render test isolates Alembic logging configuration.
+- Backend `.venv` pytest for GTK, matching, attribution, unified assets, and all Wialon modules: **94 passed**. Pytest emitted the existing `pytest-asyncio` loop-scope deprecation warning.
+- No commit was made. Frontend TypeScript/build, PostgreSQL execution, Docker build/context measurement, browser, API E2E, live GTK, and server were NOT TESTED.
+
+### Next task
+
+- Run frontend `npx tsc --noEmit` and `npm run build`, then check the OS page's Network panel during a real-time update burst. Rehearse Alembic `0012`–`0016` upgrade/downgrade on a disposable PostgreSQL database before deployment.

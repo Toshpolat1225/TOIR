@@ -38,6 +38,13 @@ services:
       WIALON_TOKEN: ${WIALON_TOKEN:-}
       WIALON_SYNC_INTERVAL_MINUTES: ${WIALON_SYNC_INTERVAL_MINUTES:-2}
       WIALON_SYNC_ENABLED: ${WIALON_SYNC_ENABLED:-false}
+      GTK_HOST: ${GTK_HOST:-}
+      GTK_USER: ${GTK_USER:-}
+      GTK_PASSWORD: ${GTK_PASSWORD:-}
+      GTK_PAGE_PATH: ${GTK_PAGE_PATH:-/railway/__railway_train/}
+      GTK_PAGE_QUERY: ${GTK_PAGE_QUERY:-EnterprisesControlRB=1}
+      GTK_SYNC_ENABLED: ${GTK_SYNC_ENABLED:-false}
+      GTK_SYNC_INTERVAL_MINUTES: ${GTK_SYNC_INTERVAL_MINUTES:-10}
       DAILY_KM_ESTIMATE: ${DAILY_KM_ESTIMATE:-200}
     networks: [internal]
     depends_on:

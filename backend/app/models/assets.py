@@ -59,6 +59,7 @@ class FixedAsset(Base):
     initial_cost: Mapped[Decimal | None] = mapped_column(Numeric(16, 2))
     owner: Mapped[str | None] = mapped_column(Text)
     wialon_id: Mapped[str | None] = mapped_column(String(100), unique=True)
+    gtk_id: Mapped[str | None] = mapped_column(String(100), unique=True)
     wialon_last_sync: Mapped[datetime | None]
     wialon_speed: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     wialon_online: Mapped[bool] = mapped_column(
@@ -80,7 +81,8 @@ class MileageHistory(Base):
     __tablename__ = "mileage_history"
     __table_args__ = (
         CheckConstraint(
-            "source IN ('wialon','manual')", name="mileage_history_source_check"
+            "source IN ('wialon','manual','gtk')",
+            name="mileage_history_source_check",
         ),
         Index(
             "ix_mileage_asset_time",

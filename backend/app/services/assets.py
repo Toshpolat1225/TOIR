@@ -13,6 +13,7 @@ from app.repositories import references as references_repository
 from app.repositories import maintenance as maintenance_repository
 from app.repositories import wialon_counters as wialon_counters_repository
 from app.repositories import wialon_units as wialon_units_repository
+from app.repositories import gtk as gtk_repository
 from app.services import maintenance as maintenance_service
 from app.schemas.assets import (
     AssetStatus,
@@ -127,6 +128,7 @@ async def get_fixed_asset_stats(
 async def create_fixed_asset(
     db: AsyncSession, payload: FixedAssetCreate
 ):
+    await _validate_gtk_link(db, payload.gtk_id, payload.asset_type)
     if payload.section_id is not None and await references_repository.get_non_archived_section(
         db, payload.section_id
     ) is None:
@@ -139,8 +141,15 @@ async def create_fixed_asset(
     if not await repository.active_catalog_value_exists(db, kind="statuses", code=payload.status):
         raise HTTPException(status_code=422, detail="Asset status is unavailable")
     asset = FixedAsset(**payload.model_dump())
+    if payload.gtk_id is not None and payload.asset_type in {"locomotive", "diesel"}:
+        await gtk_repository.reset_locomotive_mileage_checkpoint(
+            db, int(payload.gtk_id)
+        )
     await repository.add_asset(db, asset)
-    await _commit(db, "Inventory number or Wialon ID already exists, or section is invalid")
+    await _commit(
+        db,
+        "Inventory number, Wialon ID, or GTK ID already exists, or section is invalid",
+    )
     await db.refresh(asset)
     return asset_read(asset)
 
@@ -175,11 +184,28 @@ async def update_fixed_asset(
 ):
     asset = await _get_scoped_asset(db, asset_id, master_section_id)
     changes = payload.model_dump(exclude_unset=True)
+    previous_gtk_id = asset.gtk_id
+    await _validate_gtk_link(
+        db,
+        changes.get("gtk_id", asset.gtk_id),
+        changes.get("asset_type", asset.asset_type),
+    )
     wialon_id_changed = (
         "wialon_id" in changes and changes["wialon_id"] != asset.wialon_id
     )
     if "asset_type" in changes and not await repository.active_catalog_value_exists(db, kind="types", code=changes["asset_type"]):
         raise HTTPException(status_code=422, detail="Asset type is unavailable")
+    next_gtk_id = changes.get("gtk_id", previous_gtk_id)
+    next_asset_type = changes.get("asset_type", asset.asset_type)
+    if previous_gtk_id != next_gtk_id:
+        if previous_gtk_id is not None and asset.asset_type in {"locomotive", "diesel"}:
+            await gtk_repository.reset_locomotive_mileage_checkpoint(
+                db, int(previous_gtk_id)
+            )
+        if next_gtk_id is not None and next_asset_type in {"locomotive", "diesel"}:
+            await gtk_repository.reset_locomotive_mileage_checkpoint(
+                db, int(next_gtk_id)
+            )
     if "status" in changes and not await repository.active_catalog_value_exists(db, kind="statuses", code=changes["status"]):
         raise HTTPException(status_code=422, detail="Asset status is unavailable")
     section_id = changes.get("section_id")
@@ -214,10 +240,30 @@ async def update_fixed_asset(
         await _save_mileage_change(db, asset, mileage, "manual")
     await _commit(
         db,
-        "Inventory number or Wialon ID already exists, or section is invalid",
+        "Inventory number, Wialon ID, or GTK ID already exists, or section is invalid",
     )
     await db.refresh(asset)
     return asset_read(asset)
+
+
+async def _validate_gtk_link(
+    db: AsyncSession, gtk_id: str | None, asset_type: str
+) -> None:
+    if gtk_id is None:
+        return
+    gtk_kind = await gtk_repository.gtk_kind(db, gtk_id)
+    if gtk_kind is None:
+        raise HTTPException(status_code=422, detail="GTK record was not found")
+    if gtk_kind == "locomotive" and asset_type not in {"locomotive", "diesel"}:
+        raise HTTPException(
+            status_code=422,
+            detail="GTK locomotive can only be linked to a locomotive or diesel asset",
+        )
+    if gtk_kind == "carriage" and asset_type != "wagon":
+        raise HTTPException(
+            status_code=422,
+            detail="GTK carriage can only be linked to a wagon asset",
+        )
 
 
 async def set_fixed_asset_mileage(

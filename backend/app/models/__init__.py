@@ -2,6 +2,13 @@ from app.models.assets import FixedAsset, MileageHistory, WialonSettings
 from app.models.analytics import DailyReadinessSnapshot
 from app.models.base import Base
 from app.models.identity import LoginAttempt, RefreshToken, User
+from app.models.gtk import (
+    GtkCarriage,
+    GtkLocomotive,
+    GtkSyncRun,
+    GtkTrain,
+    GtkTrainMember,
+)
 from app.models.inventory import Nomenclature, NomenclatureNorm, WorkTypeTemplate
 from app.models.localization import (
     DepartmentTranslation,
@@ -37,6 +44,11 @@ __all__ = [
     "DailyReadinessSnapshot",
     "Employee",
     "FixedAsset",
+    "GtkCarriage",
+    "GtkLocomotive",
+    "GtkSyncRun",
+    "GtkTrain",
+    "GtkTrainMember",
     "FixedAssetStatus",
     "FixedAssetStatusTranslation",
     "FixedAssetType",

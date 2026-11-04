@@ -40,3 +40,8 @@ backend/.venv/
 wialon_import_assets_*.csv
 
 docker-compose.override.yml
+
+.env.gtk
+gtk_snapshot.json
+gtk_page_*.html
+gtk_data_*.json

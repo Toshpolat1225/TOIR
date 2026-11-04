@@ -45,15 +45,22 @@ PERMISSIONS: dict[str, tuple[str, str, str]] = {
     "translations.manage_reference_data": ("translations", "manage_reference_data", "Translations"),
     "ml.view": ("ml", "view", "AI insights"),
     "ml.create": ("ml", "create", "AI analysis"),
+    "gtk.view": ("gtk", "view", "GTK source data"),
+    "gtk.manage": ("gtk", "manage_reference_data", "GTK synchronization"),
     "maintenance_settings.view": ("maintenance_settings", "view", "Maintenance settings"),
     "maintenance_settings.update": ("maintenance_settings", "update", "Maintenance settings"),
 }
 
 ROLE_DEFAULTS: dict[str, frozenset[str]] = {
     "admin": frozenset(PERMISSIONS),
-    "operator": frozenset({"realtime.view", "dashboard.view", "assets.view", "assets.create", "assets.update", "assets.delete", "asset_catalogs.view", "organization.view", "organization.create", "organization.update", "organization.delete", "work_orders.view", "work_orders.create", "work_orders.update", "maintenance.view", "maintenance.update", "inventory.view", "inventory.create", "inventory.update", "inventory.delete", "tmc.view", "reports.view", "reports.export", "analytics.view", "maintenance_settings.view", "maintenance_settings.update", "translations.view", "ml.view"}),
+    "operator": frozenset({"realtime.view", "dashboard.view", "assets.view", "assets.create", "assets.update", "assets.delete", "asset_catalogs.view", "organization.view", "organization.create", "organization.update", "organization.delete", "work_orders.view", "work_orders.create", "work_orders.update", "maintenance.view", "maintenance.update", "inventory.view", "inventory.create", "inventory.update", "inventory.delete", "tmc.view", "reports.view", "reports.export", "analytics.view", "gtk.view", "gtk.manage", "maintenance_settings.view", "maintenance_settings.update", "translations.view", "ml.view"}),
     "master": frozenset({"realtime.view", "dashboard.view", "assets.view", "asset_catalogs.view", "organization.view", "work_orders.view", "work_orders.create", "work_orders.update", "maintenance.view", "maintenance_settings.view", "inventory.view", "tmc.view", "reports.view", "reports.export", "analytics.view", "translations.view", "ml.view"}),
-    "management": frozenset({"realtime.view", "dashboard.view", "assets.view", "asset_catalogs.view", "organization.view", "work_orders.view", "work_orders.create", "work_orders.update", "work_orders.delete", "maintenance.view", "maintenance.update", "maintenance_settings.view", "maintenance_settings.update", "inventory.view", "tmc.view", "reports.view", "reports.export", "analytics.view", "translations.view", "ml.view"}),
+    "management": frozenset({"realtime.view", "dashboard.view", "assets.view", "asset_catalogs.view", "organization.view", "work_orders.view", "work_orders.create", "work_orders.update", "work_orders.delete", "maintenance.view", "maintenance.update", "maintenance_settings.view", "maintenance_settings.update", "inventory.view", "tmc.view", "reports.view", "reports.export", "analytics.view", "gtk.view", "translations.view", "ml.view"}),
+}
+
+ROLE_DENIED: dict[str, frozenset[str]] = {
+    "master": frozenset({"gtk.view", "gtk.manage"}),
+    "management": frozenset({"gtk.manage"}),
 }
 
 
@@ -65,6 +72,8 @@ def require_permission(code: str):
         user: Annotated[User, Depends(get_current_user)],
         db: Annotated[AsyncSession, Depends(get_db)],
     ) -> User:
+        if code in ROLE_DENIED.get(user.role, frozenset()):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
         if user.role == "admin":
             return user
         result = await db.execute(
@@ -82,6 +91,8 @@ def require_permission(code: str):
 
 async def user_has_permission(db: AsyncSession, user: User, code: str) -> bool:
     if code not in PERMISSIONS:
+        return False
+    if code in ROLE_DENIED.get(user.role, frozenset()):
         return False
     if user.role == "admin":
         return True

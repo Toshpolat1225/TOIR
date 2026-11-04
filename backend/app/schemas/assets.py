@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 AssetType = str
 AssetStatus = str
-MileageSource = Literal["manual", "wialon"]
+MileageSource = Literal["manual", "wialon", "gtk"]
 
 
 class PatchModel(BaseModel):
@@ -34,6 +34,7 @@ class FixedAssetCreate(BaseModel):
     initial_cost: Decimal | None = Field(default=None, max_digits=16, decimal_places=2)
     owner: str | None = None
     wialon_id: str | None = Field(default=None, max_length=100)
+    gtk_id: str | None = Field(default=None, max_length=100)
 
     @model_validator(mode="after")
     def normalize_text(self):
@@ -42,10 +43,14 @@ class FixedAssetCreate(BaseModel):
             if not value:
                 raise ValueError(f"{field_name} must not be empty")
             setattr(self, field_name, value)
-        for field_name in ("series", "depot", "owner", "wialon_id"):
+        for field_name in ("series", "depot", "owner", "wialon_id", "gtk_id"):
             value = getattr(self, field_name)
             if value is not None:
                 setattr(self, field_name, value.strip() or None)
+        if self.gtk_id is not None:
+            if not self.gtk_id.isdigit():
+                raise ValueError("GTK ID must contain only digits")
+            self.gtk_id = str(int(self.gtk_id))
         return self
 
 
@@ -65,6 +70,7 @@ class FixedAssetUpdate(PatchModel):
     initial_cost: Decimal | None = Field(default=None, max_digits=16, decimal_places=2)
     owner: str | None = None
     wialon_id: str | None = Field(default=None, max_length=100)
+    gtk_id: str | None = Field(default=None, max_length=100)
 
     @model_validator(mode="after")
     def normalize_text(self):
@@ -74,11 +80,15 @@ class FixedAssetUpdate(PatchModel):
                 if value is None or not value.strip():
                     raise ValueError(f"{field_name} must not be empty")
                 setattr(self, field_name, value.strip())
-        for field_name in ("series", "depot", "owner", "wialon_id"):
+        for field_name in ("series", "depot", "owner", "wialon_id", "gtk_id"):
             if field_name in self.model_fields_set:
                 value = getattr(self, field_name)
                 if value is not None:
                     setattr(self, field_name, value.strip() or None)
+        if "gtk_id" in self.model_fields_set and self.gtk_id is not None:
+            if not self.gtk_id.isdigit():
+                raise ValueError("GTK ID must contain only digits")
+            self.gtk_id = str(int(self.gtk_id))
         for field_name in ("asset_type", "status", "mileage"):
             if field_name in self.model_fields_set and getattr(self, field_name) is None:
                 raise ValueError(f"{field_name} cannot be null")
@@ -104,6 +114,7 @@ class FixedAssetRead(BaseModel):
     initial_cost: Decimal | None
     owner: str | None
     wialon_id: str | None
+    gtk_id: str | None = None
     wialon_last_sync: datetime | None
     wialon_speed: Decimal | None
     wialon_online: bool

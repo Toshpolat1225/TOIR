@@ -26,6 +26,229 @@ type ApiRequestOptions = {
   suppressNetworkLog?: boolean;
 };
 
+export type GtkSuggestion = {
+  level: "high" | "ambiguous" | "none";
+  candidate_count: number;
+  asset: Pick<FixedAsset, "id" | "name" | "inv_number" | "asset_type"> | null;
+  signals: string[];
+};
+
+export type GtkLocomotive = {
+  gtk_id: number;
+  name: string | null;
+  garage_number: string | null;
+  inventory_number: string | null;
+  model_name: string | null;
+  vehicle_type_name: string | null;
+  division_name: string | null;
+  start_expl_date: string | null;
+  end_expl_date: string | null;
+  is_active: boolean;
+  first_seen_at: string;
+  last_synced_at: string;
+  in_train: boolean;
+  linked_asset: GtkSuggestion["asset"];
+  suggestion: GtkSuggestion;
+};
+
+export type GtkCarriage = {
+  gtk_id: number;
+  name: string | null;
+  reg_number: string | null;
+  inventory_number: string | null;
+  model_name: string | null;
+  start_expl_date: string | null;
+  end_expl_date: string | null;
+  is_active: boolean;
+  is_loaded: boolean | null;
+  is_not_serviceable: boolean | null;
+  lat: number | string | null;
+  lon: number | string | null;
+  state_duration_s: number | null;
+  first_seen_at: string;
+  last_synced_at: string;
+  in_train: boolean;
+  duplicate: boolean;
+  linked_asset: GtkSuggestion["asset"];
+  suggestion: GtkSuggestion;
+};
+
+export type GtkTrainMember = GtkLocomotive & {
+  is_main: boolean;
+  ord: number;
+};
+
+export type GtkTrainCarriageMember = GtkCarriage & { ord: number };
+
+export type GtkTrain = {
+  gtk_id: number;
+  number: string | null;
+  title: string | null;
+  begin_time: string | null;
+  end_time: string | null;
+  is_open: boolean;
+  last_synced_at: string;
+};
+
+export type GtkTrainDetail = GtkTrain & {
+  locomotives: GtkTrainMember[];
+  carriages: GtkTrainCarriageMember[];
+};
+
+export type GtkSyncRun = {
+  id: number;
+  started_at: string;
+  finished_at: string | null;
+  status: "ok" | "error" | "parse_error" | "suspicious" | "login_failed";
+  counts: Record<string, number> | null;
+  quality: Record<string, unknown> | null;
+  error: string | null;
+};
+
+export type GtkStatus = {
+  enabled: boolean;
+  interval_minutes: number;
+  auto_sync_stopped: boolean;
+  last_run: GtkSyncRun | null;
+};
+
+export type GtkMatchReportItem = {
+  gtk_id: number;
+  kind: "locomotive" | "carriage";
+  level: "high" | "ambiguous" | "none" | "duplicate";
+  candidate_count: number;
+  suggestion: GtkSuggestion["asset"];
+  signals: string[];
+  linked_asset: GtkSuggestion["asset"];
+  duplicate: boolean;
+};
+
+export type GtkMatchReport = {
+  kind: "locomotive" | "carriage";
+  totals: Record<string, number>;
+  items: GtkMatchReportItem[];
+};
+
+export type GtkWagonMileageLog = {
+  id: number;
+  wagon_asset_id: string;
+  loco_asset_id: string;
+  train_gtk_id: number;
+  period_from: string;
+  period_to: string;
+  km: number | string;
+  created_at: string;
+};
+
+export type GtkWagonMileageList = {
+  items: GtkWagonMileageLog[];
+  total: number;
+  limit: number;
+};
+
+export type GtkCreateAssetItem = {
+  gtk_id: number;
+  status: "created" | "would_create" | "skipped";
+  reason: string | null;
+  asset: {
+    name: string;
+    asset_type: "wagon";
+    series: string | null;
+    inv_number: string;
+    mileage: number | string;
+    gtk_id: string;
+  } | null;
+};
+
+export type GtkCreateAssetsResponse = {
+  dry_run: boolean;
+  created: number;
+  would_create: number;
+  skipped: number;
+  items: GtkCreateAssetItem[];
+};
+
+export type GtkFixedAssetDetail = {
+  asset_id: string;
+  gtk_id: number;
+  kind: "locomotive" | "carriage";
+  gtk_object: GtkLocomotive | GtkCarriage;
+  current_trains: GtkTrainDetail[];
+  recent_mileage_logs: GtkWagonMileageLog[];
+};
+
+export type GtkLinkRequest = {
+  links: Array<{
+    asset_id: string;
+    gtk_id: number;
+    kind: "locomotive" | "carriage";
+  }>;
+};
+
+const gtk = {
+  async status(): Promise<GtkStatus> {
+    return request({ method: "GET", path: "/gtk/status" });
+  },
+  async locomotives(params: ListParams & {
+    q?: string;
+    is_active?: boolean;
+    in_train?: boolean;
+  } = {}): Promise<Paginated<GtkLocomotive>> {
+    return request({ method: "GET", path: "/gtk/locomotives", params });
+  },
+  async carriages(params: ListParams & {
+    q?: string;
+    is_active?: boolean;
+    in_train?: boolean;
+    duplicate?: boolean;
+  } = {}): Promise<Paginated<GtkCarriage>> {
+    return request({ method: "GET", path: "/gtk/carriages", params });
+  },
+  async trains(params: ListParams & { q?: string; is_open?: boolean } = {}): Promise<Paginated<GtkTrain>> {
+    return request({ method: "GET", path: "/gtk/trains", params });
+  },
+  async train(id: number): Promise<GtkTrainDetail> {
+    return request({ method: "GET", path: `/gtk/trains/${id}` });
+  },
+  async matchReport(kind: "locomotive" | "carriage"): Promise<GtkMatchReport> {
+    return request({ method: "GET", path: "/gtk/match-report", params: { kind } });
+  },
+  async downloadMatchReport(kind: "locomotive" | "carriage"): Promise<Blob> {
+    return request({
+      method: "GET",
+      path: "/gtk/match-report",
+      params: { kind, format: "csv" },
+      responseType: "blob",
+    });
+  },
+  async link(data: GtkLinkRequest): Promise<{ updated: number }> {
+    return request({ method: "POST", path: "/gtk/links", body: data });
+  },
+  async unlink(assetId: string): Promise<void> {
+    return request({ method: "DELETE", path: `/gtk/links/${assetId}` });
+  },
+  async createCarriageAssets(dry_run = true): Promise<GtkCreateAssetsResponse> {
+    return request({
+      method: "POST",
+      path: "/gtk/carriages/create-assets",
+      body: { dry_run },
+    });
+  },
+  async createCarriageAsset(gtkId: number, dry_run = true): Promise<GtkCreateAssetsResponse> {
+    return request({
+      method: "POST",
+      path: `/gtk/carriages/${gtkId}/create-asset`,
+      body: { dry_run },
+    });
+  },
+  async wagonMileage(params: { asset_id?: string; limit?: number } = {}): Promise<GtkWagonMileageList> {
+    return request({ method: "GET", path: "/gtk/wagon-mileage", params });
+  },
+  async fixedAssetDetail(assetId: string): Promise<GtkFixedAssetDetail> {
+    return request({ method: "GET", path: `/fixed-assets/${assetId}/gtk` });
+  },
+};
+
 export class ApiHttpError extends Error {
   constructor(message: string, public readonly status: number) {
     super(message);
@@ -539,6 +762,7 @@ export type FixedAsset = {
   initial_cost: number | string | null;
   owner: string | null;
   wialon_id: string | null;
+  gtk_id: string | null;
   wialon_last_sync: string | null;
   wialon_speed: number | string | null;
   wialon_online: boolean;
@@ -694,7 +918,7 @@ export type MileageHistory = {
   id: number;
   asset_id: string;
   mileage: number | string;
-  source: "wialon" | "manual";
+  source: "wialon" | "manual" | "gtk";
   recorded_at: string;
 };
 
@@ -1604,6 +1828,7 @@ export const api = {
   nomenclature,
   fixedAssets,
   wialon,
+  gtk,
   fixedAssetCatalogs,
   workOrders,
   tmcDocuments,

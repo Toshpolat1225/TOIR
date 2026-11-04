@@ -19,7 +19,9 @@ from app.schemas.assets import (
 )
 from app.schemas.asset_catalogs import AssetBehavior
 from app.schemas.common import PaginatedResponse
+from app.schemas.gtk import GtkFixedAssetSourceDetail
 from app.services import assets as service
+from app.services import gtk as gtk_service
 from app.services import unified_assets as unified_service
 from app.schemas.wialon import UnifiedAssetRead
 
@@ -154,6 +156,18 @@ async def post_asset_mileage(
     asset_id: UUID, payload: MileageUpdate, _: AssetUpdater, db: DatabaseSession
 ) -> FixedAssetRead:
     return await service.set_fixed_asset_mileage(db, asset_id, payload)
+
+
+@router.get("/{asset_id}/gtk", response_model=GtkFixedAssetSourceDetail)
+async def get_fixed_asset_gtk_detail(
+    asset_id: UUID, user: AuthenticatedUser, db: DatabaseSession
+) -> GtkFixedAssetSourceDetail:
+    result = await gtk_service.get_fixed_asset_gtk_detail(
+        db,
+        asset_id,
+        master_section_id=_master_section(user),
+    )
+    return GtkFixedAssetSourceDetail.model_validate(result)
 
 
 @router.get("/{asset_id}", response_model=FixedAssetRead)

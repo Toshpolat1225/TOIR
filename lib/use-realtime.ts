@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { api } from "@/lib/api"
 
 export type RealtimeEvent = {
@@ -98,9 +98,15 @@ export function useRealtime(
   tables: RealtimeEvent["resource"][] = ["work_orders", "fixed_assets", "users"],
 ) {
   const tableKey = [...new Set(tables.filter((table) => allowedTables.has(table)))].sort().join("|")
+  const handlerRef = useRef(handler)
+
+  useEffect(() => {
+    handlerRef.current = handler
+  }, [handler])
+
   useEffect(() => {
     const listener: Listener = {
-      handler,
+      handler: (event) => handlerRef.current(event),
       tables: new Set(tableKey ? tableKey.split("|") as RealtimeEvent["resource"][] : []),
     }
     listeners.add(listener)
@@ -121,5 +127,5 @@ export function useRealtime(
         sendSubscription()
       }
     }
-  }, [handler, tableKey])
+  }, [tableKey])
 }

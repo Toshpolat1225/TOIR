@@ -223,6 +223,8 @@ CREATE TABLE fixed_assets (
     owner                text,
     -- Wialon
     wialon_id            varchar(100) UNIQUE,
+    -- GTK
+    gtk_id               varchar(100) CONSTRAINT uq_fixed_assets_gtk_id UNIQUE,
     wialon_last_sync     timestamptz,
     wialon_speed         numeric(6,2),
     wialon_online        boolean NOT NULL DEFAULT false,
@@ -242,10 +244,109 @@ CREATE TABLE mileage_history (
     id           bigserial PRIMARY KEY,
     asset_id     uuid NOT NULL REFERENCES fixed_assets(id) ON DELETE CASCADE,
     mileage      numeric(12,2) NOT NULL,
-    source       text NOT NULL DEFAULT 'wialon' CHECK (source IN ('wialon','manual')),
+    source       text NOT NULL DEFAULT 'wialon' CHECK (source IN ('wialon','manual','gtk')),
     recorded_at  timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_mileage_asset_time ON mileage_history(asset_id, recorded_at DESC);
+
+CREATE TABLE gtk_locomotives (
+    gtk_id           integer PRIMARY KEY,
+    name             text,
+    garage_number    text,
+    inventory_number text,
+    model_name       text,
+    vehicle_type_name text,
+    division_name    text,
+    start_expl_date  timestamptz,
+    end_expl_date    timestamptz,
+    is_active        boolean NOT NULL,
+    first_seen_at    timestamptz NOT NULL DEFAULT now(),
+    last_synced_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_gtk_locomotives_name ON gtk_locomotives(name);
+
+CREATE TABLE gtk_carriages (
+    gtk_id              integer PRIMARY KEY,
+    name                text,
+    reg_number          text,
+    inventory_number    text,
+    model_name          text,
+    start_expl_date     timestamptz,
+    end_expl_date       timestamptz,
+    is_active           boolean NOT NULL,
+    is_loaded           boolean,
+    is_not_serviceable  boolean,
+    lat                 numeric(10,7),
+    lon                 numeric(10,7),
+    state_duration_s    integer,
+    first_seen_at       timestamptz NOT NULL DEFAULT now(),
+    last_synced_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_gtk_carriages_name ON gtk_carriages(name);
+CREATE INDEX ix_gtk_carriages_reg_number ON gtk_carriages(reg_number);
+
+CREATE TABLE gtk_trains (
+    gtk_id         integer PRIMARY KEY,
+    number         text,
+    title          text,
+    begin_time     timestamptz,
+    end_time       timestamptz,
+    is_open        boolean NOT NULL,
+    last_synced_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_gtk_trains_number ON gtk_trains(number);
+
+CREATE TABLE gtk_train_members (
+    id             bigserial PRIMARY KEY,
+    train_gtk_id   integer NOT NULL,
+    kind           text NOT NULL CONSTRAINT ck_gtk_train_members_kind
+                   CHECK (kind IN ('locomotive','carriage')),
+    object_gtk_id  integer NOT NULL,
+    is_main        boolean NOT NULL DEFAULT false,
+    ord            integer NOT NULL,
+    gtk_begin_time timestamptz,
+    observed_from  timestamptz NOT NULL,
+    observed_to    timestamptz
+);
+CREATE UNIQUE INDEX uq_gtk_train_members_open
+    ON gtk_train_members(train_gtk_id, kind, object_gtk_id)
+    WHERE observed_to IS NULL;
+CREATE INDEX ix_gtk_train_members_object
+    ON gtk_train_members(kind, object_gtk_id);
+
+CREATE TABLE gtk_sync_runs (
+    id          bigserial PRIMARY KEY,
+    started_at  timestamptz NOT NULL DEFAULT now(),
+    finished_at timestamptz,
+    status      text NOT NULL CONSTRAINT ck_gtk_sync_runs_status
+                CHECK (status IN ('ok','error','parse_error','suspicious','login_failed')),
+    counts      jsonb,
+    quality     jsonb,
+    error       text
+);
+CREATE INDEX ix_gtk_sync_runs_started_at ON gtk_sync_runs(started_at);
+
+CREATE TABLE gtk_wagon_mileage_log (
+    id             bigserial PRIMARY KEY,
+    wagon_asset_id uuid NOT NULL REFERENCES fixed_assets(id) ON DELETE CASCADE,
+    loco_asset_id  uuid NOT NULL,
+    train_gtk_id   integer NOT NULL,
+    period_from    timestamptz NOT NULL,
+    period_to      timestamptz NOT NULL,
+    km             numeric(12,2) NOT NULL,
+    created_at     timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_gtk_wagon_mileage_log_wagon_period
+    ON gtk_wagon_mileage_log(wagon_asset_id, period_to);
+CREATE INDEX ix_gtk_wagon_mileage_log_train
+    ON gtk_wagon_mileage_log(train_gtk_id);
+
+CREATE TABLE gtk_locomotive_mileage_checkpoints (
+    locomotive_gtk_id   integer PRIMARY KEY,
+    locomotive_asset_id uuid NOT NULL UNIQUE REFERENCES fixed_assets(id) ON DELETE CASCADE,
+    mileage             numeric(12,2) NOT NULL,
+    checkpoint_at       timestamptz NOT NULL
+);
 
 CREATE TABLE wialon_settings (
     id                     smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),  -- bitta qator

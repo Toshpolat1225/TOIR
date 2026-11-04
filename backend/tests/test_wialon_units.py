@@ -275,6 +275,8 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_patch_can_unlink_and_rebaselines_counter_state(self):
         asset = SimpleNamespace(
             id=uuid4(),
+            gtk_id=None,
+            asset_type="locomotive",
             wialon_id="unit-1",
             updated_at=None,
         )
@@ -308,6 +310,8 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
         observed_at = datetime.now(timezone.utc)
         asset = SimpleNamespace(
             id=uuid4(),
+            gtk_id=None,
+            asset_type="locomotive",
             wialon_id=None,
             updated_at=None,
         )

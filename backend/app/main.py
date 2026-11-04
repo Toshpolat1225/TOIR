@@ -18,6 +18,7 @@ from app.routers.assets import router as assets_router
 from app.routers.analytics import router as analytics_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.health import router as health_router
+from app.routers.gtk import router as gtk_router
 from app.routers.maintenance import router as maintenance_router
 from app.routers.localization import router as localization_router
 from app.routers.asset_catalogs import router as asset_catalogs_router
@@ -33,8 +34,21 @@ from app.routers.wialon_pull import router as wialon_pull_router
 from app.routers.work_orders import router as work_orders_router
 from app.realtime import dispatch_database_events, listen_for_database_events
 from app.services.wialon import run_periodic_wialon_sync
+from app.services.gtk import run_periodic_gtk_sync
 
 logger = logging.getLogger(__name__)
+
+
+def _create_gtk_sync_task() -> asyncio.Task[None] | None:
+    if settings.gtk_sync_enabled and not settings.gtk_credentials_configured:
+        logger.warning(
+            "GTK synchronization is enabled but GTK_HOST, GTK_USER, or "
+            "GTK_PASSWORD is missing; automatic synchronization is disabled"
+        )
+        return None
+    if not settings.gtk_pull_enabled:
+        return None
+    return asyncio.create_task(run_periodic_gtk_sync())
 
 
 @asynccontextmanager
@@ -46,6 +60,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         if settings.wialon_pull_enabled
         else None
     )
+    gtk_task = _create_gtk_sync_task()
     try:
         yield
     finally:
@@ -55,6 +70,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         if wialon_task is not None:
             wialon_task.cancel()
             tasks.append(wialon_task)
+        if gtk_task is not None:
+            gtk_task.cancel()
+            tasks.append(gtk_task)
         await asyncio.gather(*tasks, return_exceptions=True)
         await engine.dispose()
 
@@ -161,6 +179,7 @@ app.include_router(nomenclature_router, prefix="/api/v1")
 app.include_router(assets_router, prefix="/api/v1")
 app.include_router(wialon_router, prefix="/api/v1")
 app.include_router(wialon_pull_router, prefix="/api/v1")
+app.include_router(gtk_router, prefix="/api/v1")
 app.include_router(work_orders_router, prefix="/api/v1")
 app.include_router(maintenance_router, prefix="/api/v1")
 app.include_router(localization_router, prefix="/api/v1")

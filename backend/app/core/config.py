@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     wialon_token: SecretStr | None = None
     wialon_sync_interval_minutes: int = Field(default=2, ge=1, le=1440)
     wialon_sync_enabled: bool = False
+    gtk_host: str | None = None
+    gtk_user: str | None = None
+    gtk_password: SecretStr | None = None
+    gtk_page_path: str = "/railway/__railway_train/"
+    gtk_page_query: str = "EnterprisesControlRB=1"
+    gtk_sync_enabled: bool = False
+    gtk_sync_interval_minutes: int = Field(default=10, ge=5, le=1440)
     daily_km_estimate: int = Field(default=200, gt=0)
 
     @field_validator("wialon_host", mode="before")
@@ -70,6 +77,72 @@ class Settings(BaseSettings):
     @classmethod
     def default_empty_wialon_enabled(cls, value: object) -> object:
         return False if value is None or not str(value).strip() else value
+
+    @field_validator("gtk_host", mode="before")
+    @classmethod
+    def normalize_gtk_host(cls, value: object) -> str | None:
+        if value is None or not str(value).strip():
+            return None
+        host = str(value).strip().rstrip("/")
+        parsed = urlsplit(host)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+            or parsed.username
+            or parsed.password
+        ):
+            raise ValueError("GTK_HOST must be an HTTP(S) base URL without credentials or path")
+        return host
+
+    @field_validator("gtk_user", mode="before")
+    @classmethod
+    def normalize_gtk_user(cls, value: object) -> str | None:
+        if value is None or not str(value).strip():
+            return None
+        return str(value).strip()
+
+    @field_validator("gtk_password", mode="before")
+    @classmethod
+    def normalize_gtk_password(cls, value: object) -> object:
+        if value is None or not str(value).strip():
+            return None
+        return value
+
+    @field_validator("gtk_page_path", mode="before")
+    @classmethod
+    def default_empty_gtk_page_path(cls, value: object) -> str:
+        return "/railway/__railway_train/" if value is None or not str(value).strip() else str(value)
+
+    @field_validator("gtk_page_query", mode="before")
+    @classmethod
+    def default_empty_gtk_page_query(cls, value: object) -> str:
+        return "EnterprisesControlRB=1" if value is None or not str(value).strip() else str(value)
+
+    @field_validator("gtk_sync_enabled", mode="before")
+    @classmethod
+    def default_empty_gtk_enabled(cls, value: object) -> object:
+        return False if value is None or not str(value).strip() else value
+
+    @field_validator("gtk_sync_interval_minutes", mode="before")
+    @classmethod
+    def default_empty_gtk_interval(cls, value: object) -> object:
+        return 10 if value is None or not str(value).strip() else value
+
+    @property
+    def gtk_credentials_configured(self) -> bool:
+        return bool(
+            self.gtk_host
+            and self.gtk_user
+            and self.gtk_password
+            and self.gtk_password.get_secret_value()
+        )
+
+    @property
+    def gtk_pull_enabled(self) -> bool:
+        return self.gtk_sync_enabled and self.gtk_credentials_configured
 
     @field_validator("jwt_secret")
     @classmethod
