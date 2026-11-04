@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,3 +67,36 @@ async def list_report_data(db: AsyncSession):
         )
     ).all()
     return list(assets), list(sections)
+
+
+async def list_models(
+    db: AsyncSession,
+    *,
+    asset_type: str | None,
+    q: str | None,
+    limit: int,
+    offset: int,
+) -> tuple[list[AssetModel], int]:
+    query = select(AssetModel)
+    count_query = select(func.count()).select_from(AssetModel)
+    if asset_type is not None:
+        query = query.where(AssetModel.asset_type == asset_type)
+        count_query = count_query.where(AssetModel.asset_type == asset_type)
+    if q:
+        search = f"%{q.strip()}%"
+        query = query.where(AssetModel.name.ilike(search))
+        count_query = count_query.where(AssetModel.name.ilike(search))
+
+    total = int((await db.execute(count_query)).scalar_one())
+    items = list(
+        (
+            await db.execute(
+                query.order_by(AssetModel.name.asc(), AssetModel.id.asc())
+                .limit(limit)
+                .offset(offset)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return items, total

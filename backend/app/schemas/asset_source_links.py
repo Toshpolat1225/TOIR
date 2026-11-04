@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 AssetLinkSource = Literal["wialon", "gtk", "vesavoy", "onec"]
 AssetLinkStatus = Literal["active", "ended"]
@@ -28,3 +28,9 @@ class AssetSourceLinkRead(BaseModel):
 class AssetSourceLinksRead(BaseModel):
     asset_id: UUID
     items: list[AssetSourceLinkRead]
+
+
+class AssetSourceLinkCreate(BaseModel):
+    source: AssetLinkSource
+    external_id: str = Field(min_length=1, max_length=100)
+    external_name: str | None = None

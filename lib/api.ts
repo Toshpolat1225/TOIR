@@ -783,6 +783,44 @@ export type FixedAsset = {
   updated_at: string;
 };
 
+export type AssetModel = {
+  id: string;
+  name: string;
+  name_normalized: string;
+  asset_type: string;
+  series: string | null;
+};
+
+export type AssetSource = "wialon" | "gtk" | "vesavoy" | "onec";
+
+export type AssetSourceLink = {
+  id: string;
+  asset_id: string;
+  source: AssetSource;
+  external_id: string;
+  external_name: string | null;
+  status: "active" | "ended";
+  link_method: "manual" | "migrated" | "import";
+  linked_by: string | null;
+  linked_at: string;
+  unlinked_at: string | null;
+  note: string | null;
+};
+
+export type AssetFieldChange = {
+  id: number;
+  asset_id: string;
+  field: string;
+  old_value: unknown;
+  new_value: unknown;
+  source: string;
+  kind: "auto_fill" | "conflict" | "manual";
+  status: "applied" | "pending" | "accepted" | "rejected";
+  created_at: string;
+  resolved_by: string | null;
+  resolved_at: string | null;
+};
+
 export type FixedAssetListParams = ListParams & {
   q?: string;
   asset_type?: string;
@@ -983,6 +1021,21 @@ const fixedAssets = {
   async get(id: string): Promise<FixedAsset> {
     return request<FixedAsset>({ method: "GET", path: `/fixed-assets/${id}` });
   },
+  async models(params: ListParams & { asset_type?: string; q?: string } = {}): Promise<Paginated<AssetModel>> {
+    return request<Paginated<AssetModel>>({ method: "GET", path: "/fixed-assets/models", params });
+  },
+  async links(id: string, include_ended = true): Promise<{ asset_id: string; items: AssetSourceLink[] }> {
+    return request<{ asset_id: string; items: AssetSourceLink[] }>({ method: "GET", path: `/fixed-assets/${id}/links`, params: { include_ended } });
+  },
+  async linkSource(
+    id: string,
+    data: { source: AssetSource; external_id: string; external_name?: string | null },
+  ): Promise<AssetSourceLink> {
+    return request<AssetSourceLink>({ method: "POST", path: `/fixed-assets/${id}/links`, body: data });
+  },
+  async unlinkSource(id: string, source: AssetSource): Promise<AssetSourceLink> {
+    return request<AssetSourceLink>({ method: "DELETE", path: `/fixed-assets/${id}/links/${source}` });
+  },
   async stats(params: Omit<FixedAssetListParams, "limit" | "offset" | "sort_by" | "sort_order"> = {}): Promise<FixedAssetStats> {
     return request<FixedAssetStats>({ method: "GET", path: "/fixed-assets/stats", params });
   },
@@ -1015,6 +1068,20 @@ const fixedAssets = {
   },
   async remove(id: string): Promise<void> {
     await request<null>({ method: "DELETE", path: `/fixed-assets/${id}` });
+  },
+};
+
+const assetConflicts = {
+  async list(params: ListParams & {
+    status?: AssetFieldChange["status"];
+  } = {}): Promise<Paginated<AssetFieldChange>> {
+    return request<Paginated<AssetFieldChange>>({ method: "GET", path: "/asset-conflicts", params });
+  },
+  async accept(id: number): Promise<AssetFieldChange> {
+    return request<AssetFieldChange>({ method: "POST", path: `/asset-conflicts/${id}/accept` });
+  },
+  async reject(id: number): Promise<AssetFieldChange> {
+    return request<AssetFieldChange>({ method: "POST", path: `/asset-conflicts/${id}/reject` });
   },
 };
 
@@ -1875,6 +1942,7 @@ export const api = {
   departments,
   nomenclature,
   fixedAssets,
+  assetConflicts,
   wialon,
   gtk,
   fixedAssetCatalogs,

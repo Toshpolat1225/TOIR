@@ -8,6 +8,10 @@ import {
   api,
   type FixedAssetCreate,
   type FixedAssetUpdate,
+  type FixedAsset as ApiFixedAsset,
+  type AssetModel,
+  type AssetSource,
+  type AssetSourceLink,
   type UnifiedAsset,
   type WialonUnit,
   type WialonUnitDetail,
@@ -16,7 +20,7 @@ import {
   type FixedAssetStats,
 } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
-import { useSections } from "@/lib/use-sections"
+import { useSections, type SectionData } from "@/lib/use-sections"
 import {
   Train, Container, Plus, Search, X, Save, ChevronDown,
   CheckCircle, Wrench, AlertTriangle, XCircle,
@@ -72,6 +76,216 @@ const statusConfig: Record<string, { label: string; icon: React.ElementType; cls
   out_of_service: { label: "Выведен",        icon: XCircle,       cls: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400",           dot: "bg-red-500" },
 }
 
+function PassportAndLinks({ assetId, canWrite, sections, types, onUpdated }: {
+  assetId: string
+  canWrite: boolean
+  sections: SectionData[]
+  types: AssetCatalogItem[]
+  onUpdated: (asset?: ApiFixedAsset) => void
+}) {
+  const [asset, setAsset] = useState<ApiFixedAsset | null>(null)
+  const [models, setModels] = useState<AssetModel[]>([])
+  const [links, setLinks] = useState<AssetSourceLink[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState("")
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError("")
+    try {
+      const [assetResult, modelResult, linksResult] = await Promise.all([
+        api.fixedAssets.get(assetId),
+        api.fixedAssets.models({ limit: 1000, offset: 0 }),
+        api.fixedAssets.links(assetId, true),
+      ])
+      setAsset(assetResult)
+      setModels(modelResult.items)
+      setLinks(linksResult.items)
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить паспорт и связи.")
+    } finally {
+      setLoading(false)
+    }
+  }, [assetId])
+
+  useEffect(() => { void load() }, [load])
+
+  const update = (changes: Partial<ApiFixedAsset>) => {
+    setAsset((current) => current ? { ...current, ...changes } : current)
+  }
+  const fieldCls = "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+  const model = models.find((item) => item.id === asset?.model_id)
+  const modelOptions = models.filter((item) => item.asset_type === asset?.asset_type)
+
+  const savePassport = async () => {
+    if (!asset) return
+    if (!asset.inv_number.trim()) {
+      setError("Инвентарный номер обязателен.")
+      return
+    }
+    setSaving(true)
+    setError("")
+    try {
+      const original = await api.fixedAssets.get(assetId)
+      if (asset.org_unit_id !== original.org_unit_id &&
+          !window.confirm("Подтвердите изменение участка основного средства.")) return
+      const updated = await api.fixedAssets.update(assetId, {
+        asset_type: asset.asset_type,
+        model_id: asset.model_id,
+        number: asset.number?.trim() || null,
+        serial_number: asset.serial_number?.trim() || null,
+        inv_number: asset.inv_number.trim(),
+        accounting_inv_number: asset.accounting_inv_number?.trim() || null,
+        commissioned_at: asset.commissioned_at,
+        year_built: asset.year_built,
+        org_unit_id: asset.org_unit_id,
+        decommissioned_at: asset.decommissioned_at,
+      })
+      setAsset(updated)
+      onUpdated(updated)
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Не удалось сохранить паспорт.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const changeLink = async (source: AssetSource) => {
+    const current = links.find((item) => item.source === source && item.status === "active")
+    try {
+      setError("")
+      if (current) {
+        if (!window.confirm(`Отвязать источник «${sourceLabels[source]}»? История связи сохранится.`)) return
+        await api.fixedAssets.unlinkSource(assetId, source)
+      } else {
+        const externalId = window.prompt(`Введите внешний ID для источника «${sourceLabels[source]}».`)
+        if (externalId === null || !externalId.trim()) return
+        await api.fixedAssets.linkSource(assetId, { source, external_id: externalId.trim() })
+      }
+      await refreshLinks()
+      const updatedAsset = await api.fixedAssets.get(assetId)
+      setAsset((currentAsset) => currentAsset ? {
+        ...currentAsset,
+        wialon_id: updatedAsset.wialon_id,
+        gtk_id: updatedAsset.gtk_id,
+      } : currentAsset)
+      onUpdated(updatedAsset)
+    } catch (linkError) {
+      setError(linkError instanceof Error ? linkError.message : "Не удалось изменить связь с источником.")
+    }
+  }
+
+  const refreshLinks = async () => {
+    try {
+      const updatedLinks = await api.fixedAssets.links(assetId, true)
+      setLinks(updatedLinks.items)
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить историю связей.")
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <section className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 dark:border-blue-900 dark:bg-blue-950/20">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="font-semibold text-gray-900 dark:text-white">Паспорт</h3>
+          {canWrite && asset && <Button size="sm" onClick={savePassport} disabled={loading || saving}>
+            {saving ? "Сохранение..." : "Сохранить паспорт"}
+          </Button>}
+        </div>
+        {loading && <p className="text-sm text-gray-500">Загрузка паспорта...</p>}
+        {asset && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-xs text-gray-500">Тип
+              <select className={fieldCls} value={asset.asset_type} disabled={!canWrite} onChange={(event) => {
+                const nextType = event.target.value
+                update({
+                  asset_type: nextType,
+                  ...(model && model.asset_type !== nextType ? { model_id: null } : {}),
+                })
+              }}>
+                {types.map((item) => <option key={item.code} value={item.code}>{item.names.ru || item.code}</option>)}
+              </select>
+            </label>
+            <label className="text-xs text-gray-500">Модель
+              <select className={fieldCls} value={asset.model_id ?? ""} disabled={!canWrite} onChange={(event) => update({ model_id: event.target.value || null })}>
+                <option value="">Не выбрана</option>
+                {modelOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                {model && !modelOptions.some((item) => item.id === model.id) && <option value={model.id}>{model.name}</option>}
+              </select>
+            </label>
+            <label className="text-xs text-gray-500">Номер
+              <input className={fieldCls} value={asset.number ?? ""} disabled={!canWrite} onChange={(event) => update({ number: event.target.value || null })}/>
+            </label>
+            <label className="text-xs text-gray-500">Серийный номер
+              <input className={fieldCls} value={asset.serial_number ?? ""} disabled={!canWrite} onChange={(event) => update({ serial_number: event.target.value || null })}/>
+            </label>
+            <label className="text-xs text-gray-500">Инвентарный номер
+              <input className={fieldCls} value={asset.inv_number} disabled={!canWrite} onChange={(event) => update({ inv_number: event.target.value })}/>
+              {asset.inv_number_is_provisional && <span className="mt-1 inline-block rounded bg-amber-100 px-2 py-0.5 text-amber-800 dark:bg-amber-950 dark:text-amber-300">временный</span>}
+            </label>
+            <label className="text-xs text-gray-500">Бухгалтерский инв. номер (1С)
+              <input className={fieldCls} value={asset.accounting_inv_number ?? ""} disabled={!canWrite} onChange={(event) => update({ accounting_inv_number: event.target.value || null })}/>
+            </label>
+            <label className="text-xs text-gray-500">Дата ввода в эксплуатацию
+              <input type="date" className={fieldCls} value={asset.commissioned_at ?? ""} disabled={!canWrite} onChange={(event) => update({ commissioned_at: event.target.value || null })}/>
+            </label>
+            <label className="text-xs text-gray-500">Год постройки
+              <input type="number" min="1900" max={new Date().getFullYear()} className={fieldCls} value={asset.year_built ?? ""} disabled={!canWrite} onChange={(event) => update({ year_built: event.target.value ? Number(event.target.value) : null })}/>
+            </label>
+            <label className="text-xs text-gray-500">Участок
+              <select className={fieldCls} value={asset.org_unit_id ?? ""} disabled={!canWrite} onChange={(event) => update({ org_unit_id: event.target.value || null })}>
+                <option value="">Не указан</option>
+                {sections.map((section) => <option key={section.id} value={section.id}>{section.localized_name || section.name}</option>)}
+              </select>
+            </label>
+            <label className="text-xs text-gray-500">Дата списания
+              <input type="date" className={fieldCls} value={asset.decommissioned_at ?? ""} disabled={!canWrite} onChange={(event) => update({ decommissioned_at: event.target.value || null })}/>
+            </label>
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/40">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900 dark:text-white">Источники</h3>
+          <button type="button" className="text-xs text-blue-700 underline dark:text-blue-300" onClick={() => void refreshLinks()}>Обновить историю</button>
+        </div>
+        <div className="space-y-3">
+          {sourceOrder.map((source) => {
+            const sourceLinks = links.filter((item) => item.source === source)
+            const active = sourceLinks.find((item) => item.status === "active")
+            return <div key={source} className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">{sourceLabels[source]}</p>
+                  <p className="text-xs text-gray-500">{active ? `${active.external_name || "ID"} · ${active.external_id}` : "Не привязан"}</p>
+                </div>
+                {canWrite && <Button size="sm" variant="outline" onClick={() => void changeLink(source)}>{active ? "Отвязать" : "Привязать"}</Button>}
+              </div>
+              {sourceLinks.length > 0 && <ul className="mt-2 space-y-1 border-t border-gray-100 pt-2 text-xs text-gray-500 dark:border-gray-800">
+                {sourceLinks.map((item) => <li key={item.id}>
+                  {item.external_name || item.external_id} · {item.status === "active" ? "активна" : "завершена"} · {new Date(item.linked_at).toLocaleString("ru-RU")}
+                </li>)}
+              </ul>}
+            </div>
+          })}
+        </div>
+      </section>
+      {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+    </div>
+  )
+}
+
+const sourceOrder: AssetSource[] = ["wialon", "gtk", "vesavoy", "onec"]
+const sourceLabels: Record<AssetSource, string> = {
+  wialon: "Wialon",
+  gtk: "GTK",
+  vesavoy: "Весовой",
+  onec: "1С",
+}
+
 /* ════════════════════════════════════════
    МОДАЛЫ
 ════════════════════════════════════════ */
@@ -79,14 +293,17 @@ const statusConfig: Record<string, { label: string; icon: React.ElementType; cls
 /* ════════════════════════════════════════
    МОДАЛ ПРОСМОТРА / РЕДАКТИРОВАНИЯ
 ════════════════════════════════════════ */
-function AssetModal({ asset, onClose, onSave, onDelete, sections, statuses, canWrite }: {
+function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, types, statuses, canWrite, onUpdated }: {
   asset: FixedAsset
   onClose: () => void
   onSave: (a: FixedAsset) => void
   onDelete?: (a: FixedAsset) => void
   sections: string[]
+  sectionsData: SectionData[]
+  types: AssetCatalogItem[]
   statuses: AssetCatalogItem[]
   canWrite: boolean
+  onUpdated: (asset?: ApiFixedAsset) => void
 }) {
   const [editing,      setEditing]      = useState(false)
   const [commDate,     setCommDate]     = useState(asset.commDate)
@@ -152,6 +369,36 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, statuses, canW
     `${unit.name} ${unit.unit_id}`.toLocaleLowerCase().includes(unitSearch.trim().toLocaleLowerCase()),
   )
 
+  const handleModalUpdated = (updatedAsset?: ApiFixedAsset) => {
+    onUpdated(updatedAsset)
+    void (updatedAsset ? Promise.resolve(updatedAsset) : api.fixedAssets.get(asset.id)).then(async (current) => {
+      setWialonId(current.wialon_id ?? "")
+      if (current.wialon_id) {
+        try {
+          setWialonDetail(await api.wialon.getUnit(current.wialon_id))
+        } catch {
+          setUnitLoadError("Не удалось обновить сведения Wialon.")
+        }
+      } else {
+        setWialonDetail(null)
+      }
+      if (current.gtk_id) {
+        try {
+          setGtkDetail(await api.gtk.fixedAssetDetail(asset.id))
+          setGtkLoadState("linked")
+        } catch {
+          setGtkLoadState("error")
+        }
+      } else {
+        setGtkDetail(null)
+        setGtkLoadState("unlinked")
+      }
+    }).catch(() => {
+      setGtkLoadState("error")
+      setUnitLoadError("Не удалось обновить связь с источником.")
+    })
+  }
+
   const handleSave = () => {
     onSave({ ...asset, commDate, status, depot, mileage, lastMaint, nextMaint, initialCost, owner, wialonId: wialonId || null })
     setEditing(false)
@@ -205,6 +452,14 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, statuses, canW
               <p className="font-bold text-sm text-gray-900 dark:text-white">{asset.mileage}</p>
             </div>
           </div>
+
+          <PassportAndLinks
+            assetId={asset.id}
+            canWrite={canWrite}
+            sections={sectionsData}
+            types={types}
+            onUpdated={handleModalUpdated}
+          />
 
           {/* Дата ввода в эксплуатацию — выделена */}
           <div className="rounded-xl border-2 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4">
@@ -943,7 +1198,17 @@ export default function OsPage() {
 
   return (
     <div className="p-8 space-y-6">
-      {selected && <AssetModal asset={selected} onClose={() => setSelected(null)} onSave={handleSave} onDelete={canWrite ? handleDelete : undefined} sections={sections} statuses={assetStatuses} canWrite={canWrite}/>}
+      {selected && <AssetModal asset={selected} onClose={() => setSelected(null)} onSave={handleSave} onDelete={canWrite ? handleDelete : undefined} sections={sections} sectionsData={sectionsData} types={assetTypes} statuses={assetStatuses} canWrite={canWrite} onUpdated={(updatedAsset) => {
+        if (updatedAsset) setSelected((current) => current ? {
+          ...current,
+          assetType: updatedAsset.asset_type,
+          series: updatedAsset.series ?? "",
+          invNumber: updatedAsset.inv_number,
+          wialonId: updatedAsset.wialon_id,
+        } : current)
+        void fetchAssets(page, debouncedSearch, fType, fSource, fStatus, fSection, fBehavior)
+        void fetchCounts()
+      }}/>}
       {showAdd && canWrite && <AddAssetModal onClose={() => { setShowAdd(false); setSelectedUnit(null) }} onSave={handleAdd} sections={sections} types={assetTypes} statuses={assetStatuses} wialonUnit={selectedUnit ?? undefined}/>}
 
       {/* Заголовок */}

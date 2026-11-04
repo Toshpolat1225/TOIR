@@ -22,8 +22,14 @@ from app.schemas.assets import (
 from app.schemas.asset_catalogs import AssetBehavior
 from app.schemas.common import PaginatedResponse
 from app.schemas.gtk import GtkFixedAssetSourceDetail
-from app.schemas.asset_source_links import AssetSourceLinksRead
+from app.schemas.asset_source_links import (
+    AssetSourceLinkCreate,
+    AssetSourceLinkRead,
+    AssetSourceLinksRead,
+)
+from app.schemas.asset_models import AssetModelRead
 from app.services import assets as service
+from app.services import asset_passport
 from app.services import asset_links as asset_links_service
 from app.services import gtk as gtk_service
 from app.services import unified_assets as unified_service
@@ -33,6 +39,7 @@ router = APIRouter(prefix="/fixed-assets", tags=["fixed assets"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
 AuthenticatedUser = Annotated[User, Depends(require_permission("assets.view"))]
 AssetLinksViewer = Annotated[User, Depends(require_permission("asset_links.view"))]
+AssetLinksManager = Annotated[User, Depends(require_permission("asset_links.manage"))]
 AssetCreator = Annotated[User, Depends(require_permission("assets.create"))]
 AssetUpdater = Annotated[User, Depends(require_permission("assets.update"))]
 AssetDeleter = Annotated[User, Depends(require_permission("assets.delete"))]
@@ -142,6 +149,27 @@ async def get_unified_fixed_assets(
     )
 
 
+@router.get("/models", response_model=PaginatedResponse[AssetModelRead])
+async def get_asset_models(
+    _: AuthenticatedUser,
+    db: DatabaseSession,
+    asset_type: AssetType | None = None,
+    q: str | None = Query(default=None, max_length=200),
+    limit: int = Query(default=50, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+) -> PaginatedResponse[AssetModelRead]:
+    items, total = await asset_passport.list_models(
+        db,
+        asset_type=asset_type,
+        q=q,
+        limit=limit,
+        offset=offset,
+    )
+    return PaginatedResponse[AssetModelRead](
+        items=items, total=total, limit=limit, offset=offset
+    )
+
+
 @router.get("/{asset_id}/mileage-history", response_model=MileageHistoryList)
 async def get_asset_mileage_history(
     asset_id: UUID,
@@ -193,6 +221,48 @@ async def get_fixed_asset_links(
         db, asset_id, include_ended=include_ended
     )
     return AssetSourceLinksRead(asset_id=asset_id, items=items)
+
+
+@router.post(
+    "/{asset_id}/links",
+    response_model=AssetSourceLinkRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def post_fixed_asset_link(
+    asset_id: UUID,
+    payload: AssetSourceLinkCreate,
+    user: AssetLinksManager,
+    db: DatabaseSession,
+) -> AssetSourceLinkRead:
+    await service.get_fixed_asset(db, asset_id, master_section_id=None)
+    item = await asset_links_service.link(
+        db,
+        asset_id,
+        payload.source,
+        payload.external_id,
+        user.id,
+        external_name=payload.external_name,
+    )
+    await db.commit()
+    await db.refresh(item)
+    return AssetSourceLinkRead.model_validate(item)
+
+
+@router.delete(
+    "/{asset_id}/links/{source}",
+    response_model=AssetSourceLinkRead,
+)
+async def delete_fixed_asset_link(
+    asset_id: UUID,
+    source: Literal["wialon", "gtk", "vesavoy", "onec"],
+    _: AssetLinksManager,
+    db: DatabaseSession,
+) -> AssetSourceLinkRead:
+    await service.get_fixed_asset(db, asset_id, master_section_id=None)
+    item = await asset_links_service.unlink(db, asset_id, source)
+    await db.commit()
+    await db.refresh(item)
+    return AssetSourceLinkRead.model_validate(item)
 
 
 @router.get("/passport-report")

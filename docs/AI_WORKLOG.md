@@ -202,3 +202,8 @@ Matching normalization and levels now live in one source-neutral service; GTK an
 Added `/asset-links/unmatched` for GTK/Wialon mirrors without active source links, plus protocol/adapter tests and Uzbek onboarding documentation.
 NOT TESTED: API E2E, live mirror query, source connections, frontend, production/deploy; no migrations or new external integrations added, no commit.
 Next: run `e2e_asset_unmatched.py` against the intended test API.
+2026-11-04 | Copilot SDK | P5 passport/source/conflicts UI and supporting APIs | OS modal, conflicts page, sidebar, API types, model/link schemas-router-service-repository, E2E script, HANDOFF | `npm.cmd run build` -> Next.js missing; `npx.cmd tsc --noEmit` -> TypeScript missing; NOT TESTED
+Added editable passport fields with model selection and section-change confirmation; added active/history source links with manual link/unlink controls for Wialon, GTK, Весовой and 1С.
+Added pending conflicts review page with confirm-before-accept/reject and admin/operator navigation; new API types leave existing `FixedAsset` and operational fields intact.
+NOT TESTED: build/tsc executables unavailable, backend pytest/API/database/browser/production/deploy; no `.env.local` access and no commit.
+Next: restore frontend dependencies in the approved workflow, rerun build and tsc, then verify the UI against the authorized API.

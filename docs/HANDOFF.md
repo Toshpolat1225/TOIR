@@ -863,3 +863,21 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### NOT TESTED
 
 - API E2E, database-backed unmatched query against PostgreSQL, live GTK/Wialon sources, frontend, production server, or deployment.
+
+## Asset passport, source links, and conflicts UI P5 (2026-11-04)
+
+### Verified
+
+- Added the passport editor to the fixed-asset detail modal for asset type, catalog model, number, serial number, inventory number/provisional marker, accounting number, commissioning date, build year, organizational unit, and decommission date. Organizational-unit changes require confirmation.
+- Added source-link history with active/ended records and link/unlink controls for Wialon, GTK, Весовой, and 1С. Added the missing paginated `GET /fixed-assets/models` and generic source-link `POST` / `DELETE` API operations, using the existing asset model repository and asset-link service.
+- Added the pending asset-conflicts page with Russian labels, current/proposed values, source/date, confirmed accept/reject actions, and a sidebar entry restricted to admin/operator. Existing `FixedAsset` fields, including operational fields, were retained; new API types were added for models, links, and field changes.
+- Added `backend/scripts/e2e_asset_sources.py` to check model-list pagination and source-link create/history/end behavior against a disposable API; it was not run.
+- `npx.cmd tsc --noEmit` could not run because the local TypeScript compiler is unavailable. `npm.cmd run build` could not run because the Next.js executable is unavailable. No dependencies were installed.
+
+### Next task
+
+- Restore frontend dependencies through the approved workflow, then rerun the two permitted checks; follow with authorized API/browser verification for passport edits, source-link history, and conflict resolution.
+
+### NOT TESTED
+
+- TypeScript check and production build (required local executables are missing); backend pytest, API/database behavior, authorization, browser interactions, production server, and deployment.

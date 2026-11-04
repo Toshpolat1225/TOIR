@@ -141,6 +141,19 @@ async def resolve_model(
     return model
 
 
+async def list_models(
+    db: AsyncSession,
+    *,
+    asset_type: str | None,
+    q: str | None,
+    limit: int,
+    offset: int,
+):
+    return await repository.list_models(
+        db, asset_type=asset_type, q=q, limit=limit, offset=offset
+    )
+
+
 async def prepare_new_asset(
     db: AsyncSession,
     *,
