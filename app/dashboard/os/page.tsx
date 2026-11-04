@@ -30,14 +30,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
 /* ════════════════════════════════════════
-   ТИПЫ
+   Types
 ════════════════════════════════════════ */
 type AssetType = string
 type AssetStatus = string
 
 type FixedAsset = {
   id:           string
-  name:         string   // наименование
+  name:         string   // Asset display name
   assetTypeLabel?: string
   statusLabel?: string
   assetType:    AssetType
@@ -45,16 +45,16 @@ type FixedAsset = {
   depot:        string
   sectionId:    string | null
   status:       AssetStatus
-  commDate:     string   // дата ввода в эксплуатацию
+  commDate:     string   // Commissioning date
   yearBuilt:    string
   mileage:      string
   lastMaint:    string
   nextMaint:    string
-  invNumber:    string   // инвентарный номер ОС
-  initialCost:  string   // первоначальная стоимость (сум)
+  invNumber:    string   // Fixed-asset inventory number
+  initialCost:  string   // Initial cost
   owner:        string
   wialonId:     string | null
-  /** Пробег синхронизирован из Wialon */
+  /** Mileage synchronized from Wialon. */
   wialonLastSync?: string | null
   wialonOnline?: boolean
   source: UnifiedAsset["source"]
@@ -67,7 +67,7 @@ type FixedAsset = {
 }
 
 /* ════════════════════════════════════════
-   СПРАВОЧНИКИ
+   Catalogs
 ════════════════════════════════════════ */
 const statusConfig: Record<string, { label: string; icon: React.ElementType; cls: string; dot: string }> = {
   operational:    { label: "В эксплуатации", icon: CheckCircle,   cls: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400",   dot: "bg-green-500" },
@@ -287,11 +287,11 @@ const sourceLabels: Record<AssetSource, string> = {
 }
 
 /* ════════════════════════════════════════
-   МОДАЛЫ
+   Modals
 ════════════════════════════════════════ */
 
 /* ════════════════════════════════════════
-   МОДАЛ ПРОСМОТРА / РЕДАКТИРОВАНИЯ
+   View and edit modal
 ════════════════════════════════════════ */
 function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, types, statuses, canWrite, onUpdated }: {
   asset: FixedAsset
@@ -415,7 +415,7 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="w-full max-w-2xl bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 flex flex-col max-h-[90vh]">
 
-        {/* Шапка */}
+        {/* Header */}
         <div className={`flex items-center justify-between px-6 py-4 rounded-t-2xl ${typeInfo.gradient} text-white flex-shrink-0`}>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
@@ -434,10 +434,10 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
           </button>
         </div>
 
-        {/* Тело */}
+        {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
-          {/* Карточка серия / депо */}
+          {/* Series and depot summary */}
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-3 text-center">
               <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-1">Серия</p>
@@ -461,7 +461,7 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
             onUpdated={handleModalUpdated}
           />
 
-          {/* Дата ввода в эксплуатацию — выделена */}
+          {/* Highlighted commissioning date */}
           <div className="rounded-xl border-2 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-4">
             <div className="flex items-center gap-2 mb-2">
               <CalendarDays className="w-4 h-4 text-blue-600 dark:text-blue-400"/>
@@ -478,7 +478,7 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
             )}
           </div>
 
-          {/* Основные поля */}
+          {/* Main fields */}
           <div className="grid grid-cols-2 gap-4">
 
             <div>
@@ -652,7 +652,7 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
           </div>
         </div>
 
-        {/* Подвал */}
+        {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex-shrink-0 rounded-b-2xl">
           <span className="text-xs text-gray-400">Инв. №: <span className="font-mono font-semibold text-gray-600 dark:text-gray-300">{asset.invNumber}</span></span>
           <div className="flex gap-3 items-center">
@@ -688,7 +688,7 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
 }
 
 /* ════════════════════════════════════════
-   МОДАЛ ДОБАВЛЕНИЯ НОВОГО ОС
+   New asset modal
 ════════════════════════════════════════ */
 function AddAssetModal({ onClose, onSave, sections, types, statuses, wialonUnit }: {
   onClose: () => void
@@ -699,13 +699,13 @@ function AddAssetModal({ onClose, onSave, sections, types, statuses, wialonUnit 
   wialonUnit?: WialonUnit
 }) {
   const [assetType,   setAssetType]   = useState<AssetType>(wialonUnit ? "" : types[0]?.code || "locomotive")
-  const [name,        setName]        = useState(wialonUnit?.name ?? "")  // Номер/Наименование (основное поле)
+  const [name,        setName]        = useState(wialonUnit?.name ?? "")  // Main asset name
   const [series,      setSeries]      = useState("")
   const [depot,       setDepot]       = useState(sections[0] ?? "")
   const [commDate,    setCommDate]    = useState("")
   const [yearBuilt,   setYearBuilt]   = useState("")
   const [initialCost, setInitialCost] = useState("")
-  const [invNumber,   setInvNumber]   = useState(wialonUnit ? `WIALON-${wialonUnit.unit_id}` : "")  // Инвентарный номер
+  const [invNumber,   setInvNumber]   = useState(wialonUnit ? `WIALON-${wialonUnit.unit_id}` : "")  // Inventory number
   const [owner,       setOwner]       = useState("РЖД")
   const [error,       setError]       = useState("")
   const [wialonId, setWialonId] = useState(wialonUnit?.unit_id ?? "")
@@ -741,7 +741,7 @@ function AddAssetModal({ onClose, onSave, sections, types, statuses, wialonUnit 
       setError("Выберите тип основного средства.")
       return
     }
-    // Генерируем уникальный ID
+    // Generate a unique ID.
     const generatedId = `${assetType === "locomotive" ? "LOC" : assetType === "diesel" ? "DSL" : "WAG"}-${Date.now()}`
     const newAsset: FixedAsset = {
       id: generatedId,
@@ -795,7 +795,7 @@ function AddAssetModal({ onClose, onSave, sections, types, statuses, wialonUnit 
         </div>
 
         <div className="p-6 space-y-4">
-          {/* Тип */}
+          {/* Type */}
           <div>
             <p className={lbl}>Тип объекта</p>
             <select required value={assetType} onChange={(event) => setAssetType(event.target.value)} className={sel}>
@@ -840,7 +840,7 @@ function AddAssetModal({ onClose, onSave, sections, types, statuses, wialonUnit 
             </div>
           </div>
 
-          {/* Дата ввода — ключевое поле */}
+          {/* Required commissioning date */}
           <div className="rounded-xl border-2 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-3">
             <label className="flex items-center gap-2 text-xs font-bold text-blue-700 dark:text-blue-400 mb-2">
             <CalendarDays className="w-3.5 h-3.5"/> Дата ввода в эксплуатацию {!wialonUnit && <span className="text-red-500">*</span>}
@@ -998,7 +998,7 @@ export default function OsPage() {
   const filtersRef = useRef({ page: 0, search: "", fType: "" as AssetType | "", fSource: "" as UnifiedAsset["source"] | "", fSection: "", fStatus: "" as AssetStatus | "", fBehavior: "" })
   const realtimeRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Загружаем счётчики и список депо один раз (оптимизированные запросы)
+  // Load counters and depot names once.
   const fetchCounts = useCallback(async () => {
     try {
       const params: Parameters<typeof api.fixedAssets.stats>[0] = {};
@@ -1072,7 +1072,7 @@ export default function OsPage() {
 
   useEffect(() => { fetchCounts() }, [fetchCounts])
 
-  // Обновляем ref при изменении фильтров
+  // Keep the latest filters available to the realtime listener.
   useEffect(() => {
     filtersRef.current = { page, search: debouncedSearch, fType, fSource, fSection, fStatus, fBehavior }
   }, [page, debouncedSearch, fType, fSource, fSection, fStatus, fBehavior])
@@ -1094,7 +1094,7 @@ export default function OsPage() {
     if (realtimeRefreshTimerRef.current) clearTimeout(realtimeRefreshTimerRef.current)
   }, [])
 
-  // Сброс страницы при смене фильтров
+  // Reset the page when filters change.
   useEffect(() => {
     setPage(0)
   }, [search, fType, fSource, fSection, fStatus, fBehavior])
@@ -1108,7 +1108,7 @@ export default function OsPage() {
   const clearFilters  = () => { setFType(""); setFSource(""); setFSection(""); setFStatus(""); setFBehavior(""); setSearch("") }
   const selectType = (code: string) => setFType((current) => current === code ? "" : code)
   const selectBehavior = (code: string) => { setFStatus(""); setFBehavior((current) => current === code ? "" : code) }
-  const filtered      = assets  // фильтрация на сервере
+  const filtered      = assets  // Filtering is performed by the server.
 
   const handleSave = async (updated: FixedAsset) => {
     if (hasAmbiguousSectionName(updated.depot)) {
@@ -1211,7 +1211,7 @@ export default function OsPage() {
       }}/>}
       {showAdd && canWrite && <AddAssetModal onClose={() => { setShowAdd(false); setSelectedUnit(null) }} onSave={handleAdd} sections={sections} types={assetTypes} statuses={assetStatuses} wialonUnit={selectedUnit ?? undefined}/>}
 
-      {/* Заголовок */}
+      {/* Page header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Основные средства</h1>
@@ -1225,7 +1225,7 @@ export default function OsPage() {
         </div>
       </div>
 
-      {/* KPI карточки */}
+      {/* KPI cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
         <button type="button" aria-pressed={!fType && !fBehavior} onClick={() => { setFType(""); setFStatus(""); setFBehavior("") }} className={`text-left rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${!fType && !fBehavior ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-blue-400"}`}>
           <div className="flex justify-between"><Hash className="w-4 h-4 text-blue-500"/><span className="text-2xl font-bold text-gray-900 dark:text-white">{counts?.total ?? "—"}</span></div><p className="mt-2 text-xs font-medium text-gray-600 dark:text-gray-300">Всего объектов</p>
@@ -1236,7 +1236,7 @@ export default function OsPage() {
         {sectionsData.map((section) => <button type="button" key={section.id} aria-pressed={fSection === section.id} onClick={() => setFSection((current) => current === section.id ? "" : section.id)} className={`text-left rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${fSection === section.id ? "border-amber-500 bg-amber-50 dark:bg-amber-950/40" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-amber-400"}`}><div className="flex justify-between"><Building2 className="w-4 h-4 text-amber-600"/><span className="text-2xl font-bold text-gray-900 dark:text-white">{counts?.by_section[section.id] ?? 0}</span></div><p className="mt-2 truncate text-xs font-medium text-gray-600 dark:text-gray-300">{section.localized_name || section.name}</p></button>)}
       </div>
 
-      {/* Фильтры */}
+      {/* Filters */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[200px] max-w-sm">
@@ -1248,7 +1248,7 @@ export default function OsPage() {
             <SlidersHorizontal className="w-4 h-4"/><span>Фильтры:</span>
           </div>
 
-          {/* Тип */}
+          {/* Type */}
           <div className="relative">
             <select value={fType} onChange={e => setFType(e.target.value as AssetType | "")} className={selCls}>
               <option value="">Все типы</option>
@@ -1260,7 +1260,7 @@ export default function OsPage() {
             {fType && <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600 rounded-full text-[9px] text-white flex items-center justify-center font-bold">✓</span>}
           </div>
 
-          {/* Источник */}
+          {/* Source */}
           <div className="relative">
             <select aria-label="Источник" value={fSource} onChange={(event) => setFSource(event.target.value as UnifiedAsset["source"] | "")} className={selCls}>
               <option value="">Все источники</option>
@@ -1271,7 +1271,7 @@ export default function OsPage() {
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
           </div>
 
-          {/* Участок */}
+          {/* Section */}
           <div className="relative">
             <select aria-label="Участок" value={fSection} onChange={e => setFSection(e.target.value)} className={selCls}>
               <option value="">Все участки</option>
@@ -1280,7 +1280,7 @@ export default function OsPage() {
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
           </div>
 
-          {/* Статус */}
+          {/* Status */}
           <div className="relative">
             <select value={fStatus} onChange={e => setFStatus(e.target.value as AssetStatus | "")} className={selCls}>
               <option value="">Все статусы</option>
@@ -1306,7 +1306,7 @@ export default function OsPage() {
       </div>
 
       {(loadError || statsError) && <div role="alert" className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{loadError || statsError}</div>}
-      {/* Таблица */}
+      {/* Table */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
         <table className="w-full">
           <thead>
@@ -1379,7 +1379,7 @@ export default function OsPage() {
           </tbody>
         </table>
 
-        {/* Пагинация */}
+        {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-5 py-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30">
             <p className="text-xs text-gray-500">
@@ -1398,7 +1398,7 @@ export default function OsPage() {
                 className="px-3 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               >‹ Назад</button>
 
-              {/* Номера страниц */}
+              {/* Page numbers */}
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                 const start = Math.max(0, Math.min(page - 2, totalPages - 5))
                 const p = start + i

@@ -4,6 +4,7 @@ import csv
 import io
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -44,6 +45,17 @@ AssetCreator = Annotated[User, Depends(require_permission("assets.create"))]
 AssetUpdater = Annotated[User, Depends(require_permission("assets.update"))]
 AssetDeleter = Annotated[User, Depends(require_permission("assets.delete"))]
 SortOrder = Literal["asc", "desc"]
+
+
+async def _commit_source_link(db: AsyncSession) -> None:
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="External source link conflicts with an existing active link",
+        ) from exc
 
 
 def _safe_csv_cell(value):
@@ -243,7 +255,7 @@ async def post_fixed_asset_link(
         user.id,
         external_name=payload.external_name,
     )
-    await db.commit()
+    await _commit_source_link(db)
     await db.refresh(item)
     return AssetSourceLinkRead.model_validate(item)
 
@@ -260,7 +272,7 @@ async def delete_fixed_asset_link(
 ) -> AssetSourceLinkRead:
     await service.get_fixed_asset(db, asset_id, master_section_id=None)
     item = await asset_links_service.unlink(db, asset_id, source)
-    await db.commit()
+    await _commit_source_link(db)
     await db.refresh(item)
     return AssetSourceLinkRead.model_validate(item)
 
