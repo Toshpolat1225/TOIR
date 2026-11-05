@@ -189,22 +189,6 @@ const gtk = {
   async status(): Promise<GtkStatus> {
     return request({ method: "GET", path: "/gtk/status" });
   },
-  async previewInventoryImport(data: FixedAssetInventoryImportRequest): Promise<{
-    items: FixedAssetInventoryImportPreviewItem[];
-  }> {
-    return request<{ items: FixedAssetInventoryImportPreviewItem[] }>({
-      method: "POST",
-      path: "/fixed-assets/inv-import/preview",
-      body: data,
-    });
-  },
-  async applyInventoryImport(rows: FixedAssetInventoryImportApplyRow[]): Promise<FixedAssetInventoryImportApplyResponse> {
-    return request<FixedAssetInventoryImportApplyResponse>({
-      method: "POST",
-      path: "/fixed-assets/inv-import/apply",
-      body: { rows },
-    });
-  },
   async locomotives(params: ListParams & {
     q?: string;
     is_active?: boolean;
@@ -1131,6 +1115,22 @@ const fixedAssets = {
       method: "POST",
       path: "/fixed-assets/bulk-org-unit",
       body: data,
+    });
+  },
+  async previewInventoryImport(data: FixedAssetInventoryImportRequest): Promise<{
+    items: FixedAssetInventoryImportPreviewItem[];
+  }> {
+    return request<{ items: FixedAssetInventoryImportPreviewItem[] }>({
+      method: "POST",
+      path: "/fixed-assets/inv-import/preview",
+      body: data,
+    });
+  },
+  async applyInventoryImport(rows: FixedAssetInventoryImportApplyRow[]): Promise<FixedAssetInventoryImportApplyResponse> {
+    return request<FixedAssetInventoryImportApplyResponse>({
+      method: "POST",
+      path: "/fixed-assets/inv-import/apply",
+      body: { rows },
     });
   },
   async remove(id: string): Promise<void> {

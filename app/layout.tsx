@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import { Analytics } from '@vercel/analytics/next'
 import { Providers } from '@/lib/providers'
 import { cookies } from 'next/headers'
 import { DEFAULT_LOCALE, isLocale, LOCALE_COOKIE } from '@/lib/locale'
@@ -29,7 +28,6 @@ export default async function RootLayout({
     <html lang={locale} suppressHydrationWarning>
       <body className="font-sans antialiased">
         <Providers initialLocale={locale}>{children}</Providers>
-        <Analytics />
       </body>
     </html>
   )

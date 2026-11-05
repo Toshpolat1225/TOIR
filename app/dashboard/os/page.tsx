@@ -6,6 +6,7 @@ import { useRealtime } from "@/lib/use-realtime"
 import { useDebouncedValue } from "@/lib/use-debounced-value"
 import {
   api,
+  ApiHttpError,
   type FixedAssetCreate,
   type FixedAssetUpdate,
   type FixedAsset as ApiFixedAsset,
@@ -37,6 +38,20 @@ import { Input } from "@/components/ui/input"
 type AssetType = string
 type AssetStatus = string
 
+function russianApiError(error: unknown, fallback: string): string {
+  if (!(error instanceof ApiHttpError)) return fallback
+  const reason = error.status === 403
+    ? "недостаточно прав"
+    : error.status === 404
+      ? "основное средство не найдено"
+      : error.status === 409
+        ? "данные конфликтуют с уже сохранёнными"
+        : error.status === 422
+          ? "проверьте введённые данные"
+          : "ошибка сервера"
+  return `${fallback} Причина: ${reason} (HTTP ${error.status}).`
+}
+
 type FixedAsset = {
   id:           string
   name:         string   // Asset display name
@@ -67,6 +82,12 @@ type FixedAsset = {
   lastMessageAt: string | null
   suspectAbsolute: boolean
   orgUnitId: string | null
+  number?: string
+  modelId?: string | null
+  serialNumber?: string
+  accountingInvNumber?: string
+  commissionedAt?: string | null
+  decommissionedAt?: string | null
 }
 
 /* ════════════════════════════════════════
@@ -148,7 +169,7 @@ function PassportAndLinks({ assetId, canWrite, sections, types, onUpdated }: {
       setAsset(updated)
       onUpdated(updated)
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Не удалось сохранить паспорт.")
+      setError(russianApiError(saveError, "Не удалось сохранить паспорт."))
     } finally {
       setSaving(false)
     }
@@ -948,6 +969,12 @@ function fromUnified(r: UnifiedAsset): FixedAsset {
     lastMessageAt:    r.last_message_at,
     suspectAbsolute:  r.suspect_absolute,
     orgUnitId:         r.org_unit_id,
+    number:            "",
+    modelId:           null,
+    serialNumber:      "",
+    accountingInvNumber: "",
+    commissionedAt:    null,
+    decommissionedAt:  null,
   }
 }
 
@@ -961,6 +988,7 @@ function toRow(
     series:       a.series || null,
     depot:        a.depot || null,
     section_id:   a.sectionId,
+    org_unit_id:  a.orgUnitId,
     status:       a.status,
     comm_date:    apiDate(a.commDate),
     year_built:   a.yearBuilt ? Number(a.yearBuilt) : null,
@@ -1214,7 +1242,7 @@ export default function OsPage() {
       fetchCounts()
       setSelected(null)
     } catch (error) {
-      alert("Не удалось сохранить: " + (error instanceof Error ? error.message : "ошибка API"));
+      alert(russianApiError(error, "Не удалось сохранить основное средство."));
     }
   }
 
@@ -1225,7 +1253,7 @@ export default function OsPage() {
       fetchCounts()
       setSelected(null)
     } catch (error) {
-      alert("Не удалось удалить: " + (error instanceof Error ? error.message : "ошибка API"));
+      alert(russianApiError(error, "Не удалось удалить основное средство."));
     }
   }
 
@@ -1255,7 +1283,7 @@ export default function OsPage() {
         await fetchCounts()
         setPage(0)
       } catch (error) {
-        alert("Не удалось создать ОС из Wialon: " + (error instanceof Error ? error.message : "ошибка API"))
+        alert(russianApiError(error, "Не удалось создать основное средство из Wialon."))
       }
       return
     }
@@ -1273,7 +1301,7 @@ export default function OsPage() {
       setPage(0)
       setShowAdd(false)
     } catch (error) {
-      alert("Не удалось добавить: " + (error instanceof Error ? error.message : "ошибка API"))
+      alert(russianApiError(error, "Не удалось добавить основное средство."))
     }
   }
 
@@ -1295,6 +1323,16 @@ export default function OsPage() {
           series: updatedAsset.series ?? "",
           invNumber: updatedAsset.inv_number,
           wialonId: updatedAsset.wialon_id,
+          orgUnitId: updatedAsset.org_unit_id,
+          depot: updatedAsset.depot ?? current.depot,
+          name: updatedAsset.name,
+          number: updatedAsset.number ?? "",
+          modelId: updatedAsset.model_id,
+          serialNumber: updatedAsset.serial_number ?? "",
+          accountingInvNumber: updatedAsset.accounting_inv_number ?? "",
+          commissionedAt: updatedAsset.commissioned_at,
+          decommissionedAt: updatedAsset.decommissioned_at,
+          yearBuilt: updatedAsset.year_built?.toString() ?? "",
         } : current)
         void fetchAssets(page, debouncedSearch, fType, fSource, fStatus, fSection, fBehavior)
         void fetchCounts()

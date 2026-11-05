@@ -215,3 +215,7 @@ Next: restore frontend dependencies, run build/tsc, then verify E2E and migratio
 0020 idempotently sets the expected role grants; added preview-only CSV/JSON validation and atomic, audited apply, plus bulk section selection and server filtering.
 NOT TESTED: frontend build/tsc (Next.js/TypeScript unavailable), migration execution, live grants, E2E, browser, production/deploy. No .env/CSV opened; no commit or Supabase call.
 Next: restore frontend tools, then validate migration and API scripts on a disposable environment.
+2026-11-05 | Copilot SDK | P8 fixed-asset API client and passport save audit | lib/api.ts, OS page, app layout, P8 tests, HANDOFF | backend pytest -> 171 passed; build/tsc unavailable
+Moved import methods from `gtk` to `fixedAssets`; preserved `org_unit_id` in legacy PATCH payload/state refresh and localized CRUD errors; removed Vercel Analytics mount.
+NOT TESTED: Next.js build and tsc executables missing; API/database, browser, production/deploy. No migrations, package dependencies, CSV, env files, commit, or Supabase changed.
+Next: restore frontend dependencies, run build/tsc, then verify CRUD against a disposable API/database.

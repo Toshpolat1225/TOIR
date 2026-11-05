@@ -917,3 +917,22 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### NOT TESTED
 
 - Frontend build and TypeScript checks (Next.js and TypeScript executables are missing); migration execution, live permission rows, API E2E, browser interactions, production, and deployment.
+
+## P8 OS API and passport save fixes (2026-11-05)
+
+### Verified
+
+- Fixed-asset inventory-import methods were accidentally attached to the `gtk` client, while the OS page called them on `api.fixedAssets`. Moved preview/apply methods to the fixed-asset client and verified their paths match `/fixed-assets/inv-import/preview` and `/apply`; bulk assignment remains on the same client.
+- The OS modal PATCH already passes `org_unit_id` from the passport editor. The parent modal's legacy save payload omitted this field, and the parent state refresh omitted the latest passport fields. Added `org_unit_id` to the common asset update payload and synchronize it and other passport values from the API response.
+- Backend PATCH accepts `org_unit_id`, validates an active section (422 if unavailable), records manual field changes, commits, then returns the refreshed asset. A missing asset is 404; permission failure is 403; uniqueness/integrity conflict is 409. Database/schema errors not handled as integrity conflicts can return 500. No catches silently suppress the PATCH error; passport, create, update, and delete errors now display Russian messages with the HTTP status when available.
+- Create uses the same service validation, manual journal, and commit path; successful create is 201. Delete commits only when no work-order references exist (204); missing asset is 404 and referenced assets conflict (409).
+- Removed the Vercel Analytics component from the root layout; package dependencies were left unchanged.
+- Requested asset, GTK, Wialon, unified, and attribution suites: **171 passed**. No migrations or database schema were changed.
+
+### Next task
+
+- Install/restore frontend dependencies only through the approved workflow, rerun `npm run build` and `npx tsc --noEmit`, and verify passport save/create/delete in a disposable API/database environment.
+
+### NOT TESTED
+
+- Frontend build and TypeScript (Next.js and TypeScript executables are unavailable); live API/database, migration state, browser behavior, production, and deployment.
