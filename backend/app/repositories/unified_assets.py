@@ -23,6 +23,7 @@ UNIFIED_SORT_FIELDS = frozenset(
         "status",
         "section",
         "section_id",
+        "org_unit_id",
         "mileage",
         "wialon_cnm",
         "wialon_cneh",
@@ -94,6 +95,7 @@ def _sort_columns(now: datetime, unit) -> dict[str, Any]:
         "status": FixedAsset.status,
         "section": Section.name,
         "section_id": FixedAsset.section_id,
+        "org_unit_id": FixedAsset.org_unit_id,
         "mileage": FixedAsset.mileage,
         "wialon_cnm": unit.cnm,
         "wialon_cneh": unit.cneh,
@@ -112,6 +114,7 @@ async def list_unified_assets(
     asset_type: str | None,
     status: str | None,
     section_id: UUID | None,
+    without_org_unit: bool = False,
     master_section_id: UUID | None,
     q: str | None,
     limit: int,
@@ -137,6 +140,8 @@ async def list_unified_assets(
     )
     if effective_section_id is not None:
         filters.append(FixedAsset.section_id == effective_section_id)
+    if without_org_unit:
+        filters.extend((FixedAsset.id.is_not(None), FixedAsset.org_unit_id.is_(None)))
     if q:
         pattern = f"%{q.strip()}%"
         filters.append(

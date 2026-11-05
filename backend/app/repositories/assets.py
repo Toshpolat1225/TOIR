@@ -123,6 +123,45 @@ async def get_asset_for_update(
     return (await db.execute(query.with_for_update())).scalar_one_or_none()
 
 
+async def get_assets_for_update(
+    db: AsyncSession, asset_ids: Sequence[UUID]
+) -> list[FixedAsset]:
+    result = await db.execute(
+        select(FixedAsset)
+        .where(FixedAsset.id.in_(asset_ids))
+        .order_by(FixedAsset.id.asc())
+        .with_for_update()
+    )
+    return list(result.scalars().all())
+
+
+async def list_asset_names(db: AsyncSession) -> list[tuple[UUID, str]]:
+    result = await db.execute(
+        select(FixedAsset.id, FixedAsset.name).order_by(FixedAsset.id.asc())
+    )
+    return list(result.all())
+
+
+async def find_inventory_records(
+    db: AsyncSession, *, inventory_numbers: Sequence[str], accounting_numbers: Sequence[str]
+) -> list[tuple[UUID, str, str | None]]:
+    filters = []
+    if inventory_numbers:
+        filters.append(FixedAsset.inv_number.in_(inventory_numbers))
+    if accounting_numbers:
+        filters.append(FixedAsset.accounting_inv_number.in_(accounting_numbers))
+    if not filters:
+        return []
+    result = await db.execute(
+        select(
+            FixedAsset.id,
+            FixedAsset.inv_number,
+            FixedAsset.accounting_inv_number,
+        ).where(or_(*filters))
+    )
+    return list(result.all())
+
+
 async def asset_stats(
     db: AsyncSession, *, master_section_id: UUID | None, asset_type: str | None = None,
     status: str | None = None, status_behavior: str | None = None,

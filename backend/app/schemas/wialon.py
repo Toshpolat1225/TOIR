@@ -119,6 +119,7 @@ class UnifiedAssetRead(BaseModel):
     status: str | None
     section: str | None
     section_id: UUID | None
+    org_unit_id: UUID | None = None
     mileage: Decimal | None
     wialon_cnm: Decimal | None
     wialon_cneh: Decimal | None

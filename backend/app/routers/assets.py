@@ -13,7 +13,13 @@ from app.models.identity import User
 from app.schemas.assets import (
     AssetStatus,
     AssetType,
+    FixedAssetBulkOrgUnitUpdate,
+    FixedAssetBulkOrgUnitUpdateRead,
     FixedAssetCreate,
+    FixedAssetInventoryImportApply,
+    FixedAssetInventoryImportApplyRead,
+    FixedAssetInventoryImportPreview,
+    FixedAssetInventoryImportRequest,
     FixedAssetRead,
     FixedAssetStats,
     FixedAssetUpdate,
@@ -31,6 +37,7 @@ from app.schemas.asset_source_links import (
 from app.schemas.asset_models import AssetModelRead
 from app.services import assets as service
 from app.services import asset_passport
+from app.services import asset_inventory_import
 from app.services import asset_links as asset_links_service
 from app.services import gtk as gtk_service
 from app.services import unified_assets as unified_service
@@ -137,6 +144,7 @@ async def get_unified_fixed_assets(
         AssetStatus | None, Query(alias="status")
     ] = None,
     section_id: UUID | None = None,
+    without_org_unit: bool = False,
     q: str | None = Query(default=None, max_length=200),
     limit: int = Query(default=50, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
@@ -149,6 +157,7 @@ async def get_unified_fixed_assets(
         asset_type=asset_type,
         asset_status=status_filter,
         section_id=section_id,
+        without_org_unit=without_org_unit,
         master_section_id=_master_section(user),
         q=q,
         limit=limit,
@@ -180,6 +189,59 @@ async def get_asset_models(
     return PaginatedResponse[AssetModelRead](
         items=items, total=total, limit=limit, offset=offset
     )
+
+
+@router.post(
+    "/bulk-org-unit",
+    response_model=FixedAssetBulkOrgUnitUpdateRead,
+)
+async def post_bulk_org_unit_update(
+    payload: FixedAssetBulkOrgUnitUpdate,
+    user: AssetUpdater,
+    db: DatabaseSession,
+) -> FixedAssetBulkOrgUnitUpdateRead:
+    if user.role not in {"admin", "operator"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    updated = await service.bulk_update_org_unit(db, payload, by=user.id)
+    return FixedAssetBulkOrgUnitUpdateRead(updated=updated)
+
+
+def _require_asset_operator(user: User) -> None:
+    if user.role not in {"admin", "operator"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+
+
+@router.post(
+    "/inv-import/preview",
+    response_model=FixedAssetInventoryImportPreview,
+)
+async def preview_inventory_import(
+    payload: FixedAssetInventoryImportRequest,
+    user: AssetUpdater,
+    db: DatabaseSession,
+) -> FixedAssetInventoryImportPreview:
+    _require_asset_operator(user)
+    return await asset_inventory_import.preview_inventory_import(db, payload)
+
+
+@router.post(
+    "/inv-import/apply",
+    response_model=FixedAssetInventoryImportApplyRead,
+)
+async def apply_inventory_import(
+    payload: FixedAssetInventoryImportApply,
+    user: AssetUpdater,
+    db: DatabaseSession,
+) -> FixedAssetInventoryImportApplyRead:
+    _require_asset_operator(user)
+    updated = await asset_inventory_import.apply_inventory_import(db, payload)
+    return FixedAssetInventoryImportApplyRead(updated=updated)
 
 
 @router.get("/{asset_id}/mileage-history", response_model=MileageHistoryList)

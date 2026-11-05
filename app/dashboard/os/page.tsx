@@ -18,6 +18,8 @@ import {
   type GtkFixedAssetDetail,
   type AssetCatalogItem,
   type FixedAssetStats,
+  type FixedAssetInventoryImportPreviewItem,
+  type FixedAssetInventoryImportApplyRow,
 } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { useSections, type SectionData } from "@/lib/use-sections"
@@ -64,6 +66,7 @@ type FixedAsset = {
   speed: string
   lastMessageAt: string | null
   suspectAbsolute: boolean
+  orgUnitId: string | null
 }
 
 /* ════════════════════════════════════════
@@ -767,6 +770,7 @@ function AddAssetModal({ onClose, onSave, sections, types, statuses, wialonUnit 
       speed: String(wialonUnit?.speed ?? ""),
       lastMessageAt: wialonUnit?.last_message_at ?? null,
       suspectAbsolute: wialonUnit?.suspect_absolute ?? false,
+      orgUnitId: null,
     }
     onSave(newAsset, wialonUnit)
   }
@@ -907,7 +911,7 @@ function AddAssetModal({ onClose, onSave, sections, types, statuses, wialonUnit 
 }
 
 /* ════════════════════════════════════════
-   СТРАНИЦА
+   Page
 ════════════════════════════════════════ */
 function apiDate(value: string): string | null {
   const normalized = value.trim()
@@ -943,6 +947,7 @@ function fromUnified(r: UnifiedAsset): FixedAsset {
     speed:            String(r.speed ?? ""),
     lastMessageAt:    r.last_message_at,
     suspectAbsolute:  r.suspect_absolute,
+    orgUnitId:         r.org_unit_id,
   }
 }
 
@@ -993,9 +998,18 @@ export default function OsPage() {
   const [counts, setCounts] = useState<FixedAssetStats | null>(null)
   const [loadError, setLoadError] = useState("")
   const [statsError, setStatsError] = useState("")
+  const [fWithoutOrgUnit, setFWithoutOrgUnit] = useState(false)
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([])
+  const [showBulkOrgUnit, setShowBulkOrgUnit] = useState(false)
+  const [bulkOrgUnitId, setBulkOrgUnitId] = useState("")
+  const [bulkOrgUnitSaving, setBulkOrgUnitSaving] = useState(false)
+  const [showInventoryImport, setShowInventoryImport] = useState(false)
+  const [inventoryPreview, setInventoryPreview] = useState<FixedAssetInventoryImportPreviewItem[]>([])
+  const [inventoryImportBusy, setInventoryImportBusy] = useState(false)
+  const [inventoryImportError, setInventoryImportError] = useState("")
   
   // Keep the latest filters available to the realtime listener.
-  const filtersRef = useRef({ page: 0, search: "", fType: "" as AssetType | "", fSource: "" as UnifiedAsset["source"] | "", fSection: "", fStatus: "" as AssetStatus | "", fBehavior: "" })
+  const filtersRef = useRef({ page: 0, search: "", fType: "" as AssetType | "", fSource: "" as UnifiedAsset["source"] | "", fSection: "", fStatus: "" as AssetStatus | "", fBehavior: "", fWithoutOrgUnit: false })
   const realtimeRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Load counters and depot names once.
@@ -1034,6 +1048,7 @@ export default function OsPage() {
     fs: string,
     section = fSection,
     behavior = fBehavior,
+    withoutOrgUnit = fWithoutOrgUnit,
   ) => {
     setLoading(true)
     try {
@@ -1048,6 +1063,7 @@ export default function OsPage() {
       if (source) params.source = source;
       if (fs || behavior) params.status = (fs || behavior) as AssetStatus;
       if (section) params.section_id = section;
+      if (withoutOrgUnit) params.without_org_unit = true;
 
       const response = await api.fixedAssets.unified(params)
       setAssets(response.items.map(fromUnified))
@@ -1062,7 +1078,7 @@ export default function OsPage() {
     } finally {
       setLoading(false)
     }
-  }, [fSection, fBehavior])
+  }, [fSection, fBehavior, fWithoutOrgUnit])
 
   const realtimeFetchersRef = useRef({ fetchAssets, fetchCounts })
 
@@ -1074,8 +1090,8 @@ export default function OsPage() {
 
   // Keep the latest filters available to the realtime listener.
   useEffect(() => {
-    filtersRef.current = { page, search: debouncedSearch, fType, fSource, fSection, fStatus, fBehavior }
-  }, [page, debouncedSearch, fType, fSource, fSection, fStatus, fBehavior])
+    filtersRef.current = { page, search: debouncedSearch, fType, fSource, fSection, fStatus, fBehavior, fWithoutOrgUnit }
+  }, [page, debouncedSearch, fType, fSource, fSection, fStatus, fBehavior, fWithoutOrgUnit])
 
   // Coalesce bursts of row-level notifications into one refresh.
   useRealtime(useCallback((event) => {
@@ -1085,7 +1101,7 @@ export default function OsPage() {
       realtimeRefreshTimerRef.current = null
       const filters = filtersRef.current
       const { fetchAssets: refreshAssets, fetchCounts: refreshCounts } = realtimeFetchersRef.current
-      void refreshAssets(filters.page, filters.search, filters.fType, filters.fSource, filters.fStatus, filters.fSection, filters.fBehavior)
+      void refreshAssets(filters.page, filters.search, filters.fType, filters.fSource, filters.fStatus, filters.fSection, filters.fBehavior, filters.fWithoutOrgUnit)
       void refreshCounts()
     }, 750)
   }, []), ["fixed_assets"])
@@ -1097,18 +1113,92 @@ export default function OsPage() {
   // Reset the page when filters change.
   useEffect(() => {
     setPage(0)
-  }, [search, fType, fSource, fSection, fStatus, fBehavior])
+    setSelectedAssetIds([])
+  }, [search, fType, fSource, fSection, fStatus, fBehavior, fWithoutOrgUnit])
+
+  useEffect(() => {
+    setSelectedAssetIds([])
+  }, [page])
 
   useEffect(() => {
     fetchAssets(page, debouncedSearch, fType, fSource, fStatus, fSection, fBehavior)
   }, [fetchAssets, page, debouncedSearch, fType, fSource, fSection, fStatus, fBehavior]);
 
   const totalPages    = Math.ceil(total / PAGE_SIZE)
-  const activeFilters = [fType, fSource, fSection, fStatus, fBehavior, search].filter(Boolean).length
-  const clearFilters  = () => { setFType(""); setFSource(""); setFSection(""); setFStatus(""); setFBehavior(""); setSearch("") }
+  const activeFilters = [fType, fSource, fSection, fStatus, fBehavior, search, fWithoutOrgUnit].filter(Boolean).length
+  const clearFilters  = () => { setFType(""); setFSource(""); setFSection(""); setFStatus(""); setFBehavior(""); setFWithoutOrgUnit(false); setSearch("") }
   const selectType = (code: string) => setFType((current) => current === code ? "" : code)
   const selectBehavior = (code: string) => { setFStatus(""); setFBehavior((current) => current === code ? "" : code) }
   const filtered      = assets  // Filtering is performed by the server.
+  const selectableAssetIds = filtered
+    .filter((asset) => asset.source !== "wialon" && !asset.id.startsWith("wialon:"))
+    .map((asset) => asset.id)
+  const allPageSelected = selectableAssetIds.length > 0
+    && selectableAssetIds.every((assetId) => selectedAssetIds.includes(assetId))
+
+  const applyBulkOrgUnit = async () => {
+    if (!bulkOrgUnitId || selectedAssetIds.length === 0) return
+    setBulkOrgUnitSaving(true)
+    try {
+      await api.fixedAssets.bulkUpdateOrgUnit({
+        asset_ids: selectedAssetIds,
+        org_unit_id: bulkOrgUnitId,
+      })
+      setShowBulkOrgUnit(false)
+      setSelectedAssetIds([])
+      setPage(0)
+      await fetchAssets(0, debouncedSearch, fType, fSource, fStatus, fSection, fBehavior, fWithoutOrgUnit)
+      await fetchCounts()
+    } catch (error) {
+      alert("Не удалось назначить участок: " + (error instanceof Error ? error.message : "ошибка API"))
+    } finally {
+      setBulkOrgUnitSaving(false)
+    }
+  }
+
+  const previewInventoryFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    setInventoryImportBusy(true)
+    setInventoryImportError("")
+    setInventoryPreview([])
+    try {
+      const text = await file.text()
+      const preview = await api.fixedAssets.previewInventoryImport({ csv_text: text })
+      setInventoryPreview(preview.items)
+    } catch (error) {
+      setInventoryImportError(error instanceof Error ? error.message : "Не удалось проверить файл.")
+    } finally {
+      setInventoryImportBusy(false)
+      event.target.value = ""
+    }
+  }
+
+  const applyInventoryPreview = async () => {
+    const rows: FixedAssetInventoryImportApplyRow[] = inventoryPreview
+      .filter((row) => row.status === "ok" && row.asset_id && row.inv_number)
+      .map((row) => ({
+        asset_id: row.asset_id!,
+        inv_number: row.inv_number!,
+        accounting_inv_number: row.accounting_inv_number,
+      }))
+    if (rows.length === 0) return
+    setInventoryImportBusy(true)
+    setInventoryImportError("")
+    try {
+      const result = await api.fixedAssets.applyInventoryImport(rows)
+      setShowInventoryImport(false)
+      setInventoryPreview([])
+      setSelectedAssetIds([])
+      await fetchAssets(page, debouncedSearch, fType, fSource, fStatus, fSection, fBehavior, fWithoutOrgUnit)
+      await fetchCounts()
+      alert(`Импорт завершён. Обновлено объектов: ${result.updated}.`)
+    } catch (error) {
+      setInventoryImportError(error instanceof Error ? error.message : "Не удалось применить импорт.")
+    } finally {
+      setInventoryImportBusy(false)
+    }
+  }
 
   const handleSave = async (updated: FixedAsset) => {
     if (hasAmbiguousSectionName(updated.depot)) {
@@ -1210,6 +1300,72 @@ export default function OsPage() {
         void fetchCounts()
       }}/>}
       {showAdd && canWrite && <AddAssetModal onClose={() => { setShowAdd(false); setSelectedUnit(null) }} onSave={handleAdd} sections={sections} types={assetTypes} statuses={assetStatuses} wialonUnit={selectedUnit ?? undefined}/>}
+      {showBulkOrgUnit && canWrite && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="bulk-org-unit-title">
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl dark:bg-gray-900">
+            <h2 id="bulk-org-unit-title" className="text-lg font-semibold text-gray-900 dark:text-white">Назначить участок</h2>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+              Будет обновлено объектов: <strong>{selectedAssetIds.length}</strong>. Участок: <strong>{sectionsData.find((section) => section.id === bulkOrgUnitId)?.localized_name || sectionsData.find((section) => section.id === bulkOrgUnitId)?.name || "не выбран"}</strong>.
+            </p>
+            <select value={bulkOrgUnitId} onChange={(event) => setBulkOrgUnitId(event.target.value)} className={`${selCls} mt-4 w-full`}>
+              <option value="">Выберите участок</option>
+              {sectionsData.map((section) => <option key={section.id} value={section.id}>{section.localized_name || section.name}</option>)}
+            </select>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowBulkOrgUnit(false)} disabled={bulkOrgUnitSaving}>Отмена</Button>
+              <Button onClick={() => void applyBulkOrgUnit()} disabled={!bulkOrgUnitId || bulkOrgUnitSaving}>
+                {bulkOrgUnitSaving ? "Сохранение..." : "Подтвердить"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showInventoryImport && canWrite && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="inventory-import-title">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-xl bg-white p-5 shadow-xl dark:bg-gray-900">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="inventory-import-title" className="text-lg font-semibold text-gray-900 dark:text-white">Импорт инв. номеров</h2>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">CSV: столбцы asset_id или name, inv_number, accounting_inv_number (необязательно).</p>
+              </div>
+              <Button variant="outline" onClick={() => setShowInventoryImport(false)} disabled={inventoryImportBusy}>Закрыть</Button>
+            </div>
+            <label className="mt-4 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Выберите CSV-файл
+              <input className="mt-2 block w-full text-sm" type="file" accept=".csv,text/csv" onChange={(event) => void previewInventoryFile(event)} disabled={inventoryImportBusy}/>
+            </label>
+            {inventoryImportBusy && <p className="mt-3 text-sm text-gray-500">Проверка данных...</p>}
+            {inventoryImportError && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">{inventoryImportError}</p>}
+            {inventoryPreview.length > 0 && (
+              <>
+                <div className="mt-4 overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                      <tr>{["Строка","Результат","Основное средство","Инв. номер","Бухгалтерский номер","Комментарий"].map((heading) => <th key={heading} className="px-3 py-2">{heading}</th>)}</tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {inventoryPreview.map((row) => <tr key={row.row_number}>
+                        <td className="px-3 py-2">{row.row_number}</td>
+                        <td className="px-3 py-2">{row.status === "ok" ? "Готово" : row.status === "not_found" ? "Не найдено" : row.status === "ambiguous" ? "Неоднозначно" : row.status === "duplicate" ? "Дубликат" : "Пусто"}</td>
+                        <td className="px-3 py-2">{row.asset_name || row.asset_id || "—"}</td>
+                        <td className="px-3 py-2">{row.inv_number || "—"}</td>
+                        <td className="px-3 py-2">{row.accounting_inv_number || "—"}</td>
+                        <td className="px-3 py-2">{row.message}</td>
+                      </tr>)}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-4 flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setInventoryPreview([])} disabled={inventoryImportBusy}>Сбросить</Button>
+                  <Button onClick={() => void applyInventoryPreview()} disabled={inventoryImportBusy || !inventoryPreview.some((row) => row.status === "ok")}>
+                    Подтвердить импорт ({inventoryPreview.filter((row) => row.status === "ok").length})
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Page header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -1219,6 +1375,7 @@ export default function OsPage() {
         </div>
         <div className="flex items-center gap-2">
           {profile?.role !== "master" && <Link href="/dashboard/os/wialon" className="rounded-lg border border-blue-200 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:text-blue-300 dark:hover:bg-blue-950/40">Данные Wialon</Link>}
+          {canWrite && <Button variant="outline" onClick={() => { setShowInventoryImport(true); setInventoryImportError(""); setInventoryPreview([]) }}>Импорт инв. номеров</Button>}
           {canWrite && <Button className="gap-2 bg-green-600 hover:bg-green-700" onClick={() => setShowAdd(true)}>
             <Plus className="w-4 h-4"/> Добавить ОС
           </Button>}
@@ -1280,6 +1437,11 @@ export default function OsPage() {
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
           </div>
 
+          <label className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">
+            <input type="checkbox" checked={fWithoutOrgUnit} onChange={(event) => setFWithoutOrgUnit(event.target.checked)} />
+            Без участка
+          </label>
+
           {/* Status */}
           <div className="relative">
             <select value={fStatus} onChange={e => setFStatus(e.target.value as AssetStatus | "")} className={selCls}>
@@ -1306,11 +1468,18 @@ export default function OsPage() {
       </div>
 
       {(loadError || statsError) && <div role="alert" className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{loadError || statsError}</div>}
+      {canWrite && selectedAssetIds.length > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-900 dark:bg-blue-950/30">
+          <span className="text-sm text-blue-800 dark:text-blue-200">Выбрано основных средств: {selectedAssetIds.length}</span>
+          <Button onClick={() => { setBulkOrgUnitId(""); setShowBulkOrgUnit(true) }}>Назначить участок</Button>
+        </div>
+      )}
       {/* Table */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+              {canWrite && <th className="px-3 py-3.5"><input type="checkbox" aria-label="Выбрать все основные средства на странице" checked={allPageSelected} disabled={selectableAssetIds.length === 0} onChange={() => setSelectedAssetIds((current) => allPageSelected ? current.filter((id) => !selectableAssetIds.includes(id)) : Array.from(new Set([...current, ...selectableAssetIds])))} /></th>}
               {["Источник","Тип","Наименование / Номер","Участок","Пробег ТОИР, км","Пробег Wialon, км","Моточасы","Скорость","Связь","Статус / действие"].map((heading) => (
                 <th key={heading} className="text-left px-4 py-3.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{heading}</th>
               ))}
@@ -1318,7 +1487,7 @@ export default function OsPage() {
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {filtered.length === 0 && (
-              <tr><td colSpan={10} className="px-5 py-12 text-center text-sm text-gray-400">
+              <tr><td colSpan={canWrite ? 11 : 10} className="px-5 py-12 text-center text-sm text-gray-400">
                 <Search className="w-8 h-8 mx-auto mb-2 opacity-30"/>
                 Ничего не найдено
               </td></tr>
@@ -1334,6 +1503,7 @@ export default function OsPage() {
               const stale = !a.lastMessageAt || Date.now() - new Date(a.lastMessageAt).getTime() > 24 * 60 * 60 * 1000
               const connection = stale ? "Давно" : a.wialonOnline ? "Онлайн" : "Нет связи"
               const sourceLabel = a.source === "both" ? "ТОИР + Wialon" : a.source === "wialon" ? "Wialon" : "ТОИР"
+              const orgUnit = sectionsData.find((section) => section.id === a.orgUnitId)
               const rowUnit: WialonUnit | null = a.unitId ? {
                 unit_id: a.unitId,
                 name: a.name,
@@ -1347,9 +1517,11 @@ export default function OsPage() {
                 counter_state: null,
                 rejected_count: 0,
               } : null
+              const isSelectable = canWrite && a.source !== "wialon" && !a.id.startsWith("wialon:")
               return (
                 <tr key={a.id} onClick={a.source !== "wialon" ? () => setSelected(a) : undefined}
                   className={`hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors ${a.source !== "wialon" ? "cursor-pointer" : ""}`}>
+                  {canWrite && <td className="px-3 py-3.5" onClick={(event) => event.stopPropagation()}>{isSelectable ? <input type="checkbox" aria-label={`Выбрать ${a.name}`} checked={selectedAssetIds.includes(a.id)} onChange={(event) => setSelectedAssetIds((current) => event.target.checked ? [...current, a.id] : current.filter((id) => id !== a.id))} /> : "—"}</td>}
                   <td className="px-4 py-3.5">
                     <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${a.source === "both" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" : a.source === "wialon" ? "bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"}`}>{sourceLabel}</span>
                   </td>
@@ -1358,7 +1530,7 @@ export default function OsPage() {
                     <p className="text-sm font-semibold text-gray-900 dark:text-white">{a.name}{a.suspectAbsolute && <span className="ml-2 text-amber-600 dark:text-amber-400" title="Подозрительное значение Wialon">⚠</span>}</p>
                     {(a.invNumber || a.unitId) && <p className="text-xs text-gray-400 truncate max-w-[220px]">{a.invNumber ? `Инв. № ${a.invNumber}` : `ID ${a.unitId}`}</p>}
                   </td>
-                  <td className="px-4 py-3.5 text-xs text-gray-600 dark:text-gray-300">{a.depot || "—"}</td>
+                  <td className="px-4 py-3.5 text-xs text-gray-600 dark:text-gray-300">{orgUnit?.localized_name || orgUnit?.name || a.depot || "—"}</td>
                   <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.source !== "wialon" ? a.mileage || "—" : "—"}</td>
                   <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.unitId ? a.wialonMileage || "—" : "—"}</td>
                   <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.unitId ? a.engineHours || "—" : "—"}</td>

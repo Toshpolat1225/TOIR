@@ -134,6 +134,82 @@ class FixedAssetUpdate(PatchModel):
         return self
 
 
+class FixedAssetBulkOrgUnitUpdate(BaseModel):
+    asset_ids: list[UUID] = Field(min_length=1, max_length=1000)
+    org_unit_id: UUID | None
+
+    @model_validator(mode="after")
+    def require_unique_asset_ids(self):
+        if len(set(self.asset_ids)) != len(self.asset_ids):
+            raise ValueError("asset_ids must be unique")
+        return self
+
+
+class FixedAssetBulkOrgUnitUpdateRead(BaseModel):
+    updated: int
+
+
+class FixedAssetInventoryImportRow(BaseModel):
+    asset_id: str | None = None
+    name: str | None = None
+    inv_number: str | None = None
+    accounting_inv_number: str | None = None
+
+
+class FixedAssetInventoryImportRequest(BaseModel):
+    csv_text: str | None = Field(default=None, max_length=2_000_000)
+    rows: list[FixedAssetInventoryImportRow] | None = Field(
+        default=None, min_length=1, max_length=2000
+    )
+
+    @model_validator(mode="after")
+    def require_one_input_format(self):
+        if (self.csv_text is None) == (self.rows is None):
+            raise ValueError("Provide either csv_text or rows")
+        return self
+
+
+class FixedAssetInventoryImportPreviewItem(BaseModel):
+    row_number: int
+    status: Literal["ok", "not_found", "ambiguous", "duplicate", "empty"]
+    asset_id: UUID | None
+    asset_name: str | None
+    inv_number: str | None
+    accounting_inv_number: str | None
+    message: str
+
+
+class FixedAssetInventoryImportPreview(BaseModel):
+    items: list[FixedAssetInventoryImportPreviewItem]
+
+
+class FixedAssetInventoryImportApplyRow(BaseModel):
+    asset_id: UUID
+    inv_number: str = Field(min_length=1, max_length=200)
+    accounting_inv_number: str | None = Field(default=None, max_length=200)
+
+    @model_validator(mode="after")
+    def normalize_values(self):
+        self.inv_number = self.inv_number.strip()
+        if not self.inv_number:
+            raise ValueError("inv_number must not be empty")
+        if self.accounting_inv_number is not None:
+            self.accounting_inv_number = (
+                self.accounting_inv_number.strip() or None
+            )
+        return self
+
+
+class FixedAssetInventoryImportApply(BaseModel):
+    rows: list[FixedAssetInventoryImportApplyRow] = Field(
+        min_length=1, max_length=2000
+    )
+
+
+class FixedAssetInventoryImportApplyRead(BaseModel):
+    updated: int
+
+
 class FixedAssetRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -16,6 +16,7 @@ async def list_unified_assets(
     asset_type: str | None,
     asset_status: str | None,
     section_id: UUID | None,
+    without_org_unit: bool = False,
     master_section_id: UUID | None,
     q: str | None,
     limit: int,
@@ -31,6 +32,7 @@ async def list_unified_assets(
             asset_type=asset_type,
             status=asset_status,
             section_id=section_id,
+            without_org_unit=without_org_unit,
             master_section_id=master_section_id,
             q=q,
             limit=limit,
@@ -64,6 +66,11 @@ async def list_unified_assets(
                 status=asset.status if asset is not None else None,
                 section=section.name if section is not None else None,
                 section_id=asset.section_id if asset is not None else None,
+                org_unit_id=(
+                    getattr(asset, "org_unit_id", None)
+                    if asset is not None
+                    else None
+                ),
                 mileage=asset.mileage if asset is not None else None,
                 wialon_cnm=unit.cnm if unit is not None else None,
                 wialon_cneh=unit.cneh if unit is not None else None,

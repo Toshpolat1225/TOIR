@@ -23,6 +23,7 @@ from app.repositories import asset_models as asset_models_repository
 from app.schemas.assets import (
     AssetStatus,
     AssetType,
+    FixedAssetBulkOrgUnitUpdate,
     FixedAssetCreate,
     FixedAssetStats,
     FixedAssetUpdate,
@@ -465,6 +466,45 @@ async def set_fixed_asset_mileage(
     await _commit(db, "Could not update fixed asset mileage")
     await db.refresh(asset)
     return asset_read(asset)
+
+
+async def bulk_update_org_unit(
+    db: AsyncSession,
+    payload: FixedAssetBulkOrgUnitUpdate,
+    *,
+    by: UUID,
+) -> int:
+    if payload.org_unit_id is not None:
+        section = await references_repository.get_non_archived_section(
+            db, payload.org_unit_id
+        )
+        if section is None:
+            raise HTTPException(
+                status_code=422, detail="Organization unit is unavailable"
+            )
+
+    assets = await repository.get_assets_for_update(db, payload.asset_ids)
+    if len(assets) != len(payload.asset_ids):
+        raise _not_found()
+
+    now = datetime.now(timezone.utc)
+    updated = 0
+    for asset in assets:
+        previous_org_unit_id = asset.org_unit_id
+        if previous_org_unit_id == payload.org_unit_id:
+            continue
+        field_changes_service.record_manual_changes(
+            db,
+            asset,
+            old_values={"org_unit_id": previous_org_unit_id},
+            new_values={"org_unit_id": payload.org_unit_id},
+        )
+        asset.org_unit_id = payload.org_unit_id
+        asset.updated_at = now
+        updated += 1
+
+    await _commit(db, "Unable to update organizational unit")
+    return updated
 
 
 async def delete_fixed_asset(db: AsyncSession, asset_id: UUID) -> None:

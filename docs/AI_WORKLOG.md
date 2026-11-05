@@ -207,3 +207,11 @@ Added editable passport fields with model selection and section-change confirmat
 Added pending conflicts review page with confirm-before-accept/reject and admin/operator navigation; new API types leave existing `FixedAsset` and operational fields intact.
 NOT TESTED: build/tsc executables unavailable, backend pytest/API/database/browser/production/deploy; no `.env.local` access and no commit.
 Next: restore frontend dependencies in the approved workflow, rerun build and tsc, then verify the UI against the authorized API.
+2026-11-04 | Copilot SDK | P6 offline audit continuation and bulk org-unit assignment | backend assets API/service/schema/repository, tests, E2E, docs | `.venv` pytest -> focused 18 passed; related suites 152 passed
+Added atomic, audited bulk `org_unit_id` assignment; final migration-graph and PATCH checks passed. Existing source-link race-to-409 behavior was retained.
+NOT TESTED: PostgreSQL migration/rehearsal, API E2E, browser, production/deploy; frontend build and tsc executables unavailable. No migrations/schema.sql changed and no commit.
+Next: restore frontend dependencies, run build/tsc, then verify E2E and migration behavior on disposable test systems.
+2026-11-04 | Copilot SDK | P7 permission reconciliation, bulk org-unit UI, inventory CSV import | migration 0020, assets API/schema/service/repository, unified API, OS UI, tests, E2E, docs | backend pytest -> 163 passed
+0020 idempotently sets the expected role grants; added preview-only CSV/JSON validation and atomic, audited apply, plus bulk section selection and server filtering.
+NOT TESTED: frontend build/tsc (Next.js/TypeScript unavailable), migration execution, live grants, E2E, browser, production/deploy. No .env/CSV opened; no commit or Supabase call.
+Next: restore frontend tools, then validate migration and API scripts on a disposable environment.

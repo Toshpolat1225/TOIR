@@ -881,3 +881,39 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### NOT TESTED
 
 - TypeScript check and production build (required local executables are missing); backend pytest, API/database behavior, authorization, browser interactions, production server, and deployment.
+
+## P6 offline audit continuation (2026-11-04)
+
+### Verified
+
+- Added the admin/operator `POST /fixed-assets/bulk-org-unit` endpoint. It validates the selected section and assets, locks assets in stable ID order, records each changed `org_unit_id` in `asset_field_changes`, and commits the batch atomically. Existing single-asset PATCH already supports `org_unit_id`; the bulk UI is deferred to P7.
+- Added API schemas/types, an E2E script, and audit tests for bulk assignment, single PATCH, permissions, migration graph, source mirrors, and provisional inventory numbers. Existing source-link unique-race handling remains a 409.
+- The final focused P6 audit test run passed: **18 passed**. The requested asset, GTK, mileage-attribution, unified, and Wialon test set passed: **152 passed**.
+- Static revision-graph and model/schema checks pass. No applied migration or `postgres/schema.sql` was changed. `DECISIONS.md` records that revision 0018 uses existing database rows for backfill and cannot be fully rehearsed through offline SQL rendering.
+- Frontend build and TypeScript checks were attempted earlier but could not run because the local Next.js and TypeScript executables were unavailable.
+
+### Next task
+
+- Restore frontend dependencies through the approved workflow, run `npm run build` and `npx tsc --noEmit`, then run the asset/org-unit E2E script against a disposable test API and rehearse migrations against a disposable PostgreSQL copy.
+
+### NOT TESTED
+
+- PostgreSQL migration execution/rollback, endpoint E2E, browser behavior, production/deployment, and live database role/link data. Frontend build and TypeScript checks remain NOT TESTED because their executables were unavailable.
+
+## P7 permissions, bulk section assignment, and inventory import (2026-11-04)
+
+### Verified
+
+- In permission checks, `role_permissions.granted` controls non-admin access; `require_permission` also applies explicit `ROLE_DENIED` overrides. Migration 0008 seeds grants from `ROLE_DEFAULTS`; 0017/0019 used `ON CONFLICT DO NOTHING`, so they did not repair a previously wrong grant. Added migration 0020 with an idempotent upsert: admin/operator receive all three asset-link/conflict permissions; management receives only `asset_links.view`; master receives none. The live database values were not queried.
+- Added the admin/operator-only bulk section-assignment UI with the “Без участка” server filter, page checkboxes, select-all, confirmation showing the count and section, and list/stat refresh. The unified API now returns `org_unit_id`.
+- Added admin/operator inventory-import preview and apply APIs. Preview accepts CSV text or JSON rows and reports empty, missing, ambiguous, duplicate, or valid rows without writing. Apply rechecks IDs and number conflicts under row locks, journals manual changes, clears the provisional flag, and commits once; an integrity failure rolls back and returns 409. Added CSV selection, preview table, and confirmation in the OS page.
+- `next.config.mjs` does not set `typescript.ignoreBuildErrors` or `eslint.ignoreDuringBuilds`.
+- Backend `.venv` requested test set: **163 passed**. P7-specific tests: **11 passed**. No applied migration 0001–0019 or `postgres/schema.sql` was edited.
+
+### Next task
+
+- Restore frontend dependencies through the approved workflow, rerun build and TypeScript checks, then run the import/org-unit E2E scripts and migration 0020 on a disposable test API/database.
+
+### NOT TESTED
+
+- Frontend build and TypeScript checks (Next.js and TypeScript executables are missing); migration execution, live permission rows, API E2E, browser interactions, production, and deployment.

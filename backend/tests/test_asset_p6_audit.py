@@ -4,11 +4,12 @@ import ast
 import re
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
 from app.core.permissions import ROLE_DEFAULTS, ROLE_DENIED, require_permission
@@ -17,6 +18,7 @@ from app.models.asset_models import AssetModel
 from app.models.asset_source_links import AssetSourceLink
 from app.models.assets import FixedAsset
 from app.routers import assets as assets_router
+from app.schemas.assets import FixedAssetBulkOrgUnitUpdate
 from app.services import asset_links, assets as assets_service
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -30,7 +32,7 @@ FRONTEND_FILES = (
 )
 
 
-def _revision(path: Path) -> tuple[str, str | None]:
+def _revision(path: Path) -> tuple[str, object]:
     module = ast.parse(path.read_text(encoding="utf-8"))
     values = {}
     for node in module.body:
@@ -41,24 +43,56 @@ def _revision(path: Path) -> tuple[str, str | None]:
     return values["revision"], values["down_revision"]
 
 
+class _ScalarResult:
+    def __init__(self, value):
+        self.value = value
+
+    def scalar_one_or_none(self):
+        return self.value
+
+
+def _db_for(asset):
+    return SimpleNamespace(
+        execute=AsyncMock(return_value=_ScalarResult(asset)),
+        rollback=AsyncMock(),
+    )
+
+
 def _schema_columns(table: str) -> set[str]:
     schema = SCHEMA.read_text(encoding="utf-8")
     body = schema.split(f"CREATE TABLE {table} (", 1)[1].split("\n);", 1)[0]
     return {
-        line.strip().split()[0]
+        match.group(1)
         for line in body.splitlines()
-        if line.strip()
-        and not line.strip().startswith(("CONSTRAINT", "--"))
+        if (match := re.match(r"^ {4}([a-z_][a-z0-9_]*)\s+", line))
+        and match.group(1) not in {"constraint", "check"}
     }
 
 
 def test_p6_migration_chain_is_linear_from_0012_to_head():
-    paths = sorted(MIGRATIONS.glob("001[2-9]_*.py"))
-    revisions = [_revision(path) for path in paths]
-    assert len(revisions) == 8
-    assert len({revision for revision, _ in revisions}) == len(revisions)
-    assert all(len(revision) <= 32 for revision, _ in revisions)
-    assert [down for _, down in revisions] == [
+    migrations = [
+        _revision(path)
+        for path in MIGRATIONS.glob("*.py")
+        if path.name != "__init__.py"
+    ]
+    revision_map = dict(migrations)
+    all_revisions = set(revision_map)
+    parents = set()
+    for down_revision in revision_map.values():
+        if isinstance(down_revision, str):
+            parents.add(down_revision)
+        elif isinstance(down_revision, (tuple, list)):
+            parents.update(down_revision)
+    assert all_revisions - parents == {"0020_p7_permission_grants"}
+    assert all(len(revision) <= 32 for revision in all_revisions)
+
+    p6_revisions = [
+        _revision(path)
+        for path in sorted(MIGRATIONS.glob("001[2-9]_*.py"))
+    ]
+    assert len(p6_revisions) == 8
+    assert len({revision for revision, _ in p6_revisions}) == len(p6_revisions)
+    assert [down for _, down in p6_revisions] == [
         "0011_wialon_counter_state",
         "0012_wialon_units",
         "0013_gtk_source",
@@ -68,7 +102,7 @@ def test_p6_migration_chain_is_linear_from_0012_to_head():
         "0017_asset_source_links",
         "0018_asset_passport",
     ]
-    assert revisions[-1][0] == "0019_asset_field_changes"
+    assert p6_revisions[-1][0] == "0019_asset_field_changes"
 
 
 def test_p6_0017_to_0019_migration_operations_have_matching_downgrades():
@@ -117,6 +151,7 @@ def test_p6_permission_seeds_and_runtime_denials_are_consistent():
     assert "('master', 'asset_links.manage', false)" in links_migration
     assert "('admin', 'asset_conflicts.manage', true)" in conflicts_migration
     assert "('operator', 'asset_conflicts.manage', true)" in conflicts_migration
+    assert "('management', 'asset_conflicts.manage', false)" in conflicts_migration
     assert "('master', 'asset_conflicts.manage', false)" in conflicts_migration
     assert "asset_links.view" in ROLE_DEFAULTS["management"]
     assert "asset_links.manage" not in ROLE_DEFAULTS["management"]
@@ -134,12 +169,20 @@ async def test_p6_permission_dependency_returns_403_for_ungranted_roles():
     db = SimpleNamespace(execute=AsyncMock(return_value=Result()))
     master = SimpleNamespace(role="master")
     management = SimpleNamespace(role="management")
+    master_manage = SimpleNamespace(role="master")
+    management_conflicts = SimpleNamespace(role="management")
     with pytest.raises(HTTPException) as master_error:
         await require_permission("asset_links.view")(master, db)
     with pytest.raises(HTTPException) as management_error:
         await require_permission("asset_links.manage")(management, db)
+    with pytest.raises(HTTPException) as master_manage_error:
+        await require_permission("asset_links.manage")(master_manage, db)
+    with pytest.raises(HTTPException) as management_conflict_error:
+        await require_permission("asset_conflicts.manage")(management_conflicts, db)
     assert master_error.value.status_code == 403
     assert management_error.value.status_code == 403
+    assert master_manage_error.value.status_code == 403
+    assert management_conflict_error.value.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -228,6 +271,166 @@ async def test_p6_asset_patch_replaces_provisional_wialon_number_with_real_numbe
         )
     assert asset.inv_number == "REAL-123"
     assert asset.inv_number_is_provisional is False
+    page_source = FRONTEND_FILES[0].read_text(encoding="utf-8")
+    assert "asset.inv_number_is_provisional &&" in page_source
+    assert ">временный</span>" in page_source
+
+
+@pytest.mark.asyncio
+async def test_p6_source_link_dual_writes_legacy_wialon_and_gtk_columns():
+    cases = (
+        ("wialon", "unit-1", "locomotive", "wialon_id"),
+        ("gtk", "55", "wagon", "gtk_id"),
+    )
+    for source, external_id, asset_type, mirror in cases:
+        asset = SimpleNamespace(
+            id=uuid4(), asset_type=asset_type, wialon_id=None, gtk_id=None
+        )
+        db = _db_for(asset)
+        with (
+            patch.object(asset_links.repository, "find_active", new=AsyncMock(return_value=None)),
+            patch.object(asset_links.repository, "get_active_for_update", new=AsyncMock(return_value=None)),
+            patch.object(asset_links.repository, "add", new=AsyncMock()),
+            patch.object(
+                asset_links.gtk_repository,
+                "gtk_kind",
+                new=AsyncMock(return_value="carriage"),
+            ),
+        ):
+            link = await asset_links.link(db, asset.id, source, external_id, uuid4())
+        assert getattr(asset, mirror) == external_id
+        assert link.external_id == external_id
+
+
+@pytest.mark.asyncio
+async def test_p6_single_asset_patch_can_manually_assign_org_unit():
+    old_section_id = uuid4()
+    new_section_id = uuid4()
+    asset = SimpleNamespace(
+        id=uuid4(),
+        org_unit_id=old_section_id,
+        gtk_id=None,
+        wialon_id=None,
+        asset_type="wagon",
+        model_id=None,
+        number=None,
+        number_normalized=None,
+        inv_number="ORG-1",
+        inv_number_is_provisional=False,
+        updated_at=None,
+        section_id=None,
+        mileage=None,
+    )
+    db = SimpleNamespace(add=Mock(), refresh=AsyncMock())
+    with (
+        patch.object(assets_service, "_get_scoped_asset", new=AsyncMock(return_value=asset)),
+        patch.object(
+            assets_service.references_repository,
+            "get_non_archived_section",
+            new=AsyncMock(return_value=SimpleNamespace(id=new_section_id)),
+        ),
+        patch.object(assets_service.asset_links_repository, "get_active", new=AsyncMock(return_value=[])),
+        patch.object(assets_service, "_commit", new=AsyncMock()),
+        patch.object(assets_service, "asset_read", return_value=asset),
+    ):
+        await assets_service.update_fixed_asset(
+            db, asset.id, assets_service.FixedAssetUpdate(org_unit_id=new_section_id)
+        )
+    assert asset.org_unit_id == new_section_id
+    journal_entry = db.add.call_args.args[0]
+    assert (journal_entry.field, journal_entry.old_value, journal_entry.new_value) == (
+        "org_unit_id",
+        str(old_section_id),
+        str(new_section_id),
+    )
+
+
+@pytest.mark.asyncio
+async def test_p6_bulk_org_unit_updates_and_journals_all_assets_in_one_commit():
+    section_id = uuid4()
+    user_id = uuid4()
+    first = SimpleNamespace(id=uuid4(), org_unit_id=None, updated_at=None)
+    second = SimpleNamespace(id=uuid4(), org_unit_id=uuid4(), updated_at=None)
+    db = SimpleNamespace(add=Mock())
+    payload = FixedAssetBulkOrgUnitUpdate(
+        asset_ids=[first.id, second.id], org_unit_id=section_id
+    )
+    with (
+        patch.object(
+            assets_service.references_repository,
+            "get_non_archived_section",
+            new=AsyncMock(return_value=SimpleNamespace(id=section_id)),
+        ),
+        patch.object(
+            assets_service.repository,
+            "get_assets_for_update",
+            new=AsyncMock(return_value=[first, second]),
+        ),
+        patch.object(assets_service, "_commit", new=AsyncMock()) as commit,
+    ):
+        updated = await assets_service.bulk_update_org_unit(db, payload, by=user_id)
+    assert updated == 2
+    assert first.org_unit_id == section_id
+    assert second.org_unit_id == section_id
+    assert commit.await_count == 1
+    assert db.add.call_count == 2
+    assert all(
+        change.field == "org_unit_id"
+        and change.source == "toir"
+        and change.kind == "manual"
+        and change.status == "applied"
+        for change in (call.args[0] for call in db.add.call_args_list)
+    )
+
+
+@pytest.mark.asyncio
+async def test_p6_bulk_org_unit_rejects_missing_asset_without_commit():
+    section_id = uuid4()
+    payload = FixedAssetBulkOrgUnitUpdate(
+        asset_ids=[uuid4(), uuid4()], org_unit_id=section_id
+    )
+    with (
+        patch.object(
+            assets_service.references_repository,
+            "get_non_archived_section",
+            new=AsyncMock(return_value=SimpleNamespace(id=section_id)),
+        ),
+        patch.object(
+            assets_service.repository,
+            "get_assets_for_update",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch.object(assets_service, "_commit", new=AsyncMock()) as commit,
+    ):
+        with pytest.raises(HTTPException) as error:
+            await assets_service.bulk_update_org_unit(
+                SimpleNamespace(), payload, by=uuid4()
+            )
+    assert error.value.status_code == 404
+    commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_p6_bulk_org_unit_endpoint_rejects_management_role():
+    with patch.object(assets_service, "bulk_update_org_unit", new=AsyncMock()) as bulk:
+        with pytest.raises(HTTPException) as error:
+            await assets_router.post_bulk_org_unit_update(
+                FixedAssetBulkOrgUnitUpdate(
+                    asset_ids=[uuid4()], org_unit_id=uuid4()
+                ),
+                SimpleNamespace(role="management", id=uuid4()),
+                SimpleNamespace(),
+            )
+    assert error.value.status_code == 403
+    bulk.assert_not_awaited()
+
+
+def test_p6_bulk_org_unit_payload_rejects_duplicate_assets():
+    asset_id = uuid4()
+    with pytest.raises(ValidationError):
+        FixedAssetBulkOrgUnitUpdate(
+            asset_ids=[asset_id, asset_id], org_unit_id=uuid4()
+        )
 
 
 def test_p6_ui_uses_russian_text_and_has_no_forbidden_alphabet_or_non_english_comments():
@@ -257,8 +460,11 @@ def test_p6_passport_report_is_exact_match_only_and_decision_documents_mapping_f
     decision = (ROOT / "docs" / "DECISIONS.md").read_text(encoding="utf-8")
     assert "sections_by_name.get(asset.depot, [])" in report_source
     assert "asset.depot = section.name" in (MIGRATIONS / "0018_asset_passport.py").read_text(encoding="utf-8")
-    assert "86/86" in decision
+    assert "86 `fixed_assets`" in decision
+    assert "depot IS NULL" in decision
     assert "mapping" in decision.lower()
+    e2e_script = ROOT / "backend" / "scripts" / "e2e_asset_org_unit.py"
+    ast.parse(e2e_script.read_text(encoding="utf-8"))
 
 
 def test_p6_legacy_source_mirror_references_have_removal_inventory():
@@ -284,3 +490,9 @@ def test_p6_legacy_source_mirror_references_have_removal_inventory():
     assert "drop_column(\"fixed_assets\", \"gtk_id\")" not in (
         MIGRATIONS / "0019_asset_field_changes.py"
     ).read_text(encoding="utf-8")
+    p6_upgrade_code = "\n".join(
+        path.read_text(encoding="utf-8").split("def downgrade", 1)[0]
+        for path in MIGRATIONS.glob("001[2-9]_*.py")
+    )
+    assert 'op.drop_column("fixed_assets", "gtk_id")' not in p6_upgrade_code
+    assert 'op.drop_column("fixed_assets", "wialon_id")' not in p6_upgrade_code

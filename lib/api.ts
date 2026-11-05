@@ -189,6 +189,22 @@ const gtk = {
   async status(): Promise<GtkStatus> {
     return request({ method: "GET", path: "/gtk/status" });
   },
+  async previewInventoryImport(data: FixedAssetInventoryImportRequest): Promise<{
+    items: FixedAssetInventoryImportPreviewItem[];
+  }> {
+    return request<{ items: FixedAssetInventoryImportPreviewItem[] }>({
+      method: "POST",
+      path: "/fixed-assets/inv-import/preview",
+      body: data,
+    });
+  },
+  async applyInventoryImport(rows: FixedAssetInventoryImportApplyRow[]): Promise<FixedAssetInventoryImportApplyResponse> {
+    return request<FixedAssetInventoryImportApplyResponse>({
+      method: "POST",
+      path: "/fixed-assets/inv-import/apply",
+      body: { rows },
+    });
+  },
   async locomotives(params: ListParams & {
     q?: string;
     is_active?: boolean;
@@ -360,6 +376,7 @@ export type CurrentUser = {
   role: "admin" | "operator" | "master" | "management";
   is_active: boolean;
   section_id: string | null;
+  org_unit_id: string | null;
   section?: string | null;
 };
 
@@ -821,6 +838,45 @@ export type AssetFieldChange = {
   resolved_at: string | null;
 };
 
+export type FixedAssetBulkOrgUnitUpdate = {
+  asset_ids: string[];
+  org_unit_id: string | null;
+};
+
+export type FixedAssetBulkOrgUnitUpdateResponse = {
+  updated: number;
+};
+
+export type FixedAssetInventoryImportRequest = {
+  csv_text?: string;
+  rows?: Array<{
+    asset_id?: string | null;
+    name?: string | null;
+    inv_number?: string | null;
+    accounting_inv_number?: string | null;
+  }>;
+};
+
+export type FixedAssetInventoryImportPreviewItem = {
+  row_number: number;
+  status: "ok" | "not_found" | "ambiguous" | "duplicate" | "empty";
+  asset_id: string | null;
+  asset_name: string | null;
+  inv_number: string | null;
+  accounting_inv_number: string | null;
+  message: string;
+};
+
+export type FixedAssetInventoryImportApplyRow = {
+  asset_id: string;
+  inv_number: string;
+  accounting_inv_number?: string | null;
+};
+
+export type FixedAssetInventoryImportApplyResponse = {
+  updated: number;
+};
+
 export type FixedAssetListParams = ListParams & {
   q?: string;
   asset_type?: string;
@@ -841,6 +897,7 @@ export type UnifiedAsset = {
   status: string | null;
   section: string | null;
   section_id: string | null;
+  org_unit_id: string | null;
   mileage: number | string | null;
   wialon_cnm: number | string | null;
   wialon_cneh: number | string | null;
@@ -951,6 +1008,7 @@ export type UnifiedAssetListParams = ListParams & {
   asset_type?: string;
   status?: string;
   section_id?: string;
+  without_org_unit?: boolean;
   q?: string;
 };
 
@@ -1065,6 +1123,15 @@ const fixedAssets = {
   },
   async update(id: string, data: FixedAssetUpdate): Promise<FixedAsset> {
     return request<FixedAsset>({ method: "PATCH", path: `/fixed-assets/${id}`, body: data });
+  },
+  async bulkUpdateOrgUnit(
+    data: FixedAssetBulkOrgUnitUpdate,
+  ): Promise<FixedAssetBulkOrgUnitUpdateResponse> {
+    return request<FixedAssetBulkOrgUnitUpdateResponse>({
+      method: "POST",
+      path: "/fixed-assets/bulk-org-unit",
+      body: data,
+    });
   },
   async remove(id: string): Promise<void> {
     await request<null>({ method: "DELETE", path: `/fixed-assets/${id}` });
