@@ -219,3 +219,13 @@ Next: restore frontend tools, then validate migration and API scripts on a dispo
 Moved import methods from `gtk` to `fixedAssets`; preserved `org_unit_id` in legacy PATCH payload/state refresh and localized CRUD errors; removed Vercel Analytics mount.
 NOT TESTED: Next.js build and tsc executables missing; API/database, browser, production/deploy. No migrations, package dependencies, CSV, env files, commit, or Supabase changed.
 Next: restore frontend dependencies, run build/tsc, then verify CRUD against a disposable API/database.
+2026-11-05 | Copilot SDK | Replaced reversible passport import with confirmed whole-register replacement; corrected type mapping and create-modal type selector.
+Changed backend import/migration/schema/tests, API and OS UI, HANDOFF, DECISIONS, and AI_WORKLOG.
+Verified: related pytest 178 passed, 17 subtests; `npx.cmd tsc --noEmit` exit 0; `npm.cmd run build` exit 0 with 3 Hook warnings.
+NOT TESTED: source JSON counts/content, database counts/import, migration execution, API/browser, production/deploy; no commit.
+Next: verify preview and apply only on an authorized disposable database.
+2026-11-05 | Copilot SDK | Read and validated the full JSON register; guarded replacement against deleting referenced module records.
+Read assets_list.json: 1,075 rows; parser accepts all rows after the user-approved 0022 duplicate-number migration. Added FK blocker checks, root-only deletion, and duplicate-before-delete test.
+Full-file parser probe: 1 passed (1,075 accepted, 0 blocked; temporary probe removed). Related suites: 183 passed; `npx.cmd tsc --noEmit` and `npm.cmd run build` exited 0 (3 existing Hook warnings).
+NOT TESTED: disposable PostgreSQL migration/import, database before/after counts, actual FK rows, API/browser, production/deploy; source file unmodified; no commit.
+Next: apply and verify the migration/import only in an authorized disposable PostgreSQL database; do not run production import before exact database counts are verified.

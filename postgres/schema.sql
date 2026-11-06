@@ -192,7 +192,10 @@ CREATE TABLE fixed_asset_types (
     is_active  boolean NOT NULL DEFAULT true,
     color      text NOT NULL DEFAULT 'blue' CHECK (color IN ('blue','green','amber','orange','red','gray','purple'))
 );
-INSERT INTO fixed_asset_types(code) VALUES ('locomotive'), ('diesel'), ('wagon');
+INSERT INTO fixed_asset_types(code, color) VALUES
+    ('locomotive', 'blue'), ('diesel', 'orange'), ('wagon', 'purple'),
+    ('tank_car', 'purple'), ('platform', 'green'),
+    ('special_self_propelled', 'gray');
 
 CREATE TABLE fixed_asset_statuses (
     code       text PRIMARY KEY,
@@ -268,14 +271,13 @@ CREATE INDEX ix_assets_section     ON fixed_assets(section_id);
 CREATE INDEX ix_assets_series      ON fixed_assets(series);
 CREATE INDEX ix_fixed_assets_model_id ON fixed_assets(model_id);
 CREATE INDEX ix_fixed_assets_org_unit_id ON fixed_assets(org_unit_id);
-CREATE UNIQUE INDEX uq_fixed_assets_inv_number_real
-    ON fixed_assets(inv_number) WHERE inv_number_is_provisional IS FALSE;
+CREATE INDEX ix_fixed_assets_inv_number
+    ON fixed_assets(inv_number);
 CREATE UNIQUE INDEX uq_fixed_assets_accounting_inv_number
     ON fixed_assets(accounting_inv_number) WHERE accounting_inv_number IS NOT NULL;
-CREATE UNIQUE INDEX uq_fixed_assets_active_model_number
+CREATE INDEX ix_fixed_assets_type_model_number
     ON fixed_assets(asset_type, model_id, number_normalized)
-    WHERE decommissioned_at IS NULL AND model_id IS NOT NULL
-      AND number_normalized IS NOT NULL;
+    WHERE model_id IS NOT NULL AND number_normalized IS NOT NULL;
 
 CREATE TABLE asset_source_links (
     id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -747,7 +749,12 @@ CREATE UNIQUE INDEX uq_fixed_asset_status_translation_name ON fixed_asset_status
 INSERT INTO fixed_asset_type_translations(type_code, locale, name) VALUES
     ('locomotive', 'ru', 'Локомотив'), ('locomotive', 'uz-Latn', 'Lokomotiv'), ('locomotive', 'uz-Cyrl', 'Локомотив'),
     ('diesel', 'ru', 'Тепловоз'), ('diesel', 'uz-Latn', 'Teplovoz'), ('diesel', 'uz-Cyrl', 'Тепловоз'),
-    ('wagon', 'ru', 'Вагон'), ('wagon', 'uz-Latn', 'Vagon'), ('wagon', 'uz-Cyrl', 'Вагон');
+    ('wagon', 'ru', 'Вагон'), ('wagon', 'uz-Latn', 'Vagon'), ('wagon', 'uz-Cyrl', 'Вагон'),
+    ('tank_car', 'ru', 'Вагон-цистерна'), ('tank_car', 'uz-Latn', 'Sisterna vagoni'), ('tank_car', 'uz-Cyrl', 'Цистерна вагони'),
+    ('platform', 'ru', 'Платформа'), ('platform', 'uz-Latn', 'Platforma'), ('platform', 'uz-Cyrl', 'Платформа'),
+    ('special_self_propelled', 'ru', 'Специальный самоходный подвижной состав'),
+    ('special_self_propelled', 'uz-Latn', 'Maxsus o‘ziyurar temir yo‘l tarkibi'),
+    ('special_self_propelled', 'uz-Cyrl', 'Махсус ўзиюрар темир йўл таркиби');
 INSERT INTO fixed_asset_status_translations(status_code, locale, name) VALUES
     ('operational', 'ru', 'В эксплуатации'), ('operational', 'uz-Latn', 'Foydalanishda'), ('operational', 'uz-Cyrl', 'Фойдаланишда'),
     ('maintenance', 'ru', 'На ТО'), ('maintenance', 'uz-Latn', 'Texnik xizmatda'), ('maintenance', 'uz-Cyrl', 'Техник хизматда'),

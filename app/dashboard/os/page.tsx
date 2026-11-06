@@ -21,6 +21,7 @@ import {
   type FixedAssetStats,
   type FixedAssetInventoryImportPreviewItem,
   type FixedAssetInventoryImportApplyRow,
+  type FixedAssetsPassportImportPreview,
 } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { useSections, type SectionData } from "@/lib/use-sections"
@@ -387,12 +388,18 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
     locomotive: { label: "Локомотив", gradient: "bg-gradient-to-r from-blue-600 to-blue-700", Icon: Train },
     diesel:     { label: "Тепловоз",  gradient: "bg-gradient-to-r from-orange-600 to-orange-700", Icon: Train },
     wagon:      { label: "Вагон",     gradient: "bg-gradient-to-r from-purple-600 to-purple-700", Icon: Container },
+    tank_car:   { label: "Вагон-цистерна", gradient: "bg-gradient-to-r from-purple-600 to-purple-700", Icon: Container },
+    platform:   { label: "Платформа", gradient: "bg-gradient-to-r from-green-600 to-green-700", Icon: Container },
+    special_self_propelled: { label: "Специальный самоходный подвижной состав", gradient: "bg-gradient-to-r from-gray-600 to-gray-700", Icon: Train },
   }
-  const typeInfo = typeLabels[asset.assetType] || typeLabels.locomotive
+  const typeInfo = typeLabels[asset.assetType] || {
+    label: asset.assetTypeLabel || asset.assetType,
+    gradient: "bg-gradient-to-r from-gray-600 to-gray-700",
+    Icon: Container,
+  }
   const matchingUnits = availableUnits.filter((unit) =>
     `${unit.name} ${unit.unit_id}`.toLocaleLowerCase().includes(unitSearch.trim().toLocaleLowerCase()),
   )
-
   const handleModalUpdated = (updatedAsset?: ApiFixedAsset) => {
     onUpdated(updatedAsset)
     void (updatedAsset ? Promise.resolve(updatedAsset) : api.fixedAssets.get(asset.id)).then(async (current) => {
@@ -736,6 +743,9 @@ function AddAssetModal({ onClose, onSave, sections, types, statuses, wialonUnit 
   const [unitSearch, setUnitSearch] = useState("")
   const [availableUnits, setAvailableUnits] = useState<WialonUnit[]>([])
   const [unitLoadError, setUnitLoadError] = useState("")
+  const selectableTypes = wialonUnit
+    ? types.filter((item) => ["locomotive", "diesel", "wagon"].includes(item.code))
+    : types
 
   useEffect(() => {
     if (wialonUnit) return
@@ -825,27 +835,23 @@ function AddAssetModal({ onClose, onSave, sections, types, statuses, wialonUnit 
             <p className={lbl}>Тип объекта</p>
             <select required value={assetType} onChange={(event) => setAssetType(event.target.value)} className={sel}>
               {wialonUnit && <option value="" disabled>Выберите тип</option>}
-              {types.map((item) => <option key={item.code} value={item.code}>{item.names.ru || item.code}</option>)}
+              {selectableTypes.map((item) => <option key={item.code} value={item.code}>{item.names.ru || item.code}</option>)}
             </select>
-            <div className="flex gap-2">
-              <button onClick={() => setAssetType("locomotive")}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold border-2 transition-all ${
-                  assetType === "locomotive" ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-600" : "border-gray-200 dark:border-gray-700 text-gray-500"
-                }`}>
-                <Train className="w-4 h-4"/> Локомотив
-              </button>
-              <button onClick={() => setAssetType("diesel")}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold border-2 transition-all ${
-                  assetType === "diesel" ? "border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-600" : "border-gray-200 dark:border-gray-700 text-gray-500"
-                }`}>
-                <Train className="w-4 h-4"/> Тепловоз
-              </button>
-              <button onClick={() => setAssetType("wagon")}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold border-2 transition-all ${
-                  assetType === "wagon" ? "border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-600" : "border-gray-200 dark:border-gray-700 text-gray-500"
-                }`}>
-                <Container className="w-4 h-4"/> Вагон
-              </button>
+            <div className="flex flex-wrap gap-2">
+              {selectableTypes.map((item) => (
+                <button
+                  key={item.code}
+                  type="button"
+                  onClick={() => setAssetType(item.code)}
+                  className={`rounded-lg border-2 px-3 py-2 text-sm font-semibold transition-all ${
+                    assetType === item.code
+                      ? "border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-600 dark:bg-blue-950 dark:text-blue-300"
+                      : "border-gray-200 text-gray-500 dark:border-gray-700"
+                  }`}
+                >
+                  {item.names.ru || item.code}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -1035,6 +1041,11 @@ export default function OsPage() {
   const [inventoryPreview, setInventoryPreview] = useState<FixedAssetInventoryImportPreviewItem[]>([])
   const [inventoryImportBusy, setInventoryImportBusy] = useState(false)
   const [inventoryImportError, setInventoryImportError] = useState("")
+  const [showPassportImport, setShowPassportImport] = useState(false)
+  const [passportImportText, setPassportImportText] = useState("")
+  const [passportImportPreview, setPassportImportPreview] = useState<FixedAssetsPassportImportPreview | null>(null)
+  const [passportImportBusy, setPassportImportBusy] = useState(false)
+  const [passportImportError, setPassportImportError] = useState("")
   
   // Keep the latest filters available to the realtime listener.
   const filtersRef = useRef({ page: 0, search: "", fType: "" as AssetType | "", fSource: "" as UnifiedAsset["source"] | "", fSection: "", fStatus: "" as AssetStatus | "", fBehavior: "", fWithoutOrgUnit: false })
@@ -1228,6 +1239,57 @@ export default function OsPage() {
     }
   }
 
+  const previewPassportImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    setPassportImportBusy(true)
+    setPassportImportError("")
+    setPassportImportPreview(null)
+    try {
+      if (file.size > 10_000_000) {
+        throw new Error("Размер JSON-файла не должен превышать 10 МБ.")
+      }
+      const jsonText = await file.text()
+      const preview = await api.fixedAssets.previewPassportJsonImport({ json_text: jsonText })
+      setPassportImportText(jsonText)
+      setPassportImportPreview(preview)
+    } catch (error) {
+      setPassportImportText("")
+      setPassportImportError(error instanceof Error ? error.message : "Не удалось проверить JSON-файл.")
+    } finally {
+      setPassportImportBusy(false)
+      event.target.value = ""
+    }
+  }
+
+  const applyPassportImport = async () => {
+    if (!passportImportPreview || passportImportPreview.ready !== passportImportPreview.total) return
+    const confirmed = window.confirm(
+      `Будут удалены ${passportImportPreview.current_assets} текущих основных средств, их связи с источниками и журнал изменений. Если найдутся связанные наряды, планы ТО или другие записи, замена остановится. Копия не создаётся. Будет загружено ${passportImportPreview.ready} новых записей. Продолжить?`,
+    )
+    if (!confirmed) return
+    setPassportImportBusy(true)
+    setPassportImportError("")
+    try {
+      const result = await api.fixedAssets.applyPassportJsonImport({
+        json_text: passportImportText,
+        source_hash: passportImportPreview.source_hash,
+      })
+      setSelectedAssetIds([])
+      await fetchAssets(0, debouncedSearch, fType, fSource, fStatus, fSection, fBehavior, fWithoutOrgUnit)
+      await fetchCounts()
+      setPage(0)
+      setShowPassportImport(false)
+      setPassportImportPreview(null)
+      setPassportImportText("")
+      alert(`Реестр заменён. Удалено: ${result.deleted_count}; загружено: ${result.imported_count}.`)
+    } catch (error) {
+      setPassportImportError(russianApiError(error, "Не удалось применить импорт. Изменения не сохранены."))
+    } finally {
+      setPassportImportBusy(false)
+    }
+  }
+
   const handleSave = async (updated: FixedAsset) => {
     if (hasAmbiguousSectionName(updated.depot)) {
       alert("Невозможно выбрать участок: название не уникально. Выберите участок по ID.")
@@ -1404,6 +1466,67 @@ export default function OsPage() {
           </div>
         </div>
       )}
+      {showPassportImport && canWrite && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="passport-import-title">
+          <div className="max-h-[90vh] w-full max-w-5xl overflow-auto rounded-xl bg-white p-5 shadow-xl dark:bg-gray-900">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="passport-import-title" className="text-lg font-semibold text-gray-900 dark:text-white">Замена реестра основных средств из JSON</h2>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Сначала будет выполнена проверка без записи. Связанные наряды, планы ТО и другие записи не удаляются: при их наличии замена будет остановлена. Копия реестра не сохраняется.
+                </p>
+              </div>
+              <Button variant="outline" onClick={() => setShowPassportImport(false)} disabled={passportImportBusy}>Закрыть</Button>
+            </div>
+            <label className="mt-4 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Выберите JSON-файл
+              <input className="mt-2 block w-full text-sm" type="file" accept=".json,application/json" onChange={(event) => void previewPassportImportFile(event)} disabled={passportImportBusy}/>
+            </label>
+            {passportImportBusy && <p className="mt-3 text-sm text-gray-500">Проверка данных...</p>}
+            {passportImportError && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">{passportImportError}</p>}
+            {passportImportPreview && (
+              <>
+                <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                  <p className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800">В файле: <strong>{passportImportPreview.total}</strong></p>
+                  <p className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800">Готово: <strong>{passportImportPreview.ready}</strong></p>
+                  <p className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800">Ошибки: <strong>{passportImportPreview.blocked}</strong></p>
+                  <p className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800">Текущий реестр: <strong>{passportImportPreview.current_assets}</strong></p>
+                </div>
+                <p className="mt-3 text-sm text-gray-600 dark:text-gray-300">
+                  Повторяющихся групп инвентарных номеров: {passportImportPreview.duplicate_inventory_groups}.
+                  {" "}Повторяющихся групп серийных номеров: {passportImportPreview.duplicate_number_groups}.
+                </p>
+                <div className="mt-4 max-h-80 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                  <table className="w-full text-left text-sm">
+                    <thead className="sticky top-0 bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                      <tr>{["Строка","Результат","Тип","Модель","Серийный номер","Инв. номер","Участок","Wialon ID","GTK ID","Комментарий"].map((heading) => <th key={heading} className="px-3 py-2">{heading}</th>)}</tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {passportImportPreview.items.map((row) => <tr key={row.row_number}>
+                        <td className="px-3 py-2">{row.row_number}</td>
+                        <td className="px-3 py-2">{row.status === "ready" ? "Готово" : row.status === "duplicate" ? "Дубликат (допущен)" : "Ошибка"}</td>
+                        <td className="px-3 py-2">{row.asset_type || "—"}</td>
+                        <td className="px-3 py-2">{row.model || "—"}</td>
+                        <td className="px-3 py-2">{row.serial_number || "—"}</td>
+                        <td className="px-3 py-2">{row.inv_number || "—"}</td>
+                        <td className="px-3 py-2">{row.section || "—"}</td>
+                        <td className="px-3 py-2">{row.wialon_id || "—"}</td>
+                        <td className="px-3 py-2">{row.gtk_id || "—"}</td>
+                        <td className="px-3 py-2">{row.issue || "—"}</td>
+                      </tr>)}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  <Button onClick={() => void applyPassportImport()} disabled={passportImportBusy || passportImportPreview.ready !== passportImportPreview.total}>
+                    {`Заменить реестр (${passportImportPreview.ready})`}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Page header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -1413,6 +1536,12 @@ export default function OsPage() {
         </div>
         <div className="flex items-center gap-2">
           {profile?.role !== "master" && <Link href="/dashboard/os/wialon" className="rounded-lg border border-blue-200 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:text-blue-300 dark:hover:bg-blue-950/40">Данные Wialon</Link>}
+          {canWrite && <Button variant="outline" onClick={() => {
+            setShowPassportImport(true)
+            setPassportImportError("")
+            setPassportImportPreview(null)
+            setPassportImportText("")
+          }}>Импорт ОС из JSON</Button>}
           {canWrite && <Button variant="outline" onClick={() => { setShowInventoryImport(true); setInventoryImportError(""); setInventoryPreview([]) }}>Импорт инв. номеров</Button>}
           {canWrite && <Button className="gap-2 bg-green-600 hover:bg-green-700" onClick={() => setShowAdd(true)}>
             <Plus className="w-4 h-4"/> Добавить ОС
@@ -1537,7 +1666,7 @@ export default function OsPage() {
                 diesel: { label: "Тепловоз", cls: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300", Icon: Train },
                 wagon: { label: "Вагон", cls: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300", Icon: Container },
               }
-              const tc = typeConfig[a.assetType] || { label: a.assetTypeLabel || a.assetType || "—", cls: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300", Icon: Container }
+              const tc = typeConfig[a.assetType] || { label: assetTypes.find((item) => item.code === a.assetType)?.names.ru || a.assetTypeLabel || a.assetType || "—", cls: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300", Icon: Container }
               const stale = !a.lastMessageAt || Date.now() - new Date(a.lastMessageAt).getTime() > 24 * 60 * 60 * 1000
               const connection = stale ? "Давно" : a.wialonOnline ? "Онлайн" : "Нет связи"
               const sourceLabel = a.source === "both" ? "ТОИР + Wialon" : a.source === "wialon" ? "Wialon" : "ТОИР"

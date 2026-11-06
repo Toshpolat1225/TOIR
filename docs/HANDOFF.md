@@ -936,3 +936,24 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### NOT TESTED
 
 - Frontend build and TypeScript (Next.js and TypeScript executables are unavailable); live API/database, migration state, browser behavior, production, and deployment.
+
+## JSON passport register import (2026-11-05)
+
+### Verified
+
+- Removed the import snapshot model/table and rollback API/UI. Added migration `0021_fixed_asset_types` for `tank_car`, `platform`, and `special_self_propelled`; earlier migrations remain unchanged.
+- Read all of `assets_list.json`: **1,075 records**. Counts by imported type: wagon 835, locomotive 51, tank car 129, platform 24, diesel 35, special self-propelled 1. Sections: ЖДЦ-1 573 and ЖДЦ-2 502. All rows have the required fields used by preview; `number` is absent from the source; both external IDs are null in every row.
+- Ran the complete JSON through the import parser using section names extracted from the same file: **1,075 accepted, 0 blocked**, including 45 duplicate-warning rows (15 repeated inventory groups and 7 repeated model/type/serial groups). Wialon and GTK IDs are null in all source rows. Repeated external IDs remain blocking because canonical source-link indexes require uniqueness.
+- With user approval, added migration `0022_asset_number_dupes`: it replaces the real-inventory and active model/number unique indexes with non-unique indexes; accounting inventory-number uniqueness remains. The import uses one transaction, rechecks the preview hash, and sets `number = serial_number`.
+- The delete path checks ORM-known direct foreign keys and returns HTTP 409 when other module records refer to old assets; it deletes only `fixed_assets` rows and relies on their declared cascades for asset source links and field-change rows. It no longer deletes `asset_models`.
+- Fixed the Russian type mapping typo (`тяговой агрегат`) found by the preview regression test. The Wialon-only asset-type selector is scoped to the create modal.
+- The temporary full-file parser probe passed: **1,075 accepted, 0 blocked**. Related asset, GTK, Wialon, unified, and attribution suites: **183 passed**. `npx.cmd tsc --noEmit` exited 0; `npm.cmd run build` exited 0 with three pre-existing React Hook warnings.
+- No PostgreSQL test database, migration execution, or register import was run; there are no measured before/after database counts. The JSON file was read but not modified. No commit was made.
+
+### Next task
+
+- Run migration `0022_asset_number_dupes` and the import only on a user-controlled disposable PostgreSQL database; verify 1,075 inserted rows and preserved business-module records before considering any production change.
+
+### NOT TESTED
+
+- Actual PostgreSQL FK rows/blockers and cascades, Alembic execution/downgrade, import transaction and resulting row count in PostgreSQL, API/browser flow, production, and deployment.

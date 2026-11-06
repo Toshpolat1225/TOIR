@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,6 +52,21 @@ async def add_if_missing(
     if existing is None:
         raise RuntimeError("Asset model insert was not visible after conflict")
     return existing
+
+
+async def delete_unused_models(db: AsyncSession, model_ids: list[UUID]) -> None:
+    if not model_ids:
+        return
+    from app.models.assets import FixedAsset
+
+    await db.execute(
+        delete(AssetModel).where(
+            AssetModel.id.in_(model_ids),
+            ~select(FixedAsset.id)
+            .where(FixedAsset.model_id == AssetModel.id)
+            .exists(),
+        )
+    )
 
 
 async def list_report_data(db: AsyncSession):

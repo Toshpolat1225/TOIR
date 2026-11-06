@@ -83,7 +83,7 @@ def test_p6_migration_chain_is_linear_from_0012_to_head():
             parents.add(down_revision)
         elif isinstance(down_revision, (tuple, list)):
             parents.update(down_revision)
-    assert all_revisions - parents == {"0020_p7_permission_grants"}
+    assert all_revisions - parents == {"0022_asset_number_dupes"}
     assert all(len(revision) <= 32 for revision in all_revisions)
 
     p6_revisions = [
@@ -118,13 +118,21 @@ def test_p6_0017_to_0019_migration_operations_have_matching_downgrades():
 
 
 def test_p6_asset_models_and_links_match_orm_and_canonical_schema():
-    for model in (AssetSourceLink, AssetModel, AssetFieldChange, FixedAsset):
+    for model in (
+        AssetSourceLink,
+        AssetModel,
+        AssetFieldChange,
+        FixedAsset,
+    ):
         assert set(model.__table__.columns.keys()) == _schema_columns(model.__tablename__)
 
     schema = SCHEMA.read_text(encoding="utf-8")
     assert "uq_asset_source_links_source_external_active" in schema
     assert "uq_asset_source_links_asset_source_active" in schema
-    assert "uq_fixed_assets_inv_number_real" in schema
+    assert "uq_fixed_assets_inv_number_real" not in schema
+    assert "CREATE INDEX ix_fixed_assets_inv_number" in schema
+    assert "uq_fixed_assets_active_model_number" not in schema
+    assert "CREATE INDEX ix_fixed_assets_type_model_number" in schema
     assert "uq_fixed_assets_accounting_inv_number" in schema
     assert "ck_fixed_assets_year_built_min" in schema
     assert "ck_fixed_assets_commissioned_at_year_built" in schema

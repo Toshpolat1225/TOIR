@@ -142,6 +142,27 @@ async def list_asset_names(db: AsyncSession) -> list[tuple[UUID, str]]:
     return list(result.all())
 
 
+async def count_fixed_assets(db: AsyncSession) -> int:
+    return int(
+        (
+            await db.execute(
+                select(func.count()).select_from(FixedAsset)
+            )
+        ).scalar_one()
+    )
+
+
+async def list_active_sections(db: AsyncSession):
+    from app.models.organization import Section
+
+    result = await db.execute(
+        select(Section)
+        .where(Section.is_archived.is_(False), Section.is_active.is_(True))
+        .order_by(Section.name.asc(), Section.id.asc())
+    )
+    return list(result.scalars().all())
+
+
 async def find_inventory_records(
     db: AsyncSession, *, inventory_numbers: Sequence[str], accounting_numbers: Sequence[str]
 ) -> list[tuple[UUID, str, str | None]]:

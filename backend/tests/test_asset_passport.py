@@ -94,23 +94,24 @@ def test_passport_check_rules_reject_invalid_year_and_dates():
     assert "postgresql_not_valid=True" in MIGRATION.read_text(encoding="utf-8")
 
 
-def test_provisional_inventory_numbers_may_repeat_but_real_numbers_may_not():
+def test_inventory_numbers_may_repeat_after_forward_migration():
     connection = sqlite3.connect(":memory:")
     connection.execute(
         "CREATE TABLE assets (inv_number TEXT, inv_number_is_provisional BOOLEAN)"
     )
     connection.execute(
-        "CREATE UNIQUE INDEX uq_inv_real ON assets(inv_number) "
-        "WHERE inv_number_is_provisional IS FALSE"
+        "CREATE INDEX ix_inv ON assets(inv_number)"
     )
     connection.execute("INSERT INTO assets VALUES ('WIALON-1', TRUE)")
     connection.execute("INSERT INTO assets VALUES ('WIALON-1', TRUE)")
     connection.execute("INSERT INTO assets VALUES ('ORG-1', FALSE)")
-    with pytest.raises(sqlite3.IntegrityError):
-        connection.execute("INSERT INTO assets VALUES ('ORG-1', FALSE)")
-    migration = MIGRATION.read_text(encoding="utf-8")
-    assert "uq_fixed_assets_inv_number_real" in migration
-    assert "inv_number_is_provisional IS FALSE" in migration
+    connection.execute("INSERT INTO assets VALUES ('ORG-1', FALSE)")
+    assert connection.execute("SELECT count(*) FROM assets").fetchone()[0] == 4
+    duplicate_migration = (
+        MIGRATION.parent / "0022_asset_number_dupes.py"
+    ).read_text(encoding="utf-8")
+    assert "uq_fixed_assets_inv_number_real" in duplicate_migration
+    assert "uq_fixed_assets_active_model_number" in duplicate_migration
 
 
 def test_duplicate_number_groups_are_reported():

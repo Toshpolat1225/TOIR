@@ -29,16 +29,23 @@ class FixedAsset(Base):
         Index("ix_assets_section", "section_id"),
         Index("ix_assets_series", "series"),
         Index(
-            "uq_fixed_assets_inv_number_real",
+            "ix_fixed_assets_inv_number",
             "inv_number",
-            unique=True,
-            postgresql_where=text("inv_number_is_provisional IS FALSE"),
         ),
         Index(
             "uq_fixed_assets_accounting_inv_number",
             "accounting_inv_number",
             unique=True,
             postgresql_where=text("accounting_inv_number IS NOT NULL"),
+        ),
+        Index(
+            "ix_fixed_assets_type_model_number",
+            "asset_type",
+            "model_id",
+            "number_normalized",
+            postgresql_where=text(
+                "model_id IS NOT NULL AND number_normalized IS NOT NULL"
+            ),
         ),
         CheckConstraint(
             "year_built IS NULL OR year_built >= 1900",

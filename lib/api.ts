@@ -861,6 +861,45 @@ export type FixedAssetInventoryImportApplyResponse = {
   updated: number;
 };
 
+export type FixedAssetsPassportImportRequest = {
+  json_text: string;
+};
+
+export type FixedAssetPassportImportPreviewRow = {
+  row_number: number;
+  status: "ready" | "duplicate" | "invalid";
+  asset_type: string | null;
+  name: string | null;
+  model: string | null;
+  serial_number: string | null;
+  inv_number: string | null;
+  commissioned_at: string | null;
+  decommissioned_at: string | null;
+  year_built: number | null;
+  section: string | null;
+  wialon_id: string | null;
+  gtk_id: string | null;
+  issue: string | null;
+};
+
+export type FixedAssetsPassportImportPreview = {
+  source_hash: string;
+  total: number;
+  current_assets: number;
+  ready: number;
+  blocked: number;
+  duplicate_inventory_groups: number;
+  duplicate_number_groups: number;
+  type_counts: Record<string, number>;
+  section_counts: Record<string, number>;
+  items: FixedAssetPassportImportPreviewRow[];
+};
+
+export type FixedAssetsPassportImportApplyResponse = {
+  deleted_count: number;
+  imported_count: number;
+};
+
 export type FixedAssetListParams = ListParams & {
   q?: string;
   asset_type?: string;
@@ -1131,6 +1170,24 @@ const fixedAssets = {
       method: "POST",
       path: "/fixed-assets/inv-import/apply",
       body: { rows },
+    });
+  },
+  async previewPassportJsonImport(
+    data: FixedAssetsPassportImportRequest,
+  ): Promise<FixedAssetsPassportImportPreview> {
+    return request<FixedAssetsPassportImportPreview>({
+      method: "POST",
+      path: "/fixed-assets/passport-import/preview",
+      body: data,
+    });
+  },
+  async applyPassportJsonImport(
+    data: FixedAssetsPassportImportRequest & { source_hash: string },
+  ): Promise<FixedAssetsPassportImportApplyResponse> {
+    return request<FixedAssetsPassportImportApplyResponse>({
+      method: "POST",
+      path: "/fixed-assets/passport-import/apply",
+      body: data,
     });
   },
   async remove(id: string): Promise<void> {

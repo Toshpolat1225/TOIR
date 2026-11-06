@@ -35,9 +35,16 @@ from app.schemas.asset_source_links import (
     AssetSourceLinksRead,
 )
 from app.schemas.asset_models import AssetModelRead
+from app.schemas.asset_data_import import (
+    FixedAssetsPassportImportApplyRead,
+    FixedAssetsPassportImportApplyRequest,
+    FixedAssetsPassportImportPreview,
+    FixedAssetsPassportImportRequest,
+)
 from app.services import assets as service
 from app.services import asset_passport
 from app.services import asset_inventory_import
+from app.services import asset_passport_import
 from app.services import asset_links as asset_links_service
 from app.services import gtk as gtk_service
 from app.services import unified_assets as unified_service
@@ -242,6 +249,32 @@ async def apply_inventory_import(
     _require_asset_operator(user)
     updated = await asset_inventory_import.apply_inventory_import(db, payload)
     return FixedAssetInventoryImportApplyRead(updated=updated)
+
+
+@router.post(
+    "/passport-import/preview",
+    response_model=FixedAssetsPassportImportPreview,
+)
+async def preview_passport_json_import(
+    payload: FixedAssetsPassportImportRequest,
+    user: AssetUpdater,
+    db: DatabaseSession,
+) -> FixedAssetsPassportImportPreview:
+    _require_asset_operator(user)
+    return await asset_passport_import.preview(db, payload)
+
+
+@router.post(
+    "/passport-import/apply",
+    response_model=FixedAssetsPassportImportApplyRead,
+)
+async def apply_passport_json_import(
+    payload: FixedAssetsPassportImportApplyRequest,
+    user: AssetUpdater,
+    db: DatabaseSession,
+) -> FixedAssetsPassportImportApplyRead:
+    _require_asset_operator(user)
+    return await asset_passport_import.apply(db, payload)
 
 
 @router.get("/{asset_id}/mileage-history", response_model=MileageHistoryList)

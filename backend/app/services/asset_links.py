@@ -27,7 +27,7 @@ async def _validate_asset_source(
     db: AsyncSession, asset_type: str, source: AssetLinkSource, external_id: str
 ) -> None:
     if source == "wialon":
-        if asset_type not in {"locomotive", "diesel"}:
+        if asset_type not in {"locomotive", "diesel", "special_self_propelled"}:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Wialon unit can only be linked to a locomotive or diesel asset",
@@ -39,12 +39,20 @@ async def _validate_asset_source(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="GTK record was not found",
             )
-        if kind == "locomotive" and asset_type not in {"locomotive", "diesel"}:
+        if kind == "locomotive" and asset_type not in {
+            "locomotive",
+            "diesel",
+            "special_self_propelled",
+        }:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="GTK locomotive needs a locomotive or diesel asset",
             )
-        if kind == "carriage" and asset_type != "wagon":
+        if kind == "carriage" and asset_type not in {
+            "wagon",
+            "tank_car",
+            "platform",
+        }:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="GTK carriage needs a wagon asset",
