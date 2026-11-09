@@ -1531,7 +1531,7 @@ export default function OsPage() {
       {/* Page header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Основные средства</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Справочник основных средств</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Реестр подвижного состава — локомотивы и вагоны</p>
         </div>
         <div className="flex items-center gap-2">

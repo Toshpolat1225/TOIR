@@ -349,7 +349,7 @@ export default function DashboardPage() {
                   <div className="h-10 border-l border-white/15" />
                   <div><p className="text-3xl font-semibold tabular-nums">{availPct}%</p><p className="mt-1 text-xs text-slate-400">{"готовность парка"}</p></div>
                 </div>
-                <Link href="/dashboard/os" className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-blue-50">
+                <Link href="/dashboard/directories/assets" className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-blue-50">
                   {"Реестр основных средств"} <ArrowUpRight className="h-4 w-4" />
                 </Link>
               </div>

@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { Users, Package, ChevronRight, FolderOpen, Building2, Wrench, Gauge } from "@/components/ui/icons"
+import { Users, Package, ChevronRight, FolderOpen, Building2, Wrench, Gauge, Landmark } from "@/components/ui/icons"
+import { useAuth } from "@/lib/auth-context"
 
 const DIRECTORIES = [
   {
@@ -42,6 +43,8 @@ const DIRECTORIES = [
 ]
 
 export default function DirectoriesPage() {
+  const { hasPermission } = useAuth()
+
   return (
     <div className="p-8 space-y-6">
       <div>
@@ -55,6 +58,48 @@ export default function DirectoriesPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {hasPermission("assets.view") && (
+          <Link
+            href="/dashboard/directories/assets"
+            className="group bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-lg transition-all"
+          >
+            <div className="flex items-start gap-4">
+              <div className="p-3 rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400">
+                <Landmark className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                  Основные средства
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Справочник основных средств
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-300 dark:text-gray-600 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
+            </div>
+          </Link>
+        )}
+        {hasPermission("asset_catalogs.manage_reference_data") && (
+          <Link
+            href="/dashboard/directories/asset-catalogs"
+            className="group bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-lg transition-all"
+          >
+            <div className="flex items-start gap-4">
+              <div className="p-3 rounded-xl bg-purple-100 text-purple-600 dark:bg-purple-900/50 dark:text-purple-400">
+                <Package className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                  Справочники ОС
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Типы и статусы объектов основных средств
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-300 dark:text-gray-600 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
+            </div>
+          </Link>
+        )}
         {DIRECTORIES.map((dir) => (
           <Link
             key={dir.href}

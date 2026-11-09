@@ -238,3 +238,15 @@ Next: apply migrations and compare schema only on a user-controlled disposable P
 Removed locale-switching UI and translation calls, retained Russian labels/API names, and added a forward migration to delete non-Russian translation rows. Preserved the pre-existing docker-compose.yml change.
 NOT TESTED: migration execution, backend tests, API E2E, browser, production/deploy. No database or server was accessed.
 Next: verify the migration and localization E2E on an authorized disposable database; never run it on production without explicit user action.
+2026-11-09 | Copilot SDK | Moved fixed-assets register into directories | dashboard layout, directories index, fixed-assets page/loading, dashboard links, OS route redirects, HANDOFF | build, tsc, focused ESLint, diff check -> passed; 3 existing Hook warnings
+Moved the page to `/dashboard/directories/assets`, added the Russian directory card gated by `assets.view`, and removed the separate sidebar entry and old page route.
+NOT TESTED: browser navigation and permissions, backend/API, production/deploy.
+Next: verify visible navigation for permitted and restricted roles in a browser.
+2026-11-09 | Copilot SDK | Moved ОС catalogs into directories | dashboard layout, directories index, catalog page route, HANDOFF | build, tsc, focused ESLint, route search, diff check -> passed; 3 existing Hook warnings
+Moved the catalog page to `/dashboard/directories/asset-catalogs`, added a permission-gated `Справочники ОС` directory card, and removed the separate sidebar entry and old route.
+NOT TESTED: browser route and permissions, backend/API, production/deploy.
+Next: verify the route and card with allowed and restricted users in a browser.
+2026-11-09 | Copilot SDK | Moved permissions under users | dashboard layout, users page, permissions page route, HANDOFF | build, tsc, focused ESLint, route search, diff check -> passed; 3 existing Hook warnings
+Moved role permissions to `/dashboard/admin/users/permissions`, added a link on the users page, removed the separate sidebar entry, and added a return link.
+NOT TESTED: browser route and admin access, backend/API, production/deploy.
+Next: verify the route and role restriction in a browser.

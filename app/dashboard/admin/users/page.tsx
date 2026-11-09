@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useState, useEffect, useCallback } from "react"
 import { Users, Plus, X, Save, Pencil, ShieldCheck, Shield, HardHat, Eye, EyeOff } from "@/components/ui/icons"
 import { api } from "@/lib/api"
@@ -346,9 +347,14 @@ export default function AdminUsersPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Пользователи</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Управление доступом и ролями</p>
         </div>
-        <Button className="gap-2 bg-blue-600 hover:bg-blue-700" onClick={()=>setShowCreate(true)}>
-          <Plus className="w-4 h-4"/> Создать пользователя
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/dashboard/admin/users/permissions" className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">
+            <ShieldCheck className="w-4 h-4"/> Права доступа
+          </Link>
+          <Button className="gap-2 bg-blue-600 hover:bg-blue-700" onClick={()=>setShowCreate(true)}>
+            <Plus className="w-4 h-4"/> Создать пользователя
+          </Button>
+        </div>
       </div>
       {loadError && (
         <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">

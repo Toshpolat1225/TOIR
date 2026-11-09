@@ -990,3 +990,40 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Validate migration `0025` and localization E2E on an authorized disposable database before any production migration. Backend tests, browser behavior, and database migration remain NOT TESTED.
+
+## Fixed-assets directory navigation (2026-11-09)
+
+### Verified
+
+- The fixed-assets register page moved from `/dashboard/os` to `/dashboard/directories/assets`; its loading state moved with it.
+- The directory index now has an access-controlled "Основные средства" card with description "Справочник основных средств".
+- The standalone fixed-assets sidebar item was removed. Dashboard and OS-related links/redirects now use the new path.
+- Frontend production build, `npx.cmd tsc --noEmit`, focused ESLint, and `git diff --check` exited successfully. Build reported three existing React Hook warnings.
+
+### Next task
+
+- Verify navigation and permission visibility in a browser. Browser behavior remains NOT TESTED.
+
+## ОС catalogs in directories (2026-11-09)
+
+### Verified
+
+- The ОС type/status catalog page moved from `/dashboard/admin/asset-catalogs` to `/dashboard/directories/asset-catalogs`.
+- The standalone sidebar link was removed. The `Справочники` index shows `Справочники ОС` only to users with `asset_catalogs.manage_reference_data`.
+- Frontend build, `npx.cmd tsc --noEmit`, focused ESLint, old-route source search, and `git diff --check` completed successfully. Build showed three existing React Hook warnings.
+
+### Next task
+
+- Verify the new route and permission-gated card in a browser. Browser behavior remains NOT TESTED.
+
+## Permissions under users (2026-11-09)
+
+### Verified
+
+- The role-permissions page moved from `/dashboard/admin/permissions` to `/dashboard/admin/users/permissions`.
+- The standalone sidebar link was removed. The users page now links to "Права доступа"; the permissions page links back to users.
+- Frontend build, TypeScript, focused ESLint, old-route source search, and `git diff --check` completed successfully. Build showed three existing React Hook warnings.
+
+### Next task
+
+- Verify the new route and admin-only access in a browser. Browser behavior remains NOT TESTED.

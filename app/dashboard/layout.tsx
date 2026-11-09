@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import {
   Wrench, ClipboardList, LayoutDashboard, PanelLeftIcon,
-  ChevronRight, Package, Landmark, LogOut, Users, FileText, ChevronDown, FolderOpen,
+  ChevronRight, Package, LogOut, Users, FileText, ChevronDown, FolderOpen,
   BarChart3,
   ShieldCheck,
   Radio,
@@ -19,7 +19,6 @@ import { ThemeSwitcher } from "@/components/theme-switcher"
 const ALL_NAV = [
   { href: "/dashboard",             label: "Дашборд",        icon: LayoutDashboard, permission: "dashboard.view",         exact: true },
   { href: "/dashboard/analytics",   label: "Аналитика",      icon: BarChart3,       permission: "analytics.view"                    },
-  { href: "/dashboard/os",          label: "Осн. средства",  icon: Landmark,        permission: "assets.view", exact: true       },
   { href: "/dashboard/os/gtk",      label: "Данные GTK",     icon: Radio,           permission: "gtk.view", exact: true           },
   { href: "/dashboard/os/conflicts", label: "Конфликты данных", icon: ShieldCheck, permission: "asset_conflicts.manage", exact: true },
   { href: "/dashboard/os/wialon",   label: "Данные Wialon", icon: Radio,           permission: "assets.view"                    },
@@ -29,8 +28,6 @@ const ALL_NAV = [
   { href: "/dashboard/reports",     label: "Отчёты",        icon: FileText,       permission: "reports.view"                    },
   { href: "/dashboard/directories", label: "Справочники",    icon: FolderOpen,      permission: "organization.view"                    },
   { href: "/dashboard/admin/users",    label: "Пользователи", icon: Users,      permission: "users.manage_users" },
-  { href: "/dashboard/admin/permissions", label: "Права доступа", icon: ShieldCheck, permission: "permissions.manage_permissions" },
-  { href: "/dashboard/admin/asset-catalogs", label: "Справочники ОС", icon: Package, permission: "asset_catalogs.manage_reference_data" },
 ]
 
 const ROLE_BADGE: Record<string, { label: string; cls: string }> = {

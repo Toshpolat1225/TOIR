@@ -73,7 +73,7 @@ export default function AssetCatalogsPage() {
 
   return <main className="space-y-5 p-4 md:p-6">
     <header className="flex flex-wrap items-center justify-between gap-3">
-      <div><h1 className="text-2xl font-bold text-gray-900 dark:text-white">Справочники основных средств</h1><p className="mt-1 text-sm text-gray-500">Типы и статусы объектов ОС</p></div>
+      <div><h1 className="text-2xl font-bold text-gray-900 dark:text-white">Справочники ОС</h1><p className="mt-1 text-sm text-gray-500">Типы и статусы объектов ОС</p></div>
       <button onClick={beginCreate} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Добавить</button>
     </header>
     <div className="flex flex-wrap gap-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">

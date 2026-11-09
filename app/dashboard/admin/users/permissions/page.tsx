@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { ShieldCheck, Save, RotateCcw } from "@/components/ui/icons"
+import Link from "next/link"
 import { api, type PermissionEntry, type RolePermissionMatrix } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 
@@ -48,6 +49,7 @@ export default function PermissionsPage() {
   }
 
   return <section className="mx-auto max-w-5xl p-4 md:p-8">
+    <Link href="/dashboard/admin/users" className="mb-4 inline-block text-sm text-blue-600 hover:underline dark:text-blue-400">Пользователи</Link>
     <div className="mb-6 flex items-center gap-3"><ShieldCheck className="h-6 w-6 text-blue-600"/><div><h1 className="text-xl font-semibold text-gray-900 dark:text-white">Права доступа по ролям</h1><p className="text-sm text-gray-500 dark:text-gray-400">Изменения вступают в силу при следующем API-запросе.</p></div></div>
     <label className="mb-5 block max-w-sm text-sm font-medium">Роль<select value={role} onChange={(e) => setRole(e.target.value as RolePermissionMatrix["role"])} className="mt-1 block w-full rounded-lg border border-gray-300 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-900">{roles.map((item) => <option key={item} value={item}>{roleLabel[item]}</option>)}</select></label>
     {error && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{error}</p>}

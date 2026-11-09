@@ -69,7 +69,7 @@ export default function FixedAssetsLoading() {
       {/* Loading indicator */}
       <div className="flex items-center justify-center gap-2 text-gray-500">
         <Loader2 className="w-5 h-5 animate-spin" />
-        <span>Загрузка основных средств...</span>
+        <span>Загрузка справочника основных средств...</span>
       </div>
     </div>
   )

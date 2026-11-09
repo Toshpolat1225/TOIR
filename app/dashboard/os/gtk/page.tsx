@@ -207,7 +207,7 @@ export default function GtkPage() {
   const [bulkReport, setBulkReport] = useState<GtkCreateAssetsResponse | null>(null)
 
   useEffect(() => {
-    if (!authLoading && role === "master") router.replace("/dashboard/os")
+    if (!authLoading && role === "master") router.replace("/dashboard/directories/assets")
   }, [authLoading, role, router])
 
   const loadStatus = useCallback(async () => {
