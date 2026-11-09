@@ -262,3 +262,7 @@ Next: verify the filters and hierarchy in a browser against an authorized API.
 Removed only the top-right role badge and initial avatar; kept the theme switcher and sidebar profile block.
 NOT TESTED: browser desktop/mobile layout.
 Next: verify header spacing and sidebar profile in a browser at desktop and mobile widths.
+2026-11-09 | Copilot SDK | Added searchable Wialon/GTK source picker for fixed assets | directories/assets/page.tsx, source-asset-picker-dialog.tsx, HANDOFF | tsc, build, diff check -> passed; 2 existing work-orders Hook warnings
+Picker uses authenticated APIs, paginated search, separate GTK locomotive/carriage lists, and the existing fixed-asset link API; placeholders remain disabled.
+NOT TESTED: browser UI, live Wialon/GTK responses, and link/unlink API behavior.
+Next: verify search, paging, binding, and placeholder controls in a browser with an authorized account.

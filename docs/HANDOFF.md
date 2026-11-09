@@ -1066,3 +1066,16 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Verify the header and sidebar layout in a browser at desktop and mobile widths.
+
+## Fixed-asset source picker (2026-11-09)
+
+### Verified
+
+- Added searchable, paginated Wialon and GTK object selection in the fixed-asset source section; GTK supports locomotives and carriages.
+- Selection saves through the fixed-asset source-link API; Весовой and 1С show a disabled “Скоро” control.
+- `npx.cmd tsc --noEmit`, `npm.cmd run build`, and `git diff --check` exited successfully. Build reported two existing React Hook warnings in work-orders.
+- NOT TESTED: browser behavior, live Wialon/GTK responses, and source-link API behavior.
+
+### Next task
+
+- Verify search, paging, link/unlink, and placeholder states in a browser with an authorized API account.

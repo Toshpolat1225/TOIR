@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/icons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { SourceAssetPickerDialog } from "@/components/fixed-assets/source-asset-picker-dialog"
 
 /* ════════════════════════════════════════
    Types
@@ -202,6 +203,8 @@ function PassportAndLinks({ assetId, canWrite, sections, types, onUpdated }: {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
+  const [pickerSource, setPickerSource] = useState<"wialon" | "gtk" | null>(null)
+  const [savingLink, setSavingLink] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -266,16 +269,18 @@ function PassportAndLinks({ assetId, canWrite, sections, types, onUpdated }: {
 
   const changeLink = async (source: AssetSource) => {
     const current = links.find((item) => item.source === source && item.status === "active")
+    if (!current) {
+      if (source === "wialon" || source === "gtk") {
+        setError("")
+        setPickerSource(source)
+      }
+      return
+    }
+
     try {
       setError("")
-      if (current) {
-        if (!window.confirm(`Отвязать источник «${sourceLabels[source]}»? История связи сохранится.`)) return
-        await api.fixedAssets.unlinkSource(assetId, source)
-      } else {
-        const externalId = window.prompt(`Введите внешний ID для источника «${sourceLabels[source]}».`)
-        if (externalId === null || !externalId.trim()) return
-        await api.fixedAssets.linkSource(assetId, { source, external_id: externalId.trim() })
-      }
+      if (!window.confirm(`Отвязать источник «${sourceLabels[source]}»? История связи сохранится.`)) return
+      await api.fixedAssets.unlinkSource(assetId, source)
       await refreshLinks()
       const updatedAsset = await api.fixedAssets.get(assetId)
       setAsset((currentAsset) => currentAsset ? {
@@ -286,6 +291,39 @@ function PassportAndLinks({ assetId, canWrite, sections, types, onUpdated }: {
       onUpdated(updatedAsset)
     } catch (linkError) {
       setError(linkError instanceof Error ? linkError.message : "Не удалось изменить связь с источником.")
+    }
+  }
+
+  const bindSelectedSource = async (selection: { externalId: string; externalName: string }) => {
+    if (!pickerSource) return
+    const source = pickerSource
+    setSavingLink(true)
+    setError("")
+    try {
+      const link = await api.fixedAssets.linkSource(assetId, {
+        source,
+        external_id: selection.externalId,
+        external_name: selection.externalName,
+      })
+      setLinks((current) => [...current.filter((item) => item.id !== link.id), link])
+      setPickerSource(null)
+      try {
+        const updatedAsset = await api.fixedAssets.get(assetId)
+        setAsset((currentAsset) => currentAsset ? {
+          ...currentAsset,
+          wialon_id: updatedAsset.wialon_id,
+          gtk_id: updatedAsset.gtk_id,
+        } : currentAsset)
+        onUpdated(updatedAsset)
+      } catch (refreshError) {
+        setError(refreshError instanceof Error
+          ? `Связь сохранена, но не удалось обновить данные ОС: ${refreshError.message}`
+          : "Связь сохранена, но не удалось обновить данные ОС.")
+      }
+    } catch (linkError) {
+      setError(linkError instanceof Error ? linkError.message : "Не удалось привязать объект к источнику.")
+    } finally {
+      setSavingLink(false)
     }
   }
 
@@ -375,7 +413,11 @@ function PassportAndLinks({ assetId, canWrite, sections, types, onUpdated }: {
                   <p className="text-sm font-medium text-gray-900 dark:text-white">{sourceLabels[source]}</p>
                   <p className="text-xs text-gray-500">{active ? `${active.external_name || "ID"} · ${active.external_id}` : "Не привязан"}</p>
                 </div>
-                {canWrite && <Button size="sm" variant="outline" onClick={() => void changeLink(source)}>{active ? "Отвязать" : "Привязать"}</Button>}
+                {source !== "wialon" && source !== "gtk" && !active
+                  ? <Button size="sm" variant="outline" disabled title="Интеграция появится позже">Скоро</Button>
+                  : canWrite && (active || source === "wialon" || source === "gtk")
+                    ? <Button size="sm" variant="outline" onClick={() => void changeLink(source)}>{active ? "Отвязать" : "Привязать"}</Button>
+                    : null}
               </div>
               {sourceLinks.length > 0 && <ul className="mt-2 space-y-1 border-t border-gray-100 pt-2 text-xs text-gray-500 dark:border-gray-800">
                 {sourceLinks.map((item) => <li key={item.id}>
@@ -387,6 +429,18 @@ function PassportAndLinks({ assetId, canWrite, sections, types, onUpdated }: {
         </div>
       </section>
       {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {pickerSource && (
+        <SourceAssetPickerDialog
+          key={pickerSource}
+          source={pickerSource}
+          open
+          saving={savingLink}
+          onOpenChange={(open) => {
+            if (!open) setPickerSource(null)
+          }}
+          onSelect={(selection) => void bindSelectedSource(selection)}
+        />
+      )}
     </div>
   )
 }
