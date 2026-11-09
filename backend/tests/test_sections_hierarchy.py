@@ -131,7 +131,7 @@ class SectionHierarchyTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(raised.exception.status_code, 409)
 
-    async def test_tree_contains_nested_descendants_and_localized_names(self):
+    async def test_tree_contains_nested_descendants_and_russian_name(self):
         db = AsyncMock()
         root_id, child_id, leaf_id = uuid4(), uuid4(), uuid4()
         rows = [
@@ -149,9 +149,7 @@ class SectionHierarchyTests(unittest.IsolatedAsyncioTestCase):
                 parent_id=child_id,
             ),
         ]
-        translations = {
-            root_id: {"ru": "Root", "uz-Latn": "Ildiz", "uz-Cyrl": "Илдиз"}
-        }
+        translations = {root_id: {"ru": "Корень"}}
 
         with patch(
             "app.services.references.repository.list_all_sections",
@@ -160,14 +158,14 @@ class SectionHierarchyTests(unittest.IsolatedAsyncioTestCase):
             "app.services.references.repository.get_section_translations",
             new=AsyncMock(return_value=translations),
         ):
-            result = await references.list_section_tree(db, q="Ildiz")
+            result = await references.list_section_tree(db, q="Корень")
 
         self.assertEqual(result[0]["id"], root_id)
         self.assertEqual(result[0]["children"][0]["id"], child_id)
         self.assertEqual(
             result[0]["children"][0]["children"][0]["id"], leaf_id
         )
-        self.assertEqual(result[0]["translations"]["uz-Latn"], "Ildiz")
+        self.assertEqual(result[0]["translations"]["ru"], "Корень")
 
     async def test_archive_preserves_section_instead_of_deleting_it(self):
         db = AsyncMock()
@@ -186,15 +184,11 @@ class SectionHierarchyTests(unittest.IsolatedAsyncioTestCase):
         db.delete.assert_not_awaited()
         db.commit.assert_awaited_once()
 
-    async def test_update_persists_all_translations(self):
+    async def test_update_persists_russian_name(self):
         db = AsyncMock()
         db.add_all = MagicMock()
         section = Section(id=uuid4(), name="Old", unit_type="section")
-        translations = {
-            "ru": "Новое",
-            "uz-Latn": "Yangi",
-            "uz-Cyrl": "Янги",
-        }
+        translations = {"ru": "Новое"}
 
         with patch(
             "app.services.references.get_section",
@@ -249,21 +243,18 @@ class SectionHierarchyTests(unittest.IsolatedAsyncioTestCase):
             any(key.target_fullname == "departments.id" for key in department_fk)
         )
 
-    def test_create_requires_all_translations_when_provided(self):
+    def test_create_accepts_only_russian_translation(self):
+        payload = SectionCreate(name="Unit", translations={"ru": "Unit"})
+        self.assertEqual(payload.name, "Unit")
+        self.assertEqual(payload.translations, {"ru": "Unit"})
+
         with self.assertRaises(ValueError):
-            SectionCreate(
-                name="Unit",
-                translations={"ru": "Unit"},
-            )
+            SectionCreate(name="Unit", translations={"uz-Latn": "Unit"})
 
     def test_translation_names_are_normalized_and_update_can_move(self):
         payload = SectionUpdate(
             parent_id=None,
-            translations={
-                "ru": " Русское название ",
-                "uz-Latn": " O‘zbekcha ",
-                "uz-Cyrl": " Ўзбекча ",
-            },
+            translations={"ru": " Русское название "},
         )
 
         self.assertIsNone(payload.parent_id)

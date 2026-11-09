@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRealtime } from "@/lib/use-realtime"
 import { api } from "@/lib/api"
 import { useSectionView } from "@/lib/section-view-context"
-import { useLocale } from "@/lib/i18n"
+
 import type { DashboardSummary } from "@/lib/api"
 import {
   Train, Wrench, CheckCircle,
@@ -83,7 +83,6 @@ const EMPTY_SUMMARY: DashboardSummary = {
    СТРАНИЦА
 ════════════════════════════════════════ */
 export default function DashboardPage() {
-  const { locale, t } = useLocale()
   const { effectiveSection } = useSectionView()
   const [summary, setSummary] = useState<DashboardSummary>(EMPTY_SUMMARY)
   const [effectiveSectionName, setEffectiveSectionName] = useState<string | null>(null)
@@ -100,7 +99,7 @@ export default function DashboardPage() {
         : null
       const selectedUnit = selected?.items.find((section) => section.id === effectiveSection)
       setEffectiveSectionName(
-        selectedUnit?.localized_name ?? selectedUnit?.name ?? (effectiveSection ? "—" : null),
+        selectedUnit?.name ?? (effectiveSection ? "—" : null),
       )
       const summaryData = await api.dashboard.getSummary({ section_id: effectiveSection ?? undefined });
       setSummary(summaryData);
@@ -194,25 +193,25 @@ export default function DashboardPage() {
   const kpi = [
     {
       title: "Всего единиц ОС",   value: totalAssets,   unit:"ед.",
-      sub: effectiveSectionName ? `${t("Участок")}: ${effectiveSectionName}` : t("в реестре"), Icon: Train,
+      sub: effectiveSectionName ? `${"Участок"}: ${effectiveSectionName}` : "в реестре", Icon: Train,
       light:"bg-blue-50 dark:bg-blue-950/60", text:"text-blue-600 dark:text-blue-400", bar:"bg-blue-500",
       pct: 100,
     },
     {
       title: "В эксплуатации",    value: operational,   unit:"ед.",
-      sub: totalAssets ? `${availPct}% ${t("% от парка")}` : "—", Icon: CheckCircle,
+      sub: totalAssets ? `${availPct}% ${"% от парка"}` : "—", Icon: CheckCircle,
       light:"bg-emerald-50 dark:bg-emerald-950/60", text:"text-emerald-600 dark:text-emerald-400", bar:"bg-emerald-500",
       pct: availPct,
     },
     {
       title: "На техобслуживании", value: onMaint + onRepair, unit:"ед.",
-      sub: totalAssets ? `${Math.round(((onMaint+onRepair)/totalAssets)*100)}% ${t("% от парка")}` : "—", Icon: Wrench,
+      sub: totalAssets ? `${Math.round(((onMaint+onRepair)/totalAssets)*100)}% ${"% от парка"}` : "—", Icon: Wrench,
       light:"bg-amber-50 dark:bg-amber-950/60", text:"text-amber-600 dark:text-amber-400", bar:"bg-amber-500",
       pct: totalAssets ? Math.round(((onMaint+onRepair)/totalAssets)*100) : 0,
     },
     {
       title: "Открытые наряды",   value: openOrders,    unit:"нз",
-      sub: `${inProgressOrders} ${t("выполняется")}`,  Icon: ClipboardList,
+      sub: `${inProgressOrders} ${"выполняется"}`,  Icon: ClipboardList,
       light:"bg-purple-50 dark:bg-purple-950/60", text:"text-purple-600 dark:text-purple-400", bar:"bg-purple-500",
       pct: filteredOrders.length ? Math.round((openOrders / filteredOrders.length) * 100) : 0,
     },
@@ -220,10 +219,10 @@ export default function DashboardPage() {
 
   /* ── Состояние парка (donut) ── */
   const fleetStatus = [
-    { name:t("В эксплуатации"), value: operational,  color:"#10b981" },
-    { name:t("На ТО"),           value: onMaint,      color:"#f59e0b" },
-    { name:t("Ремонт"),          value: onRepair,     color:"#f97316" },
-    { name:t("Списан"),          value: outOfService, color:"#ef4444" },
+    { name:"В эксплуатации", value: operational,  color:"#10b981" },
+    { name:"На ТО",           value: onMaint,      color:"#f59e0b" },
+    { name:"Ремонт",          value: onRepair,     color:"#f97316" },
+    { name:"Списан",          value: outOfService, color:"#ef4444" },
   ].filter(s => s.value > 0)
 
   /* ── Последние 6 месяцев ── */
@@ -232,7 +231,7 @@ export default function DashboardPage() {
     const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
     return {
       key:   `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`,
-      label: new Intl.DateTimeFormat(locale === "uz-Latn" ? "uz-UZ" : locale === "uz-Cyrl" ? "uz-Cyrl-UZ" : "ru-RU", { month: "short" }).format(d),
+      label: new Intl.DateTimeFormat("ru-RU", { month: "short" }).format(d),
     }
   })
 
@@ -267,7 +266,7 @@ export default function DashboardPage() {
   /* ── Виды ремонта ── */
   const rkMap: Record<string,number> = {}
   for (const o of filteredOrders) {
-    const parts = (o.localized_repair_kind ?? o.repair_kind ?? "").split(",").map((s: string) => s.trim()).filter(Boolean)
+    const parts = (o.repair_kind ?? "").split(",").map((s: string) => s.trim()).filter(Boolean)
     for (const k of parts) rkMap[k] = (rkMap[k] ?? 0) + 1
   }
   const repairKindStats = Object.entries(rkMap)
@@ -284,12 +283,12 @@ export default function DashboardPage() {
   const recentWO = filteredOrders.slice(0, 5)
 
   /* ── Текущая дата ── */
-  const todayLabel = new Date().toLocaleDateString(locale === "uz-Latn" ? "uz-UZ" : locale === "uz-Cyrl" ? "uz-Cyrl-UZ" : "ru-RU", { day:"numeric", month:"long", year:"numeric" })
+  const todayLabel = new Date().toLocaleDateString("ru-RU", { day:"numeric", month:"long", year:"numeric" })
 
   if (loading) return (
     <div className="flex items-center justify-center h-96 text-gray-400 text-sm gap-3">
       <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/>
-      {t("Загрузка дашборда...")}
+      {"Загрузка дашборда..."}
     </div>
   )
 
@@ -299,19 +298,19 @@ export default function DashboardPage() {
       {/* Шапка */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t("Дашборд")}</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{"Дашборд"}</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
             {effectiveSection ? (
-              <>{t("Участок")}: <span className="font-medium text-gray-700 dark:text-gray-300">{effectiveSectionName ?? "—"}</span> · {todayLabel}</>
+              <>{"Участок"}: <span className="font-medium text-gray-700 dark:text-gray-300">{effectiveSectionName ?? "—"}</span> · {todayLabel}</>
             ) : (
-              <>{t("Обзор состояния парка")} · <span className="font-medium">{todayLabel}</span></>
+              <>{"Обзор состояния парка"} · <span className="font-medium">{todayLabel}</span></>
             )}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {effectiveSection && (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-xs font-medium text-gray-700 dark:text-gray-300">
-              {t("Только данные участка")}
+              {"Только данные участка"}
             </div>
           )}
           <button
@@ -319,14 +318,14 @@ export default function DashboardPage() {
             onClick={() => loadData()}
             disabled={loading}
             className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
-            title={t("Обновить данные")}
+            title={"Обновить данные"}
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            {t("Обновить")}
+            {"Обновить"}
           </button>
           <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 rounded-full">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">{t("Данные из БД · актуально")}</span>
+            <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">{"Данные из БД · актуально"}</span>
           </div>
         </div>
       </div>
@@ -338,20 +337,20 @@ export default function DashboardPage() {
               <div aria-hidden="true" className="absolute -right-8 -top-24 -z-10 h-80 w-80 rounded-full border-[42px] border-blue-400/10" />
               <div aria-hidden="true" className="absolute bottom-[-8rem] right-24 -z-10 h-64 w-64 rounded-full bg-blue-600/20 blur-3xl" />
               <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-300">{t("Обзор парка")}</p>
-                <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">{t("Технический парк под контролем")}</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-300">{"Обзор парка"}</p>
+                <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">{"Технический парк под контролем"}</h2>
                 <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">
                   Текущая готовность и состав основных средств{effectiveSectionName ? ` · ${effectiveSectionName}` : ""}.
                 </p>
               </div>
               <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
                 <div className="flex items-end gap-6">
-                  <div><p className="text-3xl font-semibold tabular-nums">{totalAssets}</p><p className="mt-1 text-xs text-slate-400">{t("единиц в парке")}</p></div>
+                  <div><p className="text-3xl font-semibold tabular-nums">{totalAssets}</p><p className="mt-1 text-xs text-slate-400">{"единиц в парке"}</p></div>
                   <div className="h-10 border-l border-white/15" />
-                  <div><p className="text-3xl font-semibold tabular-nums">{availPct}%</p><p className="mt-1 text-xs text-slate-400">{t("готовность парка")}</p></div>
+                  <div><p className="text-3xl font-semibold tabular-nums">{availPct}%</p><p className="mt-1 text-xs text-slate-400">{"готовность парка"}</p></div>
                 </div>
                 <Link href="/dashboard/os" className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-blue-50">
-                  {t("Реестр основных средств")} <ArrowUpRight className="h-4 w-4" />
+                  {"Реестр основных средств"} <ArrowUpRight className="h-4 w-4" />
                 </Link>
               </div>
             </section>
@@ -361,18 +360,18 @@ export default function DashboardPage() {
               <div aria-hidden="true" className="absolute -right-10 -top-28 -z-10 h-80 w-80 rounded-full border-[42px] border-amber-300/10" />
               <div aria-hidden="true" className="absolute bottom-[-8rem] right-24 -z-10 h-64 w-64 rounded-full bg-amber-500/15 blur-3xl" />
               <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-300">{t("Техническое обслуживание")}</p>
-                <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">{t("Работы, требующие внимания")}</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-300">{"Техническое обслуживание"}</p>
+                <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">{"Работы, требующие внимания"}</h2>
                 <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">Открытые задания и техника, находящаяся на обслуживании.</p>
               </div>
               <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
                 <div className="flex items-end gap-6">
-                  <div><p className="text-3xl font-semibold tabular-nums">{openOrders}</p><p className="mt-1 text-xs text-slate-400">{t("открытых нарядов")}</p></div>
+                  <div><p className="text-3xl font-semibold tabular-nums">{openOrders}</p><p className="mt-1 text-xs text-slate-400">{"открытых нарядов"}</p></div>
                   <div className="h-10 border-l border-white/15" />
-                  <div><p className="text-3xl font-semibold tabular-nums">{onMaint + onRepair}</p><p className="mt-1 text-xs text-slate-400">{t("единиц в ремонте и ТО")}</p></div>
+                  <div><p className="text-3xl font-semibold tabular-nums">{onMaint + onRepair}</p><p className="mt-1 text-xs text-slate-400">{"единиц в ремонте и ТО"}</p></div>
                 </div>
                 <Link href="/dashboard/work-orders" className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-amber-50">
-                  {t("Открыть наряд-заказы")} <ArrowUpRight className="h-4 w-4" />
+                  {"Открыть наряд-заказы"} <ArrowUpRight className="h-4 w-4" />
                 </Link>
               </div>
             </section>
@@ -382,18 +381,18 @@ export default function DashboardPage() {
               <div aria-hidden="true" className="absolute -right-10 -top-28 -z-10 h-80 w-80 rounded-full border-[42px] border-emerald-300/10" />
               <div aria-hidden="true" className="absolute bottom-[-8rem] right-24 -z-10 h-64 w-64 rounded-full bg-emerald-500/15 blur-3xl" />
               <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-300">{t("Аналитика процессов")}</p>
-                <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">{t("Ход выполнения работ")}</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-300">{"Аналитика процессов"}</p>
+                <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">{"Ход выполнения работ"}</h2>
                 <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">Фактические показатели нарядов помогают следить за производственной нагрузкой.</p>
               </div>
               <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
                 <div className="flex items-end gap-6">
-                  <div><p className="text-3xl font-semibold tabular-nums">{completedOrders}</p><p className="mt-1 text-xs text-slate-400">{t("выполнено")}</p></div>
+                  <div><p className="text-3xl font-semibold tabular-nums">{completedOrders}</p><p className="mt-1 text-xs text-slate-400">{"выполнено"}</p></div>
                   <div className="h-10 border-l border-white/15" />
-                  <div><p className="text-3xl font-semibold tabular-nums">{inProgressOrders}</p><p className="mt-1 text-xs text-slate-400">{t("В работе")}</p></div>
+                  <div><p className="text-3xl font-semibold tabular-nums">{inProgressOrders}</p><p className="mt-1 text-xs text-slate-400">{"В работе"}</p></div>
                 </div>
                 <Link href="/dashboard/analytics" className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-emerald-50">
-                  {t("Перейти к аналитике")} <ArrowUpRight className="h-4 w-4" />
+                  {"Перейти к аналитике"} <ArrowUpRight className="h-4 w-4" />
                 </Link>
               </div>
             </section>
@@ -422,7 +421,7 @@ export default function DashboardPage() {
             <p className="text-3xl font-bold text-gray-900 dark:text-white">
               {card.value} <span className="text-base font-normal text-gray-400">{card.unit}</span>
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t(card.title)}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{card.title}</p>
             <div className="mt-3 h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
               <div className={`h-full rounded-full ${card.bar}`} style={{ width:`${card.pct}%` }}/>
             </div>
@@ -436,12 +435,12 @@ export default function DashboardPage() {
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
             <BarChart3 className="w-4 h-4 text-gray-500"/>
-            <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{t("Состав парка техники")}</span>
+            <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{"Состав парка техники"}</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {[
-              { label:t("Тяговые агрегаты"), value: locoCount, total: totalAssets, color:"bg-blue-500", icon: Train, iconCls:"text-blue-500" },
-              { label:t("Вагоны-самосвалы"), value: wagonCount, total: totalAssets, color:"bg-violet-500", icon: Container, iconCls:"text-violet-500" },
+              { label:"Тяговые агрегаты", value: locoCount, total: totalAssets, color:"bg-blue-500", icon: Train, iconCls:"text-blue-500" },
+              { label:"Вагоны-самосвалы", value: wagonCount, total: totalAssets, color:"bg-violet-500", icon: Container, iconCls:"text-violet-500" },
             ].map(item => (
               <div key={item.label} className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
@@ -469,7 +468,7 @@ export default function DashboardPage() {
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
             <Train className="w-4 h-4 text-gray-500"/>
-              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{t("По сериям техники")}</span>
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{"По сериям техники"}</span>
           </div>
           {seriesStats.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-gray-400 text-xs">Нет данных</div>
@@ -480,8 +479,8 @@ export default function DashboardPage() {
                 <XAxis type="number" tick={{ fontSize:10, fill:"#9ca3af" }} axisLine={false} tickLine={false}/>
                 <YAxis type="category" dataKey="series" tick={{ fontSize:10, fill:"#9ca3af" }} axisLine={false} tickLine={false} width={60}/>
                 <Tooltip content={<CustomTooltip/>}/>
-                <Bar dataKey="loco" name={t("Локомотивы")} fill="#3b82f6" radius={[0,3,3,0]} stackId="a"/>
-                <Bar dataKey="wagon" name={t("Вагоны")} fill="#8b5cf6" radius={[0,3,3,0]} stackId="a"/>
+                <Bar dataKey="loco" name={"Локомотивы"} fill="#3b82f6" radius={[0,3,3,0]} stackId="a"/>
+                <Bar dataKey="wagon" name={"Вагоны"} fill="#8b5cf6" radius={[0,3,3,0]} stackId="a"/>
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -499,8 +498,8 @@ export default function DashboardPage() {
               <Target className="w-3.5 h-3.5 text-blue-600"/>
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">{t("Состояние парка")}</p>
-              <p className="text-xs text-gray-400">{t("Распределение по статусу")}</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">{"Состояние парка"}</p>
+              <p className="text-xs text-gray-400">{"Распределение по статусу"}</p>
             </div>
           </div>
           {fleetStatus.length === 0 ? (
@@ -526,7 +525,7 @@ export default function DashboardPage() {
                   </div>
                 ))}
                 <div className="pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
-                  <span className="text-xs text-gray-400">{t("Итого")}</span>
+                  <span className="text-xs text-gray-400">{"Итого"}</span>
                   <span className="text-xs font-bold text-gray-900 dark:text-white">{totalAssets}</span>
                 </div>
               </div>
@@ -542,8 +541,8 @@ export default function DashboardPage() {
                 <BarChart3 className="w-3.5 h-3.5 text-amber-600"/>
               </div>
               <div>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{t("Наряд-заказы по месяцам")}</p>
-                <p className="text-xs text-gray-400">{t("Последние 6 месяцев")}</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">{"Наряд-заказы по месяцам"}</p>
+                <p className="text-xs text-gray-400">{"Последние 6 месяцев"}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 text-xs">
@@ -561,9 +560,9 @@ export default function DashboardPage() {
                 <XAxis dataKey="month" tick={{ fontSize:11, fill:"#9ca3af" }} axisLine={false} tickLine={false}/>
                 <YAxis tick={{ fontSize:11, fill:"#9ca3af" }} axisLine={false} tickLine={false} width={24} allowDecimals={false}/>
                 <Tooltip content={<CustomTooltip/>}/>
-                <Bar dataKey="открыто"  name={t("Открыто")}  fill="#8b5cf6" radius={[3,3,0,0]}/>
-                <Bar dataKey="закрыто"  name={t("Закрыто")}  fill="#10b981" radius={[3,3,0,0]}/>
-                <Bar dataKey="вработе"  name={t("В работе")} fill="#f59e0b" radius={[3,3,0,0]}/>
+                <Bar dataKey="открыто"  name={"Открыто"}  fill="#8b5cf6" radius={[3,3,0,0]}/>
+                <Bar dataKey="закрыто"  name={"Закрыто"}  fill="#10b981" radius={[3,3,0,0]}/>
+                <Bar dataKey="вработе"  name={"В работе"} fill="#f59e0b" radius={[3,3,0,0]}/>
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -580,8 +579,8 @@ export default function DashboardPage() {
               <Activity className="w-3.5 h-3.5 text-purple-600"/>
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">{t("Динамика нарядов")}</p>
-              <p className="text-xs text-gray-400">{t("Открыто / закрыто / в работе")}</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">{"Динамика нарядов"}</p>
+              <p className="text-xs text-gray-400">{"Открыто / закрыто / в работе"}</p>
             </div>
           </div>
           {workOrdersTrend.length === 0 ? (
@@ -603,9 +602,9 @@ export default function DashboardPage() {
                 <XAxis dataKey="month" tick={{ fontSize:11, fill:"#9ca3af" }} axisLine={false} tickLine={false}/>
                 <YAxis tick={{ fontSize:11, fill:"#9ca3af" }} axisLine={false} tickLine={false} width={24} allowDecimals={false}/>
                 <Tooltip content={<CustomTooltip/>}/>
-                <Area type="monotone" dataKey="открыто" name={t("Открыто")}  stroke="#8b5cf6" strokeWidth={2} fill="url(#gradOpen)"  dot={{ r:3, fill:"#8b5cf6" }}/>
-                <Area type="monotone" dataKey="закрыто" name={t("Закрыто")}  stroke="#10b981" strokeWidth={2} fill="url(#gradClose)" dot={{ r:3, fill:"#10b981" }}/>
-                <Area type="monotone" dataKey="вработе" name={t("В работе")} stroke="#f59e0b" strokeWidth={2} fill="none"            dot={{ r:3, fill:"#f59e0b" }} strokeDasharray="4 2"/>
+                <Area type="monotone" dataKey="открыто" name={"Открыто"}  stroke="#8b5cf6" strokeWidth={2} fill="url(#gradOpen)"  dot={{ r:3, fill:"#8b5cf6" }}/>
+                <Area type="monotone" dataKey="закрыто" name={"Закрыто"}  stroke="#10b981" strokeWidth={2} fill="url(#gradClose)" dot={{ r:3, fill:"#10b981" }}/>
+                <Area type="monotone" dataKey="вработе" name={"В работе"} stroke="#f59e0b" strokeWidth={2} fill="none"            dot={{ r:3, fill:"#f59e0b" }} strokeDasharray="4 2"/>
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -619,8 +618,8 @@ export default function DashboardPage() {
                 <TrendingUp className="w-3.5 h-3.5 text-emerald-600"/>
               </div>
               <div>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{t("Готовность парка")}</p>
-                <p className="text-xs text-gray-400">{t("% исправных единиц ОС · приблизительно")}</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">{"Готовность парка"}</p>
+                <p className="text-xs text-gray-400">{"% исправных единиц ОС · приблизительно"}</p>
               </div>
             </div>
             <div className="text-right">
@@ -664,8 +663,8 @@ export default function DashboardPage() {
               <Wrench className="w-3.5 h-3.5 text-indigo-600"/>
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">{t("По видам ремонта")}</p>
-              <p className="text-xs text-gray-400">{t("Количество нарядов")}</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">{"По видам ремонта"}</p>
+              <p className="text-xs text-gray-400">{"Количество нарядов"}</p>
             </div>
           </div>
           {repairKindStats.length === 0 ? (
@@ -699,12 +698,12 @@ export default function DashboardPage() {
               <CalendarDays className="w-3.5 h-3.5 text-amber-600"/>
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">{t("Запланированное ТО")}</p>
-              <p className="text-xs text-gray-400">{t("Ближайшие наряды")}</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">{"Запланированное ТО"}</p>
+              <p className="text-xs text-gray-400">{"Ближайшие наряды"}</p>
             </div>
           </div>
           {upcomingOrders.length === 0 ? (
-            <div className="flex items-center justify-center h-24 text-gray-400 text-xs">{t("Нет запланированных нарядов")}</div>
+            <div className="flex items-center justify-center h-24 text-gray-400 text-xs">{"Нет запланированных нарядов"}</div>
           ) : (
             <div className="space-y-2">
               {upcomingOrders.map((item) => (
@@ -716,12 +715,12 @@ export default function DashboardPage() {
                     </div>
                     <div>
                       <p className="text-xs font-semibold text-gray-900 dark:text-white truncate max-w-[80px]">{item.unit}</p>
-                      <p className="text-[10px] text-gray-400">{item.localized_repair_kind ?? item.repair_kind}</p>
+                      <p className="text-[10px] text-gray-400">{item.repair_kind}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${prioCls[item.priority ?? "normal"] ?? prioCls.normal}`}>
-                      {t(prioLabel[item.priority ?? "normal"] ?? "Обычный")}
+                      {prioLabel[item.priority ?? "normal"] ?? "Обычный"}
                     </span>
                     <span className="text-[10px] text-gray-400 whitespace-nowrap">{item.date_start}</span>
                   </div>
@@ -738,14 +737,14 @@ export default function DashboardPage() {
               <ArrowUpRight className="w-3.5 h-3.5 text-blue-600"/>
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">{t("Последние наряды")}</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">{"Последние наряды"}</p>
               <p className="text-xs text-gray-400">
                 {completedOrders} выполнено · {openOrders} открыто
               </p>
             </div>
           </div>
           {recentWO.length === 0 ? (
-            <div className="flex items-center justify-center h-24 text-gray-400 text-xs">{t("Нет нарядов")}</div>
+            <div className="flex items-center justify-center h-24 text-gray-400 text-xs">{"Нет нарядов"}</div>
           ) : (
             <div className="space-y-2">
               {recentWO.map((wo) => (
@@ -754,7 +753,7 @@ export default function DashboardPage() {
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] font-mono text-gray-400 truncate">{wo.id}</span>
                     <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${(woStatusCfg[wo.status ?? "pending"] ?? woStatusCfg.pending).cls}`}>
-                      {t((woStatusCfg[wo.status ?? "pending"] ?? woStatusCfg.pending).label)}
+                      {(woStatusCfg[wo.status ?? "pending"] ?? woStatusCfg.pending).label}
                     </span>
                   </div>
                   <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 truncate">{wo.unit}</p>

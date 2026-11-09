@@ -761,49 +761,49 @@ CREATE INDEX ix_readiness_section_date ON daily_readiness_snapshots(section_id, 
 CREATE TABLE department_translations (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     department_id uuid NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
-    locale text NOT NULL CHECK (locale IN ('uz-Latn','uz-Cyrl','ru')),
+    locale text NOT NULL CONSTRAINT ck_department_translation_locale CHECK (locale = 'ru'),
     name text NOT NULL,
     CONSTRAINT uq_department_translation_locale UNIQUE (department_id, locale)
 );
 CREATE TABLE section_translations (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     section_id uuid NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
-    locale text NOT NULL CHECK (locale IN ('uz-Latn','uz-Cyrl','ru')),
+    locale text NOT NULL CONSTRAINT ck_section_translation_locale CHECK (locale = 'ru'),
     name text NOT NULL,
     CONSTRAINT uq_section_translation_locale UNIQUE (section_id, locale)
 );
 CREATE TABLE work_type_translations (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     work_type_id uuid NOT NULL REFERENCES work_types(id) ON DELETE CASCADE,
-    locale text NOT NULL CHECK (locale IN ('uz-Latn','uz-Cyrl','ru')),
+    locale text NOT NULL CONSTRAINT ck_work_type_translation_locale CHECK (locale = 'ru'),
     name text NOT NULL,
     CONSTRAINT uq_work_type_translation_locale UNIQUE (work_type_id, locale)
 );
 CREATE TABLE work_subtask_translations (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     work_subtask_id uuid NOT NULL REFERENCES work_subtasks(id) ON DELETE CASCADE,
-    locale text NOT NULL CHECK (locale IN ('uz-Latn','uz-Cyrl','ru')),
+    locale text NOT NULL CONSTRAINT ck_work_subtask_translation_locale CHECK (locale = 'ru'),
     name text NOT NULL,
     CONSTRAINT uq_work_subtask_translation_locale UNIQUE (work_subtask_id, locale)
 );
 CREATE TABLE nomenclature_translations (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     nomenclature_id uuid NOT NULL REFERENCES nomenclature(id) ON DELETE CASCADE,
-    locale text NOT NULL CHECK (locale IN ('uz-Latn','uz-Cyrl','ru')),
+    locale text NOT NULL CONSTRAINT ck_nomenclature_translation_locale CHECK (locale = 'ru'),
     name text NOT NULL,
     CONSTRAINT uq_nomenclature_translation_locale UNIQUE (nomenclature_id, locale)
 );
 CREATE TABLE fixed_asset_type_translations (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     type_code text NOT NULL REFERENCES fixed_asset_types(code) ON DELETE CASCADE,
-    locale text NOT NULL CHECK (locale IN ('uz-Latn','uz-Cyrl','ru')),
+    locale text NOT NULL CONSTRAINT ck_fixed_asset_type_translation_locale CHECK (locale = 'ru'),
     name text NOT NULL,
     CONSTRAINT uq_fixed_asset_type_translation_locale UNIQUE (type_code, locale)
 );
 CREATE TABLE fixed_asset_status_translations (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     status_code text NOT NULL REFERENCES fixed_asset_statuses(code) ON DELETE CASCADE,
-    locale text NOT NULL CHECK (locale IN ('uz-Latn','uz-Cyrl','ru')),
+    locale text NOT NULL CONSTRAINT ck_fixed_asset_status_translation_locale CHECK (locale = 'ru'),
     name text NOT NULL,
     CONSTRAINT uq_fixed_asset_status_translation_locale UNIQUE (status_code, locale)
 );

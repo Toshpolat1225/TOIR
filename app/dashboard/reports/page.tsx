@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { api, type ReportName } from "@/lib/api"
 import { useDebouncedValue } from "@/lib/use-debounced-value"
 import { useSectionView } from "@/lib/section-view-context"
-import { useLocale } from "@/lib/i18n"
+
 import {
   FileText, ClipboardList, Landmark, Package,
   Calendar, Download, BarChart3, PieChart,
@@ -48,16 +48,16 @@ function parseDateStr(s: string): Date | null {
   return isNaN(t.getTime()) ? null : t
 }
 
-function formatDate(d: Date, locale: string) {
-  const languageTag = locale === "uz-Latn" ? "uz-UZ" : locale === "uz-Cyrl" ? "uz-Cyrl-UZ" : "ru-RU"
+function formatDate(d: Date) {
+  const languageTag = "ru-RU"
   return d.toLocaleDateString(languageTag, { day: "2-digit", month: "2-digit", year: "numeric" })
 }
 
-function formatMileage(value: unknown, locale: string): string {
+function formatMileage(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—"
   const numericValue = Number(value)
   if (!Number.isFinite(numericValue)) return "—"
-  const languageTag = locale === "uz-Latn" ? "uz-UZ" : locale === "uz-Cyrl" ? "uz-Cyrl-UZ" : "ru-RU"
+  const languageTag = "ru-RU"
   return new Intl.NumberFormat(languageTag, { maximumFractionDigits: 2 }).format(numericValue)
 }
 
@@ -68,7 +68,6 @@ function toIsoDate(value: string): string | undefined {
 }
 
 export default function ReportsPage() {
-  const { locale, t } = useLocale()
   const { effectiveSection } = useSectionView()
   const [reportType, setReportType] = useState<ReportId>("work-orders")
   const [dateFrom, setDateFrom] = useState("")
@@ -118,8 +117,8 @@ export default function ReportsPage() {
   const setDefaultDates = () => {
     const now = new Date()
     const start = new Date(now.getFullYear(), now.getMonth(), 1)
-    setDateFrom(formatDate(start, locale))
-    setDateTo(formatDate(now, locale))
+    setDateFrom(formatDate(start))
+    setDateTo(formatDate(now))
   }
 
   const filteredWo = woData
@@ -155,13 +154,13 @@ export default function ReportsPage() {
   }, {})
 
   const woBySection = filteredWo.reduce<Record<string, number>>((acc, row) => {
-    const s = (row.localized_section as string) || (row.section as string) || "—"
+    const s = (row.section as string) || "—"
     acc[s] = (acc[s] ?? 0) + 1
     return acc
   }, {})
 
   const woChartData = Object.entries(woByStatus).map(([k, v]) => ({
-    name: t(WO_STATUS_LABEL[k] || k),
+    name: WO_STATUS_LABEL[k] || k,
     value: v,
     fill: k === "completed" ? "#10b981" : k === "in_progress" ? "#f59e0b" : "#3b82f6",
   }))
@@ -184,7 +183,7 @@ export default function ReportsPage() {
   }, {})
 
   const assetsPieData = [
-    ...Object.entries(assetsByStatus).map(([k, v]) => ({ name: (filteredAssetsData.find((row) => row.status === k)?.asset_status_label as string) || t(ASSET_STATUS_LABEL[k] || k), value: v })),
+    ...Object.entries(assetsByStatus).map(([k, v]) => ({ name: (filteredAssetsData.find((row) => row.status === k)?.asset_status_label as string) || ASSET_STATUS_LABEL[k] || k, value: v })),
   ]
   const PIE_COLORS = ["#10b981", "#f59e0b", "#f97316", "#ef4444", "#6366f1"]
 
@@ -194,10 +193,10 @@ export default function ReportsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <FileText className="w-7 h-7 text-blue-600"/>
-            {t("Отчёты")}
+            {"Отчёты"}
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            {t("Аналитика по наряд-заказам, основным средствам и ТМЦ")}
+            {"Аналитика по наряд-заказам, основным средствам и ТМЦ"}
           </p>
         </div>
       </div>
@@ -221,7 +220,7 @@ export default function ReportsPage() {
             }`}
           >
             <Icon className="w-4 h-4"/>
-            {t(label)}
+            {label}
           </button>
         ))}
       </div>
@@ -257,14 +256,14 @@ export default function ReportsPage() {
                     onChange={e => setDateTo(e.target.value)}
                     className="w-32 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800"
                   />
-                  <input type="search" value={assetSearch} onChange={e => setAssetSearch(e.target.value)} placeholder={locale === "uz-Latn" ? "Naryad yoki ОС" : locale === "uz-Cyrl" ? "Наряд ёки ОС" : "Наряд или ОС"} aria-label={locale === "ru" ? "Наряд или основное средство" : locale === "uz-Latn" ? "Naryad yoki asosiy vosita" : "Наряд ёки асосий восита"} className="w-44 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800" />
-                  <select value={workOrderStatus} onChange={e => setWorkOrderStatus(e.target.value)} aria-label={locale === "ru" ? "Статус наряда" : locale === "uz-Latn" ? "Naryad holati" : "Наряд ҳолати"} className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800">
-                    <option value="">{locale === "ru" ? "Все статусы" : locale === "uz-Latn" ? "Barcha holatlar" : "Барча ҳолатлар"}</option>
-                    <option value="pending">{t(WO_STATUS_LABEL.pending)}</option><option value="in_progress">{t(WO_STATUS_LABEL.in_progress)}</option><option value="completed">{t(WO_STATUS_LABEL.completed)}</option>
-                    <option value="cancelled">{locale === "ru" ? "Отменён" : locale === "uz-Latn" ? "Bekor qilingan" : "Бекор қилинган"}</option>
+                  <input type="search" value={assetSearch} onChange={e => setAssetSearch(e.target.value)} placeholder={"Наряд или ОС"} aria-label={"Наряд или основное средство"} className="w-44 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800" />
+                  <select value={workOrderStatus} onChange={e => setWorkOrderStatus(e.target.value)} aria-label={"Статус наряда"} className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800">
+                    <option value="">{"Все статусы"}</option>
+                    <option value="pending">{WO_STATUS_LABEL.pending}</option><option value="in_progress">{WO_STATUS_LABEL.in_progress}</option><option value="completed">{WO_STATUS_LABEL.completed}</option>
+                    <option value="cancelled">{"Отменён"}</option>
                   </select>
-                  <input type="number" min="0" max="9999999999.99" step="0.01" value={mileageFrom} onChange={e => setMileageFrom(e.target.value)} placeholder={locale === "ru" ? "Пробег от, км" : locale === "uz-Latn" ? "Probegdan, km" : "Пробегдан, км"} aria-label={locale === "ru" ? "Пробег от, км" : locale === "uz-Latn" ? "Probegdan, km" : "Пробегдан, км"} className="w-32 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800" />
-                  <input type="number" min="0" max="9999999999.99" step="0.01" value={mileageTo} onChange={e => setMileageTo(e.target.value)} placeholder={locale === "ru" ? "Пробег до, км" : locale === "uz-Latn" ? "Probeggacha, km" : "Пробеггача, км"} aria-label={locale === "ru" ? "Пробег до, км" : locale === "uz-Latn" ? "Probeggacha, km" : "Пробеггача, км"} className="w-32 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800" />
+                  <input type="number" min="0" max="9999999999.99" step="0.01" value={mileageFrom} onChange={e => setMileageFrom(e.target.value)} placeholder={"Пробег от, км"} aria-label={"Пробег от, км"} className="w-32 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800" />
+                  <input type="number" min="0" max="9999999999.99" step="0.01" value={mileageTo} onChange={e => setMileageTo(e.target.value)} placeholder={"Пробег до, км"} aria-label={"Пробег до, км"} className="w-32 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800" />
                   <button
                     type="button"
                     onClick={setDefaultDates}
@@ -332,14 +331,14 @@ export default function ReportsPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 dark:bg-gray-800/50 sticky top-0">
                       <tr>
-  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{locale === "ru" ? "Наряд-заказ" : locale === "uz-Latn" ? "Naryad raqami" : "Наряд рақами"}</th>
-  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{locale === "ru" ? "Основное средство" : locale === "uz-Latn" ? "Asosiy vosita" : "Асосий восита"}</th>
-  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{locale === "ru" ? "Инвентарный номер" : locale === "uz-Latn" ? "Inventar raqami" : "Инвентар рақами"}</th>
-  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{locale === "ru" ? "Пробег при открытии, км" : locale === "uz-Latn" ? "Ochilgan paytdagi probeg, km" : "Очилган вақтдаги пробег, км"}</th>
-  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{locale === "ru" ? "Участок" : locale === "uz-Latn" ? "Uchastka" : "Участка"}</th>
-  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{locale === "ru" ? "Вид работ" : locale === "uz-Latn" ? "Ish turi" : "Иш тури"}</th>
-  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{locale === "ru" ? "Статус" : locale === "uz-Latn" ? "Holat" : "Ҳолат"}</th>
-  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{locale === "ru" ? "Дата открытия" : locale === "uz-Latn" ? "Ochilgan sana" : "Очилган сана"}</th>
+  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{"Наряд-заказ"}</th>
+  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{"Основное средство"}</th>
+  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{"Инвентарный номер"}</th>
+  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{"Пробег при открытии, км"}</th>
+  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{"Участок"}</th>
+  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{"Вид работ"}</th>
+  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{"Статус"}</th>
+  <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">{"Дата открытия"}</th>
 </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -348,10 +347,10 @@ export default function ReportsPage() {
                           <td className="px-4 py-2.5 font-mono text-gray-600 dark:text-gray-300">{(row.number as string) || (row.id as string)}</td>
                           <td className="px-4 py-2.5">{(row.unit as string) || "—"}</td>
                           <td className="px-4 py-2.5">{(row.asset_inv_number as string) || "—"}</td>
-                          <td className="px-4 py-2.5 whitespace-nowrap">{formatMileage(row.mileage_at_creation, locale)}</td>
+                          <td className="px-4 py-2.5 whitespace-nowrap">{formatMileage(row.mileage_at_creation)}</td>
                           <td className="px-4 py-2.5">{row.section as string}</td>
                           <td className="px-4 py-2.5">{(row.work_type as string) || "—"}</td>
-                          <td className="px-4 py-2.5">{row.status === "cancelled" ? (locale === "ru" ? "Отменён" : locale === "uz-Latn" ? "Bekor qilingan" : "Бекор қилинган") : t(WO_STATUS_LABEL[row.status as string] || (row.status as string))}</td>
+                          <td className="px-4 py-2.5">{row.status === "cancelled" ? ("Отменён") : WO_STATUS_LABEL[row.status as string] || (row.status as string)}</td>
                           <td className="px-4 py-2.5">{(row.created_at as string) || "—"}</td>
                         </tr>
                       ))}
@@ -403,7 +402,7 @@ export default function ReportsPage() {
                   <ul className="space-y-2">
                     {Object.entries(assetsByType).map(([type, count]) => (
                       <li key={type} className="flex justify-between text-sm">
-                        <span className="text-gray-600 dark:text-gray-300">{(filteredAssetsData.find((row) => row.asset_type === type)?.asset_type_label as string) || t(ASSET_TYPE_LABEL[type] || type)}</span>
+                        <span className="text-gray-600 dark:text-gray-300">{(filteredAssetsData.find((row) => row.asset_type === type)?.asset_type_label as string) || ASSET_TYPE_LABEL[type] || type}</span>
                         <span className="font-semibold text-gray-900 dark:text-white">{count} ед.</span>
                       </li>
                     ))}
@@ -432,9 +431,9 @@ export default function ReportsPage() {
                         <tr key={(row.id as string) || i} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
                           <td className="px-4 py-2.5 font-mono">{row.inv_number as string}</td>
                           <td className="px-4 py-2.5">{(row.name as string) || "—"}</td>
-                          <td className="px-4 py-2.5">{(row.asset_type_label as string) || t(ASSET_TYPE_LABEL[row.asset_type as string] || (row.asset_type as string))}</td>
+                          <td className="px-4 py-2.5">{(row.asset_type_label as string) || ASSET_TYPE_LABEL[row.asset_type as string] || (row.asset_type as string)}</td>
                           <td className="px-4 py-2.5">{row.series as string}</td>
-                          <td className="px-4 py-2.5">{(row.asset_status_label as string) || t(ASSET_STATUS_LABEL[row.status as string] || (row.status as string))}</td>
+                          <td className="px-4 py-2.5">{(row.asset_status_label as string) || ASSET_STATUS_LABEL[row.status as string] || (row.status as string)}</td>
                           <td className="px-4 py-2.5">{row.comm_date as string}</td>
                         </tr>
                       ))}

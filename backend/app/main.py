@@ -11,7 +11,6 @@ from starlette.middleware.base import RequestResponseEndpoint
 
 from app.core.config import settings
 from app.core.database import SessionFactory, engine
-from app.core.localization import parse_locale
 from app.core.translation_response import localize_reference_response
 from app.routers.auth import router as auth_router
 from app.routers.assets import router as assets_router
@@ -132,15 +131,12 @@ async def redact_wialon_query_token(
                 payload = await localize_reference_response(
                     session,
                     path=path.removeprefix("/api/v1"),
-                    locale=parse_locale(request.headers.get("accept-language")),
+                    locale="ru",
                     payload=payload,
                 )
             headers = dict(response.headers)
             headers.pop("content-length", None)
             headers.pop("content-encoding", None)
-            vary = {item.strip() for item in headers.get("vary", "").split(",") if item.strip()}
-            vary.add("Accept-Language")
-            headers["vary"] = ", ".join(sorted(vary))
             return Response(
                 content=json.dumps(payload, ensure_ascii=False, default=str),
                 status_code=response.status_code,

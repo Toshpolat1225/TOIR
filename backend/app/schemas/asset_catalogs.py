@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-Locale = Literal["uz-Latn", "uz-Cyrl", "ru"]
+Locale = Literal["ru"]
 CatalogKind = Literal["types", "statuses"]
 AssetBehavior = Literal["operational", "maintenance", "repair", "out_of_service"]
 CatalogColor = Literal["blue", "green", "amber", "orange", "red", "gray", "purple"]
@@ -18,9 +18,8 @@ class AssetCatalogWrite(BaseModel):
     @field_validator("names")
     @classmethod
     def require_all_locales(cls, value: dict[str, str]) -> dict[str, str]:
-        locales = {"uz-Latn", "uz-Cyrl", "ru"}
-        if set(value) != locales or any(not name.strip() for name in value.values()):
-            raise ValueError("All three non-empty translations are required")
+        if set(value) != {"ru"} or any(not name.strip() for name in value.values()):
+            raise ValueError("A non-empty Russian name is required")
         return {locale: name.strip() for locale, name in value.items()}
 
 
@@ -39,7 +38,7 @@ class AssetCatalogUpdate(BaseModel):
 class AssetCatalogItem(BaseModel):
     code: str
     name: str
-    names: dict[str, str]
+    names: dict[Locale, str]
     is_active: bool
     usage_count: int
     behavior: str | None = None

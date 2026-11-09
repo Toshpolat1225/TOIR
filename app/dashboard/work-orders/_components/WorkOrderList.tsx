@@ -158,7 +158,7 @@ export function WorkOrderList({
         </select>
         <select aria-label="Вид работ" value={workTypeId} onChange={(event) => onWorkTypeChange(event.target.value)} className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800">
           <option value="">Все виды работ</option>
-          {workTypes.map((workType) => <option key={workType.id} value={workType.id}>{workType.localized_name ?? workType.name}</option>)}
+          {workTypes.map((workType) => <option key={workType.id} value={workType.id}>{workType.name}</option>)}
         </select>
         <label className="text-xs text-gray-500">Начало работ с
           <input aria-label="Начало работ с даты" type="datetime-local" value={dateFrom} onChange={(event) => onDateFromChange(event.target.value)} className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
@@ -198,7 +198,7 @@ export function WorkOrderList({
                         )}
                       </div>
                       <p className="mt-2 truncate font-medium text-gray-900 dark:text-white">{order.description}</p>
-                      <p className="mt-1 text-sm text-gray-500">{order.asset_name} · {order.asset_inv_number} · {order.localized_section_name ?? order.section_name}</p>
+                      <p className="mt-1 text-sm text-gray-500">{order.asset_name} · {order.asset_inv_number} · {order.section_name}</p>
                       <p className="mt-1 text-xs text-gray-500">
                         {order.repairs.map((repair) => repair.work_type_code).join(", ") || "Без типа ремонта"}
                         {" · "}{employeeName(order.executor_id)}

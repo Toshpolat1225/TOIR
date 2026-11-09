@@ -30,8 +30,8 @@ def main() -> int:
         return 2
 
     type_code, status_code = f"e2e_type_{suffix}", f"e2e_status_{suffix}"
-    names_type = {"ru": f"E2E type {suffix}", "uz-Latn": f"E2E turi {suffix}", "uz-Cyrl": f"E2E тури {suffix}"}
-    names_status = {"ru": f"E2E status {suffix}", "uz-Latn": f"E2E holat {suffix}", "uz-Cyrl": f"E2E ҳолат {suffix}"}
+    names_type = {"ru": f"E2E type {suffix}"}
+    names_status = {"ru": f"E2E status {suffix}"}
     try:
         login = request("POST", "/api/v1/auth/login", payload={"email": email, "password": password}, session=session)
         require_status(checks, "Admin login", login, 200)
@@ -58,8 +58,8 @@ def main() -> int:
         check_condition(checks, "Empty catalog search returns an empty list", empty_items, "items is empty" if empty_items else "items was not empty")
 
         blank = request("POST", "/api/v1/fixed-asset-catalogs/types", bearer=admin_token,
-                        payload={"code": type_code, "names": {"ru": " ", "uz-Latn": names_type["uz-Latn"], "uz-Cyrl": names_type["uz-Cyrl"]}, "is_active": True, "color": "blue"})
-        check_status(checks, "Empty translated name is rejected", blank, 422)
+                        payload={"code": type_code, "names": {"ru": " "}, "is_active": True, "color": "blue"})
+        check_status(checks, "Empty Russian name is rejected", blank, 422)
         created_type = request("POST", "/api/v1/fixed-asset-catalogs/types", bearer=admin_token,
                                payload={"code": type_code, "names": names_type, "is_active": True, "color": "blue"})
         check_status(checks, "Create type", created_type, 201)

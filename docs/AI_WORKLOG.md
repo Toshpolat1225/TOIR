@@ -234,3 +234,7 @@ Changed: revisions 0023-0024, asset ORM/repositories/services/schemas, `postgres
 Tested: backend `.venv` requested asset/GTK/Wialon/unified/attribution plus drift suites -> 187 passed, 17 subtests passed.
 NOT TESTED: PostgreSQL migration/view execution, live dump comparison, API E2E, frontend, browser, server/deployment; no secrets opened, no commit.
 Next: apply migrations and compare schema only on a user-controlled disposable PostgreSQL copy.
+2026-11-09 | Copilot SDK | Simplified frontend/backend localization to Russian only | app, lib, backend localization/API schemas/tests, postgres/schema.sql, migration 0025, localization docs | build, tsc, lint, Python syntax (17 files), diff check -> passed; 3 Hook warnings
+Removed locale-switching UI and translation calls, retained Russian labels/API names, and added a forward migration to delete non-Russian translation rows. Preserved the pre-existing docker-compose.yml change.
+NOT TESTED: migration execution, backend tests, API E2E, browser, production/deploy. No database or server was accessed.
+Next: verify the migration and localization E2E on an authorized disposable database; never run it on production without explicit user action.

@@ -78,14 +78,14 @@ function WorkOrdersPage() {
       setEmployees(employeesResult.items);
       setSections(sectionsResult.items.map((item) => ({
         ...item,
-        name: item.localized_name ?? item.name,
+        name: item.name,
       })));
       setWorkTypes(workTypesResult.items.map((item) => ({
         ...item,
-        name: item.localized_name ?? item.name,
+        name: item.name,
         subtasks: item.subtasks.map((subtask) => ({
           ...subtask,
-          name: subtask.localized_name ?? subtask.name,
+          name: subtask.name,
         })),
       })));
       setNomenclature(nomenclatureResult.items);

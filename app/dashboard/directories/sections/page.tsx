@@ -4,11 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { ArrowLeft, Building2, ChevronRight, Pencil, Plus, RotateCcw, Search } from "@/components/ui/icons"
 import Link from "next/link"
 import { api, type SectionTreeNode } from "@/lib/api"
-import { useLocale } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
 
 type UnitType = "department" | "division" | "section" | "team"
-type UnitNames = Record<"ru" | "uz-Latn" | "uz-Cyrl", string>
 
 const unitTypes: UnitType[] = ["department", "division", "section", "team"]
 const typeLabels: Record<UnitType, string> = {
@@ -34,7 +32,6 @@ function collectDescendants(item: SectionTreeNode): Set<string> {
 
 function renderTree(
   items: SectionTreeNode[],
-  locale: string,
   depth: number,
   onEdit: (item: SectionTreeNode) => void,
   onArchive: (item: SectionTreeNode) => void,
@@ -42,7 +39,7 @@ function renderTree(
 ): React.ReactNode {
   return items.map((item) => {
     const type = (item.unit_type ?? "section") as UnitType
-    const name = item.translations?.[locale as keyof UnitNames] ?? item.localized_name ?? item.name
+    const name = item.name
     return (
       <li key={item.id} className="list-none">
         <div
@@ -81,7 +78,7 @@ function renderTree(
         </div>
         {item.children?.length ? (
           <ul className="mt-2 space-y-2">
-            {renderTree(item.children, locale, depth + 1, onEdit, onArchive, onRestore)}
+            {renderTree(item.children, depth + 1, onEdit, onArchive, onRestore)}
           </ul>
         ) : null}
       </li>
@@ -90,11 +87,10 @@ function renderTree(
 }
 
 export default function SectionsPage() {
-  const { locale } = useLocale()
   const [tree, setTree] = useState<SectionTreeNode[]>([])
   const [parentOptions, setParentOptions] = useState<SectionTreeNode[]>([])
   const [loading, setLoading] = useState(true)
-  const [names, setNames] = useState<UnitNames>({ ru: "", "uz-Latn": "", "uz-Cyrl": "" })
+  const [name, setName] = useState("")
   const [parentId, setParentId] = useState("")
   const [unitType, setUnitType] = useState<UnitType>("section")
   const [code, setCode] = useState("")
@@ -150,7 +146,7 @@ export default function SectionsPage() {
   }, [editingId, parentOptions, unitType])
 
   const resetForm = () => {
-    setNames({ ru: "", "uz-Latn": "", "uz-Cyrl": "" })
+    setName("")
     setParentId("")
     setUnitType("section")
     setCode("")
@@ -160,11 +156,7 @@ export default function SectionsPage() {
 
   const handleEdit = (item: SectionTreeNode) => {
     setEditingId(item.id)
-    setNames({
-      ru: item.translations?.ru ?? item.name,
-      "uz-Latn": item.translations?.["uz-Latn"] ?? "",
-      "uz-Cyrl": item.translations?.["uz-Cyrl"] ?? "",
-    })
+    setName(item.name)
     setParentId(item.parent_id ?? "")
     setUnitType((item.unit_type ?? "section") as UnitType)
     setCode(item.code ?? "")
@@ -173,13 +165,9 @@ export default function SectionsPage() {
   }
 
   const handleSave = async () => {
-    const translations: UnitNames = {
-      ru: names.ru.trim(),
-      "uz-Latn": names["uz-Latn"].trim(),
-      "uz-Cyrl": names["uz-Cyrl"].trim(),
-    }
-    if (Object.values(translations).some((name) => !name)) {
-      setError("Заполните названия на русском и двух узбекских языках")
+    const russianName = name.trim()
+    if (!russianName) {
+      setError("Введите название")
       return
     }
 
@@ -187,11 +175,11 @@ export default function SectionsPage() {
     setError("")
     try {
       const data = {
-        name: translations.ru,
+        name: russianName,
         parent_id: parentId || null,
         unit_type: unitType,
         code: code.trim() || null,
-        translations,
+        translations: { ru: russianName },
         is_active: isActive,
       }
       if (editingId) {
@@ -239,7 +227,7 @@ export default function SectionsPage() {
             Динамическая иерархия участков
           </h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Многоуровневая структура с названиями на трех языках.
+            Многоуровневая структура подразделений.
           </p>
         </div>
       </div>
@@ -249,20 +237,14 @@ export default function SectionsPage() {
           <Plus className="h-4 w-4" /> {editingId ? "Изменить подразделение" : "Добавить подразделение"}
         </h2>
         <div className="grid gap-3 md:grid-cols-3">
-          {([
-            ["ru", "Название на русском"],
-            ["uz-Latn", "O‘zbekcha (lotin)"],
-            ["uz-Cyrl", "Ўзбекча (кирилл)"],
-          ] as const).map(([language, label]) => (
-            <label key={language} className="text-xs font-medium text-gray-500 dark:text-gray-400">
-              {label}
-              <input
-                value={names[language]}
-                onChange={(event) => setNames((current) => ({ ...current, [language]: event.target.value }))}
-                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-              />
-            </label>
-          ))}
+          <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            Название
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+            />
+          </label>
           <label className="text-xs font-medium text-gray-500 dark:text-gray-400">
             Родительское подразделение
             <select
@@ -274,7 +256,7 @@ export default function SectionsPage() {
               {selectableParents.map((item) => (
                 <option key={item.id} value={item.id}>
                   [{typeLabels[(item.unit_type ?? "section") as UnitType]}]
-                  {item.translations?.[locale as keyof UnitNames] ?? item.localized_name ?? item.name}
+                  {item.name}
                 </option>
               ))}
             </select>
@@ -326,7 +308,7 @@ export default function SectionsPage() {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Поиск по названию или переводу"
+              placeholder="Поиск по названию"
               className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm dark:border-gray-600 dark:bg-gray-800"
             />
           </label>
@@ -357,7 +339,7 @@ export default function SectionsPage() {
           <div className="py-12 text-center text-sm text-gray-500">Нет подразделений для выбранного фильтра.</div>
         ) : (
           <ul className="space-y-2 p-4">
-            {renderTree(tree, locale, 0, handleEdit, handleArchive, handleRestore)}
+            {renderTree(tree, 0, handleEdit, handleArchive, handleRestore)}
           </ul>
         )}
       </section>

@@ -132,31 +132,24 @@ async def localize_reference_response(
         if entity:
             kind, entity_id, key = entity
             translation = lookup[kind].get(entity_id) if entity_id else None
-            node["localized_name"] = translation or node[key]
-            node["translation_missing"] = translation is None
+            node[key] = translation or node[key]
         if node.get("department_id") and node.get("department_name"):
             entity_id = _uuid(node["department_id"])
             translation = lookup["department"].get(entity_id) if entity_id else None
-            node["localized_department_name"] = translation or node["department_name"]
-            node["department_translation_missing"] = translation is None
+            node["department_name"] = translation or node["department_name"]
         section_name_field = "section_name" if node.get("section_name") else "section"
         if node.get("section_id") and node.get(section_name_field):
             entity_id = _uuid(node["section_id"])
             translation = lookup["section"].get(entity_id) if entity_id else None
-            node["localized_section_name"] = translation or node[section_name_field]
-            if section_name_field == "section":
-                node["localized_section"] = translation or node[section_name_field]
-            node["section_translation_missing"] = translation is None
+            node[section_name_field] = translation or node[section_name_field]
         if node.get("work_type_id") and node.get("work_type_name"):
             entity_id = _uuid(node["work_type_id"])
             translation = lookup["work_type"].get(entity_id) if entity_id else None
-            node["localized_work_type_name"] = translation or node["work_type_name"]
-            node["work_type_translation_missing"] = translation is None
+            node["work_type_name"] = translation or node["work_type_name"]
         elif node.get("work_type_id") and node.get("work_type"):
             entity_id = _uuid(node["work_type_id"])
             translation = lookup["work_type"].get(entity_id) if entity_id else None
-            node["localized_work_type"] = translation or node["work_type"]
-            node["work_type_translation_missing"] = translation is None
+            node["work_type"] = translation or node["work_type"]
         if path == "/dashboard/summary" and node.get("work_type_ids") and node.get("repair_kind"):
             ids = [
                 _uuid(item.strip())
@@ -164,21 +157,17 @@ async def localize_reference_response(
             ]
             codes = str(node["repair_kind"]).split(",")
             labels = [lookup["work_type"].get(entity_id) if entity_id else None for entity_id in ids]
-            node["localized_repair_kind"] = ", ".join(
+            node["repair_kind"] = ", ".join(
                 label or code.strip()
                 for code, label in zip(codes, labels, strict=False)
             )
-            node["repair_kind_translation_missing"] = any(label is None for label in labels)
         if node.get("nomenclature_id") and node.get("name"):
             entity_id = _uuid(node["nomenclature_id"])
             translation = lookup["nomenclature"].get(entity_id) if entity_id else None
-            node["localized_nomenclature_name"] = translation or node["name"]
-            node["nomenclature_translation_missing"] = translation is None
+            node["name"] = translation or node["name"]
         if (path.startswith("/fixed-assets") or path in ("/reports/fixed-assets", "/dashboard/summary")) and node.get("asset_type"):
             type_label = lookup["asset_type"].get(node["asset_type"])
             status_label = lookup["asset_status"].get(node.get("status"))
             node["asset_type_label"] = type_label or node["asset_type"]
             node["asset_status_label"] = status_label or node.get("status")
-            node["asset_type_translation_missing"] = type_label is None
-            node["asset_status_translation_missing"] = status_label is None
     return payload

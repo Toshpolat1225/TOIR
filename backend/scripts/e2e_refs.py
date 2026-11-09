@@ -349,13 +349,11 @@ def main() -> int:
                 "unit_type": "department",
                 "translations": {
                     "ru": f"HIER-RU-{suffix[:8]}",
-                    "uz-Latn": f"HIER-LAT-{suffix[:8]}",
-                    "uz-Cyrl": f"HIER-CYR-{suffix[:8]}",
                 },
             },
         )
         hierarchy_parent_id = _record_created(
-            checks, resources, "Create translated hierarchy root",
+            checks, resources, "Create Russian hierarchy root",
             hierarchy_parent, "/api/v1/sections",
         )
         check_status(
@@ -389,8 +387,6 @@ def main() -> int:
                 "unit_type": "division",
                 "translations": {
                     "ru": f"HIER-DIV-{suffix[:8]}",
-                    "uz-Latn": f"HIER-DIVLAT-{suffix[:8]}",
-                    "uz-Cyrl": f"HIER-DIVCYR-{suffix[:8]}",
                 },
             },
         )
@@ -408,8 +404,6 @@ def main() -> int:
                 "unit_type": "division",
                 "translations": {
                     "ru": f"HIER-SEC-{suffix[:8]}",
-                    "uz-Latn": f"HIER-SECLAT-{suffix[:8]}",
-                    "uz-Cyrl": f"HIER-SECCYR-{suffix[:8]}",
                 },
             },
         )
@@ -441,8 +435,6 @@ def main() -> int:
                 "unit_type": "department",
                 "translations": {
                     "ru": f"HIER-ALT-{suffix[:8]}",
-                    "uz-Latn": f"HIER-ALTLAT-{suffix[:8]}",
-                    "uz-Cyrl": f"HIER-ALTCYR-{suffix[:8]}",
                 },
             },
         )
@@ -474,19 +466,11 @@ def main() -> int:
         hierarchy_payload = parse_object(hierarchy_parent)
         check_condition(
             checks,
-            "Section stores all three names",
-            hierarchy_payload.get("translations") == {
-                "ru": f"HIER-RU-{suffix[:8]}",
-                "uz-Latn": f"HIER-LAT-{suffix[:8]}",
-                "uz-Cyrl": f"HIER-CYR-{suffix[:8]}",
-            },
-            "Three translations returned on create response",
+            "Section stores one Russian name",
+            hierarchy_payload.get("translations") == {"ru": f"HIER-RU-{suffix[:8]}"},
+            "Only the Russian name is returned",
         )
-        updated_translations = {
-            "ru": f"HIER-SEC-UPD-{suffix[:8]}",
-            "uz-Latn": f"HIER-SEC-UPDLAT-{suffix[:8]}",
-            "uz-Cyrl": f"HIER-SEC-UPDCYR-{suffix[:8]}",
-        }
+        updated_translations = {"ru": f"HIER-SEC-UPD-{suffix[:8]}"}
         translation_update = request(
             "PATCH",
             f"/api/v1/sections/{hierarchy_leaf_id}",
@@ -498,40 +482,40 @@ def main() -> int:
         )
         check_condition(
             checks,
-            "Update all section translations",
+            "Update Russian section name",
             translation_update.status == 200
             and translation_update_payload.get("translations") == updated_translations,
-            f"HTTP {translation_update.status}; all values returned",
+            f"HTTP {translation_update.status}; Russian name returned",
         )
         translation_get = request(
             "GET",
             f"/api/v1/sections/{hierarchy_leaf_id}",
             bearer=operator_token,
-            headers={"Accept-Language": "uz-Latn"},
+            headers={"Accept-Language": "ru"},
         )
         translation_payload = (
             parse_object(translation_get) if translation_get.status == 200 else {}
         )
         check_condition(
             checks,
-            "Read Russian canonical and Uzbek localized names",
+            "Read Russian section name",
             translation_get.status == 200
             and translation_payload.get("name") == updated_translations["ru"]
-            and translation_payload.get("localized_name") == updated_translations["uz-Latn"],
-            f"HTTP {translation_get.status}; canonical and localized values checked",
+            and "localized_name" not in translation_payload,
+            f"HTTP {translation_get.status}; Russian value checked",
         )
         translated_search = request(
             "GET",
-            f"/api/v1/sections?limit=25&q=HIER-LAT-{suffix[:8]}",
+            f"/api/v1/sections?limit=25&q=HIER-RU-{suffix[:8]}",
             bearer=operator_token,
         )
         translated_items = parse_object(translated_search).get("items", [])
         check_condition(
             checks,
-            "Section search includes Uzbek translations",
+            "Section search includes Russian names",
             translated_search.status == 200
             and any(item.get("id") == hierarchy_parent_id for item in translated_items),
-            f"HTTP {translated_search.status}; localized-name search checked",
+            f"HTTP {translated_search.status}; Russian-name search checked",
         )
         nested_tree_response = request(
             "GET",

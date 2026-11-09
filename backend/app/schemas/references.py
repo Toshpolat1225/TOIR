@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-SectionLocale = Literal["uz-Latn", "uz-Cyrl", "ru"]
+SectionLocale = Literal["ru"]
 
 
 def _normalize_section_translations(
@@ -14,10 +14,10 @@ def _normalize_section_translations(
     if translations is None:
         return None
     normalized = {locale: name.strip() for locale, name in translations.items()}
-    if set(normalized) != {"uz-Latn", "uz-Cyrl", "ru"}:
-        raise ValueError("Provide names for uz-Latn, uz-Cyrl, and ru")
+    if set(normalized) != {"ru"}:
+        raise ValueError("Provide a Russian name")
     if any(not name for name in normalized.values()):
-        raise ValueError("Translated section names must not be empty")
+        raise ValueError("Section name must not be empty")
     return normalized
 
 

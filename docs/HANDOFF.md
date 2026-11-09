@@ -975,3 +975,18 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### NOT TESTED
 
 - PostgreSQL execution of either new migration, actual view replacement, database row preservation, live schema dump comparison, API E2E, frontend typecheck/build, browser, server, or deployment.
+
+## Russian-only interface (2026-11-09)
+
+### Verified
+
+- Frontend React source no longer contains `t()` call sites, locale-switcher references, or Uzbek locale tags; the i18n helper retains only Russian.
+- The translations admin page and old locale helper were removed. Reference forms and API types now use Russian names.
+- Backend locale selection now resolves to Russian. The new forward migration `0025_russian_only` deletes non-Russian translation rows and restricts translation tables to `ru`.
+- `postgres/schema.sql` and related frontend/backend code were updated. The `0025` migration has not been run against a database.
+- `npx.cmd tsc --noEmit`, frontend build, lint, Python syntax checks for 17 changed files, and `git diff --check` exited successfully. Lint/build reported three React Hook warnings.
+- `docker-compose.yml` was already modified before this task and was not changed as part of this work.
+
+### Next task
+
+- Validate migration `0025` and localization E2E on an authorized disposable database before any production migration. Backend tests, browser behavior, and database migration remain NOT TESTED.

@@ -6,7 +6,6 @@ import { api } from "@/lib/api"
 export type SectionData = {
   id: string
   name: string
-  localized_name?: string
 }
 
 export function useSections() {
@@ -18,7 +17,7 @@ export function useSections() {
     setLoading(true)
     try {
       const response = await api.sections.list({ limit: 1000, sort_by: "name", sort_order: "asc" });
-      setSections(response.items.map((r) => r.localized_name ?? r.name));
+      setSections(response.items.map((r) => r.name));
       setSectionsData(response.items);
     } catch (error) {
       console.error("Failed to fetch sections:", error);
@@ -34,14 +33,14 @@ export function useSections() {
   // Получить ID участка по имени
   const getSectionId = useCallback((name: string): string | undefined => {
     const matches = sectionsData.filter(
-      (section) => section.name === name || section.localized_name === name,
+      (section) => section.name === name,
     )
     return matches.length === 1 ? matches[0].id : undefined
   }, [sectionsData])
 
   const hasAmbiguousSectionName = useCallback((name: string): boolean => {
     return sectionsData.filter(
-      (section) => section.name === name || section.localized_name === name,
+      (section) => section.name === name,
     ).length > 1
   }, [sectionsData])
 

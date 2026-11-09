@@ -6,7 +6,7 @@ from uuid import UUID
 from app.repositories import localization as repository
 from app.schemas.localization import Locale
 
-SUPPORTED_LOCALES: tuple[Locale, ...] = ("uz-Latn", "uz-Cyrl", "ru")
+SUPPORTED_LOCALES: tuple[Locale, ...] = ("ru",)
 
 
 async def list_localized_entities(

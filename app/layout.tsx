@@ -1,7 +1,5 @@
 import type { Metadata } from 'next'
 import { Providers } from '@/lib/providers'
-import { cookies } from 'next/headers'
-import { DEFAULT_LOCALE, isLocale, LOCALE_COOKIE } from '@/lib/locale'
 import './globals.css'
 
 
@@ -20,14 +18,10 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  const cookieStore = await cookies()
-  const cookieLocale = cookieStore.get(LOCALE_COOKIE)?.value
-  const locale = isLocale(cookieLocale) ? cookieLocale : DEFAULT_LOCALE
-
   return (
-    <html lang={locale} suppressHydrationWarning>
+    <html lang="ru" suppressHydrationWarning>
       <body className="font-sans antialiased">
-        <Providers initialLocale={locale}>{children}</Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   )

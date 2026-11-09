@@ -128,10 +128,7 @@ async def list_entities(
             "locale": locale,
             "translation_missing": locale not in (row[3] or {}),
             "translations": row[3] or {},
-            "missing_locales": [
-                code for code in ("uz-Latn", "uz-Cyrl", "ru")
-                if code not in (row[3] or {})
-            ],
+            "missing_locales": ["ru"] if "ru" not in (row[3] or {}) else [],
         }
         for row in rows
     ], total

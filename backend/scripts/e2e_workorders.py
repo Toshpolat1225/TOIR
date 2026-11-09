@@ -658,25 +658,33 @@ def main() -> int:
             "Localized CSV header and snapshot value are present"
             if csv_report.status == 200 and "1234.50" in csv_text else f"HTTP {csv_report.status}",
         )
-        locale_details = [
-            request(
-                "GET",
-                f"/api/v1/work-orders/{primary_id}",
-                bearer=operator_token,
-                headers={"Accept-Language": locale},
-            )
-            for locale in ("uz-Latn", "uz-Cyrl", "ru")
-        ]
-        locale_ids = [
-            parse_object(response).get("id")
-            for response in locale_details
-            if response.status == 200
-        ]
+        russian_detail = request(
+            "GET",
+            f"/api/v1/work-orders/{primary_id}",
+            bearer=operator_token,
+            headers={"Accept-Language": "ru"},
+        )
+        ignored_language_detail = request(
+            "GET",
+            f"/api/v1/work-orders/{primary_id}",
+            bearer=operator_token,
+            headers={"Accept-Language": "uz-Latn"},
+        )
+        russian_payload = parse_object(russian_detail) if russian_detail.status == 200 else {}
+        ignored_language_payload = (
+            parse_object(ignored_language_detail)
+            if ignored_language_detail.status == 200
+            else {}
+        )
         check_condition(
             checks,
-            "Work-order identity is stable across supported locales",
-            len(locale_ids) == 3 and all(value == primary_id for value in locale_ids),
-            "All locale responses preserve the same work-order id",
+            "Work-order response is Russian-only",
+            russian_detail.status == 200
+            and ignored_language_detail.status == 200
+            and russian_payload.get("id") == primary_id
+            and ignored_language_payload.get("id") == primary_id
+            and russian_payload.get("section_name") == ignored_language_payload.get("section_name"),
+            "Unsupported language header does not change Russian labels",
         )
         check_status(
             checks,

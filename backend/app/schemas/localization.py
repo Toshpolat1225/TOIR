@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Locale = Literal["uz-Latn", "uz-Cyrl", "ru"]
+Locale = Literal["ru"]
 TranslationEntity = Literal[
     "department",
     "section",

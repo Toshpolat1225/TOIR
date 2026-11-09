@@ -262,7 +262,7 @@ function PassportAndLinks({ assetId, canWrite, sections, types, onUpdated }: {
             <label className="text-xs text-gray-500">Участок
               <select className={fieldCls} value={asset.org_unit_id ?? ""} disabled={!canWrite} onChange={(event) => update({ org_unit_id: event.target.value || null })}>
                 <option value="">Не указан</option>
-                {sections.map((section) => <option key={section.id} value={section.id}>{section.localized_name || section.name}</option>)}
+                {sections.map((section) => <option key={section.id} value={section.id}>{section.name}</option>)}
               </select>
             </label>
             <label className="text-xs text-gray-500">Дата списания
@@ -1405,11 +1405,11 @@ export default function OsPage() {
           <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl dark:bg-gray-900">
             <h2 id="bulk-org-unit-title" className="text-lg font-semibold text-gray-900 dark:text-white">Назначить участок</h2>
             <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-              Будет обновлено объектов: <strong>{selectedAssetIds.length}</strong>. Участок: <strong>{sectionsData.find((section) => section.id === bulkOrgUnitId)?.localized_name || sectionsData.find((section) => section.id === bulkOrgUnitId)?.name || "не выбран"}</strong>.
+              Будет обновлено объектов: <strong>{selectedAssetIds.length}</strong>. Участок: <strong>{sectionsData.find((section) => section.id === bulkOrgUnitId)?.name || "не выбран"}</strong>.
             </p>
             <select value={bulkOrgUnitId} onChange={(event) => setBulkOrgUnitId(event.target.value)} className={`${selCls} mt-4 w-full`}>
               <option value="">Выберите участок</option>
-              {sectionsData.map((section) => <option key={section.id} value={section.id}>{section.localized_name || section.name}</option>)}
+              {sectionsData.map((section) => <option key={section.id} value={section.id}>{section.name}</option>)}
             </select>
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowBulkOrgUnit(false)} disabled={bulkOrgUnitSaving}>Отмена</Button>
@@ -1557,7 +1557,7 @@ export default function OsPage() {
         {assetTypes.map((item) => <button type="button" key={item.code} aria-pressed={fType === item.code} onClick={() => selectType(item.code)} className={`text-left rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${fType === item.code ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400"}`}><div className="flex justify-between"><Train className="w-4 h-4 text-indigo-500"/><span className="text-2xl font-bold text-gray-900 dark:text-white">{counts?.by_asset_type[item.code] ?? 0}</span></div><p className="mt-2 text-xs font-medium text-gray-600 dark:text-gray-300">{item.names.ru || item.code}</p></button>)}
         {[{code:"operational",label:"В эксплуатации",Icon:CheckCircle},{code:"maintenance",label:"На ТО",Icon:Wrench},{code:"repair",label:"В ремонте",Icon:Wrench},{code:"out_of_service",label:"Выведены из ОС",Icon:XCircle}].map(({code,label,Icon}) => <button type="button" key={code} aria-pressed={fBehavior === code} onClick={() => selectBehavior(code)} className={`text-left rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${fBehavior === code ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-emerald-400"}`}><div className="flex justify-between"><Icon className="w-4 h-4 text-emerald-600"/><span className="text-2xl font-bold text-gray-900 dark:text-white">{counts?.by_status_behavior[code] ?? 0}</span></div><p className="mt-2 text-xs font-medium text-gray-600 dark:text-gray-300">{label}</p></button>)}
         {assetStatuses.map((item) => <button type="button" key={item.code} aria-pressed={fStatus === item.code} onClick={() => { setFBehavior(""); setFStatus((current) => current === item.code ? "" : item.code) }} className={`text-left rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${fStatus === item.code ? "border-violet-500 bg-violet-50 dark:bg-violet-950/40" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-violet-400"}`}><div className="flex justify-between"><CheckCircle className="w-4 h-4 text-violet-600"/><span className="text-2xl font-bold text-gray-900 dark:text-white">{counts?.by_status[item.code] ?? 0}</span></div><p className="mt-2 text-xs font-medium text-gray-600 dark:text-gray-300">{item.names.ru || item.code}</p></button>)}
-        {sectionsData.map((section) => <button type="button" key={section.id} aria-pressed={fSection === section.id} onClick={() => setFSection((current) => current === section.id ? "" : section.id)} className={`text-left rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${fSection === section.id ? "border-amber-500 bg-amber-50 dark:bg-amber-950/40" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-amber-400"}`}><div className="flex justify-between"><Building2 className="w-4 h-4 text-amber-600"/><span className="text-2xl font-bold text-gray-900 dark:text-white">{counts?.by_section[section.id] ?? 0}</span></div><p className="mt-2 truncate text-xs font-medium text-gray-600 dark:text-gray-300">{section.localized_name || section.name}</p></button>)}
+        {sectionsData.map((section) => <button type="button" key={section.id} aria-pressed={fSection === section.id} onClick={() => setFSection((current) => current === section.id ? "" : section.id)} className={`text-left rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${fSection === section.id ? "border-amber-500 bg-amber-50 dark:bg-amber-950/40" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-amber-400"}`}><div className="flex justify-between"><Building2 className="w-4 h-4 text-amber-600"/><span className="text-2xl font-bold text-gray-900 dark:text-white">{counts?.by_section[section.id] ?? 0}</span></div><p className="mt-2 truncate text-xs font-medium text-gray-600 dark:text-gray-300">{section.name}</p></button>)}
       </div>
 
       {/* Filters */}
@@ -1599,7 +1599,7 @@ export default function OsPage() {
           <div className="relative">
             <select aria-label="Участок" value={fSection} onChange={e => setFSection(e.target.value)} className={selCls}>
               <option value="">Все участки</option>
-              {sectionsData.map(section => <option key={section.id} value={section.id}>{section.localized_name || section.name}</option>)}
+              {sectionsData.map(section => <option key={section.id} value={section.id}>{section.name}</option>)}
             </select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
           </div>
@@ -1697,7 +1697,7 @@ export default function OsPage() {
                     <p className="text-sm font-semibold text-gray-900 dark:text-white">{a.name}{a.suspectAbsolute && <span className="ml-2 text-amber-600 dark:text-amber-400" title="Подозрительное значение Wialon">⚠</span>}</p>
                     {(a.invNumber || a.unitId) && <p className="text-xs text-gray-400 truncate max-w-[220px]">{a.invNumber ? `Инв. № ${a.invNumber}` : `ID ${a.unitId}`}</p>}
                   </td>
-                  <td className="px-4 py-3.5 text-xs text-gray-600 dark:text-gray-300">{orgUnit?.localized_name || orgUnit?.name || a.depot || "—"}</td>
+                  <td className="px-4 py-3.5 text-xs text-gray-600 dark:text-gray-300">{orgUnit?.name || a.depot || "—"}</td>
                   <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.source !== "wialon" ? a.mileage || "—" : "—"}</td>
                   <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.unitId ? a.wialonMileage || "—" : "—"}</td>
                   <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.unitId ? a.engineHours || "—" : "—"}</td>
