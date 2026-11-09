@@ -252,10 +252,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
             <div className="ml-3 flex shrink-0 items-center gap-3">
               <ThemeSwitcher />
-              <span className={cn("hidden rounded-full px-2.5 py-1 text-xs font-medium sm:inline-flex", badge.cls)}>{badge.label}</span>
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700 dark:bg-gray-800 dark:text-gray-200">
-                {(profile?.full_name || user.email || "U").slice(0, 1).toUpperCase()}
-              </div>
             </div>
           </header>
           <main className="min-w-0" key={pathname}>{children}</main>

@@ -258,3 +258,7 @@ Next: verify the route and access rules in a browser.
 Redesigned filters as animated icon capsules with counts and a total header; replaced the section selector with nested buttons sourced from `/sections/tree`.
 NOT TESTED: browser rendering, API filtering, live waiting-for-parts status.
 Next: verify the filters and hierarchy in a browser against an authorized API.
+2026-11-09 | Copilot SDK | Removed duplicate profile from header | dashboard/layout.tsx, HANDOFF | focused ESLint, build, tsc, diff check -> passed; 2 existing Hook warnings
+Removed only the top-right role badge and initial avatar; kept the theme switcher and sidebar profile block.
+NOT TESTED: browser desktop/mobile layout.
+Next: verify header spacing and sidebar profile in a browser at desktop and mobile widths.

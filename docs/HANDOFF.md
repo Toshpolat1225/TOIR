@@ -1053,3 +1053,16 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Verify the new route and permission-gated card in a browser. Browser behavior remains NOT TESTED.
+
+## Header profile duplicate removed (2026-11-09)
+
+### Verified
+
+- Removed the user role badge and initial avatar from the top-right dashboard header; the theme switcher remains.
+- The sidebar user profile block remains unchanged.
+- Focused ESLint, production build, TypeScript, and `git diff --check` succeeded. Build reported two existing React Hook warnings in work-orders.
+- NOT TESTED: browser appearance and responsive layout.
+
+### Next task
+
+- Verify the header and sidebar layout in a browser at desktop and mobile widths.
