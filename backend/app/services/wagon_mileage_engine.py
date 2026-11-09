@@ -95,8 +95,14 @@ def select_main_locomotive(
         return MainLocomotiveDecision(None, "no_valid_fresh_odometer_interval", 0, "none")
 
     reference = rows[0].end_km - rows[0].start_km
+    reference_start = rows[0].start_at
+    reference_end = rows[0].end_at
     for row in rows[1:]:
         distance = row.end_km - row.start_km
+        if row.start_at != reference_start or row.end_at != reference_end:
+            return MainLocomotiveDecision(
+                None, "locomotive_odometer_time_boundaries_disagree", len(rows), "conflict"
+            )
         if abs(distance - reference) > agreement_tolerance_km:
             return MainLocomotiveDecision(
                 None, "locomotive_odometer_disagreement", len(rows), "conflict"
