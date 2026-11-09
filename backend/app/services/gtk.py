@@ -1,6 +1,8 @@
 import asyncio
 import csv
+import hashlib
 import io
+import json
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -8,6 +10,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +24,7 @@ from app.integrations.gtk_client import (
 )
 from app.integrations.gtk_adapter import GtkSourceAdapter
 from app.models.gtk import GtkSyncRun, GtkWagonMileageLog
+from app.models.mileage import GtkRawSnapshot
 from app.repositories import asset_source_links as asset_links_repository
 from app.repositories import asset_models as asset_models_repository
 from app.repositories import gtk as repository
@@ -331,6 +335,24 @@ async def sync_gtk(db: AsyncSession) -> GtkSyncRun | None:
                     ),
                 )
                 await repository.add_sync_run(db, run)
+                # Preserve the complete source snapshot before derived processing.
+                # default=str keeps datetime/Decimal source values JSON-safe.
+                raw_payload = json.loads(json.dumps(snapshot, ensure_ascii=False, default=str))
+                payload_bytes = json.dumps(
+                    raw_payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')
+                ).encode('utf-8')
+                payload_hash = hashlib.sha256(payload_bytes).hexdigest()
+                await db.execute(
+                    pg_insert(GtkRawSnapshot)
+                    .values(
+                        sync_run_id=run.id,
+                        effective_at=run_at,
+                        payload_hash=payload_hash,
+                        is_complete=True,
+                        payload=raw_payload,
+                    )
+                    .on_conflict_do_nothing(index_elements=[GtkRawSnapshot.payload_hash])
+                )
             if not is_suspicious:
                 try:
                     async with SessionFactory() as attribution_db:
