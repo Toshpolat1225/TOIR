@@ -6,6 +6,14 @@ from app.models.asset_field_changes import AssetFieldChange
 from app.models.audit_log import AuditLog
 from app.models.base import Base
 from app.models.identity import LoginAttempt, RefreshToken, User
+from app.models.mileage import (
+    GtkRawSnapshot,
+    MileageCalculationRun,
+    WagonIdlePeriod,
+    WagonMileageLedger,
+    WagonMileageOpeningBalance,
+    WialonOdometerReading,
+)
 from app.models.gtk import (
     GtkCarriage,
     GtkLocomotive,
