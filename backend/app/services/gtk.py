@@ -30,6 +30,7 @@ from app.services import assets as assets_service
 from app.services import asset_links as asset_links_service
 from app.services import asset_passport
 from app.services import asset_field_changes as field_changes_service
+from app.services.audit_log import set_audit_system_context
 from app.services import gtk_matching
 from app.services.mileage_attribution import (
     LocomotiveMileage,
@@ -284,6 +285,7 @@ async def sync_gtk(db: AsyncSession) -> GtkSyncRun | None:
         if _auto_sync_stopped:
             return None
 
+        set_audit_system_context(db, "gtk")
         started_at = datetime.now(timezone.utc)
         adapter = GtkSourceAdapter(
             GtkClient(
@@ -332,6 +334,7 @@ async def sync_gtk(db: AsyncSession) -> GtkSyncRun | None:
             if not is_suspicious:
                 try:
                     async with SessionFactory() as attribution_db:
+                        set_audit_system_context(attribution_db, "gtk")
                         attribution_counts = await _attribute_snapshot_mileage(
                             attribution_db,
                             snapshot,

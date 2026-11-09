@@ -153,6 +153,7 @@ def test_alembic_head_and_offline_contract_render(monkeypatch) -> None:
     assert len({revision for revision in revision_ids}) == len(revision_ids)
     assert "0024_asset_column_contract" in revision_ids
     assert "0025_russian_only" in revision_ids
+    assert "0026_audit_logs" in revision_ids
     assert all(
         f"DROP COLUMN IF EXISTS {column}" in rendered
         for column in LEGACY_ASSET_COLUMNS
@@ -167,6 +168,7 @@ def test_schema_and_new_migrations_have_clean_locale_characters() -> None:
         ROOT / "backend" / "alembic" / "versions" / "0023_canonical_asset_indexes.py",
         ROOT / "backend" / "alembic" / "versions" / "0024_fixed_asset_column_contract.py",
         ROOT / "backend" / "alembic" / "versions" / "0025_russian_only_locales.py",
+        ROOT / "backend" / "alembic" / "versions" / "0026_audit_logs.py",
     ]
     for path in paths:
         assert not forbidden.search(path.read_text(encoding="utf-8")), str(path)

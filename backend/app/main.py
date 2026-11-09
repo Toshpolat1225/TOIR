@@ -7,12 +7,15 @@ import logging
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import RequestResponseEndpoint
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
 from app.core.database import SessionFactory, engine
 from app.core.translation_response import localize_reference_response
 from app.routers.auth import router as auth_router
+from app.routers.audit_logs import router as audit_logs_router
 from app.routers.assets import router as assets_router
 from app.routers.asset_conflicts import router as asset_conflicts_router
 from app.routers.asset_links import router as asset_links_router
@@ -36,6 +39,8 @@ from app.routers.work_orders import router as work_orders_router
 from app.realtime import dispatch_database_events, listen_for_database_events
 from app.services.wialon import run_periodic_wialon_sync
 from app.services.gtk import run_periodic_gtk_sync
+from app.models.audit_log import AuditLog
+from app.services.audit_log import run_audit_retention
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +61,7 @@ def _create_gtk_sync_task() -> asyncio.Task[None] | None:
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     listener_task = asyncio.create_task(listen_for_database_events())
     dispatcher_task = asyncio.create_task(dispatch_database_events())
+    retention_task = asyncio.create_task(run_audit_retention())
     wialon_task = (
         asyncio.create_task(run_periodic_wialon_sync())
         if settings.wialon_pull_enabled
@@ -67,7 +73,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     finally:
         listener_task.cancel()
         dispatcher_task.cancel()
-        tasks = [listener_task, dispatcher_task]
+        tasks = [listener_task, dispatcher_task, retention_task]
         if wialon_task is not None:
             wialon_task.cancel()
             tasks.append(wialon_task)
@@ -88,6 +94,49 @@ app = FastAPI(
 )
 
 
+async def _record_untracked_mutation(request: Request, response: Response) -> None:
+    path = request.scope.get("path", "")
+    method = request.method.upper()
+    if (
+        not path.startswith("/api/v1/")
+        or path.startswith("/api/v1/audit-logs")
+        or path.startswith("/api/v1/auth/")
+        or method not in {"POST", "PUT", "PATCH", "DELETE"}
+        or response.status_code >= 400
+        or getattr(request.state, "audit_model_changes", False)
+    ):
+        return
+
+    action_by_method = {
+        "POST": "create",
+        "PUT": "update",
+        "PATCH": "update",
+        "DELETE": "delete",
+    }
+    actor_id = getattr(request.state, "audit_actor_id", None)
+    actor_type = getattr(
+        request.state,
+        "audit_actor_type",
+        "system" if "/gtk/" in path or "/wialon/" in path else "anonymous",
+    )
+    route_parts = path.strip("/").split("/")
+    module = route_parts[2] if len(route_parts) > 2 else "api"
+    async with SessionFactory() as session:
+        session.add(
+            AuditLog(
+                action=action_by_method[method],
+                actor_type=actor_type,
+                actor_user_id=actor_id,
+                actor_name=getattr(request.state, "audit_actor_name", None),
+                module=module,
+                route=path,
+                object_type=module,
+                details={"status_code": response.status_code},
+            )
+        )
+        await session.commit()
+
+
 @app.middleware("http")
 async def redact_wialon_query_token(
     request: Request, call_next: RequestResponseEndpoint
@@ -105,6 +154,19 @@ async def redact_wialon_query_token(
         )
         request.scope["query_string"] = b""
     response = await call_next(request)
+    try:
+        await _record_untracked_mutation(request, response)
+    except SQLAlchemyError as exc:
+        logger.error("Could not write fallback audit event (%s)", type(exc).__name__)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": (
+                    "Действие могло быть выполнено, но запись в журнал не удалась. "
+                    "Проверьте состояние данных."
+                )
+            },
+        )
     path = request.scope.get("path", "")
     localization_paths = (
         "/api/v1/sections",
@@ -170,6 +232,7 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(audit_logs_router, prefix="/api/v1")
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(permissions_router, prefix="/api/v1")
 app.include_router(references_router, prefix="/api/v1")

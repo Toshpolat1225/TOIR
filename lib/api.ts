@@ -500,6 +500,65 @@ const permissions = {
   },
 };
 
+export type AuditAction = "create" | "update" | "delete" | "login" | "logout" | "other";
+export type AuditLogEntry = {
+  id: string;
+  action: AuditAction;
+  actor_type: "user" | "system" | "anonymous";
+  actor_user_id: string | null;
+  actor_name: string | null;
+  module: string;
+  route: string;
+  object_type: string | null;
+  object_id: string | null;
+  object_label: string | null;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
+};
+export type AuditLogFilters = {
+  action?: AuditAction;
+  actor_id?: string;
+  module?: string;
+  object_q?: string;
+  q?: string;
+  date_from?: string;
+  date_to?: string;
+};
+export type AuditLogFacets = {
+  users: Array<{ id: string; name: string }>;
+  modules: string[];
+};
+
+const auditLogs = {
+  async list(params: AuditLogFilters & { limit?: number; offset?: number } = {}): Promise<Paginated<AuditLogEntry>> {
+    const query: Record<string, string | number | boolean> = {};
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== "") query[key] = value;
+    }
+    return request({ method: "GET", path: "/audit-logs", params: query });
+  },
+  async filters(): Promise<AuditLogFacets> {
+    return request({ method: "GET", path: "/audit-logs/filters" });
+  },
+  async get(id: string): Promise<AuditLogEntry> {
+    return request({ method: "GET", path: `/audit-logs/${id}` });
+  },
+  async exportCsv(params: AuditLogFilters = {}): Promise<Blob> {
+    const query: Record<string, string | number | boolean> = {};
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== "") query[key] = value;
+    }
+    return request({
+      method: "GET",
+      path: "/audit-logs/export.csv",
+      params: query,
+      responseType: "blob",
+    });
+  },
+};
+
 // --- Sections Module ---
 
 export type Section = {
@@ -1985,6 +2044,7 @@ export const api = {
   auth,
   users,
   permissions,
+  auditLogs,
   sections,
   departments,
   nomenclature,

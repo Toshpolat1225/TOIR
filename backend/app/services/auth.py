@@ -21,6 +21,7 @@ from app.core.security import (
 from app.models.identity import LoginAttempt, RefreshToken, User
 from app.schemas.auth import LoginRequest, TokenResponse
 from app.schemas.users import validate_email
+from app.services.audit_log import add_auth_audit_event, set_audit_actor
 
 LOGIN_FAILURE_LIMIT = 5
 LOGIN_FAILURE_WINDOW = timedelta(minutes=15)
@@ -67,6 +68,15 @@ async def authenticate(
     )
     attempts = list(attempt_result.scalars())
     if len(attempts) >= LOGIN_FAILURE_LIMIT:
+        add_auth_audit_event(
+            db,
+            action="login",
+            actor_id=None,
+            actor_name=request.email.strip(),
+            route="/api/v1/auth/login",
+            status_code=429,
+        )
+        await db.commit()
         _raise_login_rate_limit(now, attempts[0].failed_at)
 
     result = await db.execute(select(User).where(User.email == request.email.strip()))
@@ -81,10 +91,33 @@ async def authenticate(
         await run_in_threadpool(verify_unknown_user_password, request.password)
     if user is None or not password_is_valid or not user.is_active:
         db.add(LoginAttempt(key_hash=key_hash, failed_at=now))
+        add_auth_audit_event(
+            db,
+            action="login",
+            actor_id=None,
+            actor_name=request.email.strip(),
+            route="/api/v1/auth/login",
+            status_code=401,
+        )
         await db.commit()
         raise unauthorized_exception()
 
     await db.execute(delete(LoginAttempt).where(LoginAttempt.key_hash == key_hash))
+    set_audit_actor(
+        db,
+        actor_id=user.id,
+        actor_name=user.full_name,
+        actor_type="user",
+        route="/api/v1/auth/login",
+    )
+    add_auth_audit_event(
+        db,
+        action="login",
+        actor_id=user.id,
+        actor_name=user.full_name,
+        route="/api/v1/auth/login",
+        status_code=200,
+    )
     refresh_token = create_refresh_token()
     db.add(
         RefreshToken(
@@ -130,6 +163,21 @@ async def rotate_refresh_token(
         await db.commit()
         raise unauthorized_exception()
 
+    set_audit_actor(
+        db,
+        actor_id=user.id,
+        actor_name=user.full_name,
+        actor_type="user",
+        route="/api/v1/auth/refresh",
+    )
+    add_auth_audit_event(
+        db,
+        action="login",
+        actor_id=user.id,
+        actor_name=user.full_name,
+        route="/api/v1/auth/refresh",
+        status_code=200,
+    )
     next_refresh_token = create_refresh_token()
     stored_token.revoked_at = now
     db.add(
@@ -159,6 +207,24 @@ async def revoke_refresh_token(db: AsyncSession, presented_token: str) -> None:
     )
     stored_token = result.scalar_one_or_none()
     if stored_token is not None:
+        user_result = await db.execute(select(User).where(User.id == stored_token.user_id))
+        user = user_result.scalar_one_or_none()
+        actor_name = user.full_name if user is not None else None
+        set_audit_actor(
+            db,
+            actor_id=stored_token.user_id,
+            actor_name=actor_name,
+            actor_type="user",
+            route="/api/v1/auth/logout",
+        )
+        add_auth_audit_event(
+            db,
+            action="logout",
+            actor_id=stored_token.user_id,
+            actor_name=actor_name,
+            route="/api/v1/auth/logout",
+            status_code=204,
+        )
         stored_token.revoked_at = datetime.now(timezone.utc)
         await db.commit()
 

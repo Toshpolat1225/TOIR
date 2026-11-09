@@ -3,6 +3,7 @@ from app.models.asset_models import AssetModel
 from app.models.analytics import DailyReadinessSnapshot
 from app.models.asset_source_links import AssetSourceLink
 from app.models.asset_field_changes import AssetFieldChange
+from app.models.audit_log import AuditLog
 from app.models.base import Base
 from app.models.identity import LoginAttempt, RefreshToken, User
 from app.models.gtk import (
@@ -43,6 +44,7 @@ __all__ = [
     "AiInsight",
     "AssetSourceLink",
     "AssetFieldChange",
+    "AuditLog",
     "AssetModel",
     "Base",
     "Department",

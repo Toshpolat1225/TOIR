@@ -16,6 +16,7 @@ from app.repositories import wialon_counters as counters_repo
 from app.repositories import wialon_units as units_repo
 from app.schemas.wialon import WialonSyncResult, WialonSyncStatus
 from app.services import assets as assets_service
+from app.services.audit_log import set_audit_system_context
 from app.services.wialon_quality import Reading, Verdict, evaluate
 
 logger = logging.getLogger(__name__)
@@ -115,6 +116,7 @@ async def sync_wialon_assets(db: AsyncSession) -> WialonSyncResult:
             detail="Wialon pull synchronization is not configured",
         )
 
+    set_audit_system_context(db, "wialon")
     async with _sync_lock:
         synced_at = datetime.now(timezone.utc)
         try:

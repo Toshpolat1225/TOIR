@@ -7,6 +7,7 @@ import {
   Wrench, ClipboardList, LayoutDashboard, PanelLeftIcon,
   ChevronRight, Package, LogOut, Users, FileText, ChevronDown, FolderOpen,
   BarChart3,
+  Activity,
   Radio,
 } from "@/components/ui/icons"
 import { cn } from "@/lib/utils"
@@ -26,6 +27,7 @@ const ALL_NAV = [
   { href: "/dashboard/reports",     label: "Отчёты",        icon: FileText,       permission: "reports.view"                    },
   { href: "/dashboard/directories", label: "Справочники",    icon: FolderOpen,      permission: "organization.view"                    },
   { href: "/dashboard/admin/users",    label: "Пользователи", icon: Users,      permission: "users.manage_users" },
+  { href: "/dashboard/admin/audit-logs", label: "Журнал логов", icon: Activity, permission: "users.manage_users" },
 ]
 
 const ROLE_BADGE: Record<string, { label: string; cls: string }> = {

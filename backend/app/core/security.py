@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.identity import User
+from app.services.audit_log import set_audit_actor
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _dummy_password_hash = password_context.hash(secrets.token_urlsafe(32))
@@ -68,6 +69,7 @@ def unauthorized_exception() -> HTTPException:
 
 
 async def get_current_user(
+    request: Request,
     credentials: Annotated[
         HTTPAuthorizationCredentials | None, Depends(bearer_scheme)
     ],
@@ -92,6 +94,14 @@ async def get_current_user(
     user = result.scalar_one_or_none()
     if user is None or not user.is_active:
         raise unauthorized_exception()
+    set_audit_actor(
+        db,
+        actor_id=user.id,
+        actor_name=user.full_name,
+        actor_type="user",
+        route=request.url.path,
+        request_state=request.state,
+    )
     return user
 
 

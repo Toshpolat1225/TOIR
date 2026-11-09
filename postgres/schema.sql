@@ -198,6 +198,26 @@ CREATE TABLE permission_audit (
 );
 CREATE INDEX ix_permission_audit_created_at ON permission_audit(created_at);
 
+CREATE TABLE audit_logs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    action text NOT NULL CHECK (action IN ('create','update','delete','login','logout','other')),
+    actor_type text NOT NULL CHECK (actor_type IN ('user','system','anonymous')),
+    actor_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+    actor_name text,
+    module text NOT NULL,
+    route text NOT NULL,
+    object_type text,
+    object_id text,
+    object_label text,
+    old_values jsonb,
+    new_values jsonb,
+    details jsonb,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_audit_logs_created_at ON audit_logs(created_at);
+CREATE INDEX ix_audit_logs_actor_created ON audit_logs(actor_user_id, created_at);
+CREATE INDEX ix_audit_logs_action_created ON audit_logs(action, created_at);
+CREATE INDEX ix_audit_logs_module_created ON audit_logs(module, created_at);
 
 -- Persistent per-account/IP failed-login window; key_hash does not contain raw credentials.
 CREATE TABLE login_attempts (

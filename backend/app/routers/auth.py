@@ -11,6 +11,7 @@ from app.models.identity import User
 from app.schemas.auth import AccessTokenResponse, LoginRequest
 from app.schemas.users import UserRead
 from app.services.auth import authenticate, revoke_refresh_token, rotate_refresh_token
+from app.services.audit_log import add_auth_audit_event
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
@@ -97,6 +98,16 @@ async def logout(request: Request, db: DatabaseSession) -> Response:
     refresh_token = request.cookies.get(REFRESH_COOKIE_NAME)
     if refresh_token:
         await revoke_refresh_token(db, refresh_token)
+    else:
+        add_auth_audit_event(
+            db,
+            action="logout",
+            actor_id=None,
+            actor_name=None,
+            route="/api/v1/auth/logout",
+            status_code=204,
+        )
+        await db.commit()
     response = Response(status_code=status.HTTP_204_NO_CONTENT)
     _clear_refresh_cookie(response, request)
     return response
