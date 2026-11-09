@@ -254,3 +254,7 @@ Next: verify the route and role restriction in a browser.
 Moved conflicts to `/dashboard/directories/conflicts`, added a card gated by `asset_conflicts.manage`, and removed the separate sidebar entry and old route.
 NOT TESTED: browser route and permissions, backend/API, production/deploy.
 Next: verify the route and access rules in a browser.
+2026-11-09 | Copilot SDK | Restyled asset filters and section hierarchy | directories/assets/page.tsx, HANDOFF | build, tsc, focused ESLint, diff check -> passed; 2 existing Hook warnings
+Redesigned filters as animated icon capsules with counts and a total header; replaced the section selector with nested buttons sourced from `/sections/tree`.
+NOT TESTED: browser rendering, API filtering, live waiting-for-parts status.
+Next: verify the filters and hierarchy in a browser against an authorized API.

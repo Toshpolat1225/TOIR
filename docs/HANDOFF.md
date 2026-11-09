@@ -1016,6 +1016,19 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 
 - Verify the new route and permission-gated card in a browser. Browser behavior remains NOT TESTED.
 
+## Fixed-assets filters and section tree (2026-11-09)
+
+### Verified
+
+- Fixed-assets filters now use icon capsules with counts for the requested vehicle types and statuses, plus a total-count header.
+- Sections are loaded dynamically from `/sections/tree` and displayed as nested clickable buttons with hierarchy indentation, unit-type labels, counts, selection highlighting, and hover transitions.
+- Frontend production build, TypeScript, focused ESLint, and `git diff --check` succeeded. Build reported two existing React Hook warnings in work-orders.
+- NOT TESTED: API data behavior, browser layout/interaction, and live spare-parts status availability.
+
+### Next task
+
+- Verify the capsule filters and clickable hierarchy with an authorized API/browser. Confirm the configured waiting-for-parts status code if its count remains zero.
+
 ## Permissions under users (2026-11-09)
 
 ### Verified

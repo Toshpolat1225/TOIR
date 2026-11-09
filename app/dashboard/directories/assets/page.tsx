@@ -19,6 +19,7 @@ import {
   type GtkFixedAssetDetail,
   type AssetCatalogItem,
   type FixedAssetStats,
+  type SectionTreeNode,
   type FixedAssetInventoryImportPreviewItem,
   type FixedAssetInventoryImportApplyRow,
   type FixedAssetsPassportImportPreview,
@@ -28,7 +29,7 @@ import { useSections, type SectionData } from "@/lib/use-sections"
 import {
   Train, Container, Plus, Search, X, Save, ChevronDown,
   CheckCircle, Wrench, AlertTriangle, XCircle,
-  CalendarDays, SlidersHorizontal, Pencil, Building2, Hash, Radio, Trash2
+  CalendarDays, SlidersHorizontal, Pencil, Radio, Trash2, Package, MapPin, Building2
 } from "@/components/ui/icons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -99,6 +100,93 @@ const statusConfig: Record<string, { label: string; icon: React.ElementType; cls
   maintenance:    { label: "На ТО",          icon: Wrench,        cls: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400",   dot: "bg-amber-500" },
   repair:         { label: "Ремонт",         icon: AlertTriangle, cls: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-400", dot: "bg-orange-500" },
   out_of_service: { label: "Выведен",        icon: XCircle,       cls: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400",           dot: "bg-red-500" },
+}
+
+const ASSET_TYPE_FILTERS = [
+  { code: "locomotive", label: "Локомотив", icon: Train, tone: "blue" },
+  { code: "diesel", label: "Тепловоз", icon: Train, tone: "orange" },
+  { code: "wagon", label: "Вагон-самосвал", icon: Container, tone: "purple" },
+  { code: "tank_car", label: "Вагон-цистерна", icon: Container, tone: "cyan" },
+  { code: "platform", label: "Платформа", icon: Container, tone: "emerald" },
+  { code: "special_self_propelled", label: "Специальный самоходный подвижной состав", icon: Train, tone: "slate" },
+] as const
+const FILTER_TONE_CLASSES: Record<string, { soft: string; icon: string }> = {
+  blue: { soft: "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300", icon: "text-blue-600 dark:text-blue-400" },
+  orange: { soft: "bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300", icon: "text-orange-600 dark:text-orange-400" },
+  purple: { soft: "bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300", icon: "text-purple-600 dark:text-purple-400" },
+  cyan: { soft: "bg-cyan-100 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300", icon: "text-cyan-600 dark:text-cyan-400" },
+  emerald: { soft: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300", icon: "text-emerald-600 dark:text-emerald-400" },
+  slate: { soft: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300", icon: "text-slate-600 dark:text-slate-400" },
+  amber: { soft: "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300", icon: "text-amber-600 dark:text-amber-400" },
+  violet: { soft: "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300", icon: "text-violet-600 dark:text-violet-400" },
+  rose: { soft: "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300", icon: "text-rose-600 dark:text-rose-400" },
+}
+
+const SECTION_TYPE_LABELS: Record<string, string> = {
+  department: "Подразделение",
+  division: "Дирекция",
+  section: "Участок",
+  team: "Бригада",
+}
+
+function SectionFilterBranches({
+  nodes,
+  activeId,
+  counts,
+  onSelect,
+}: {
+  nodes: SectionTreeNode[]
+  activeId: string
+  counts: Record<string, number>
+  onSelect: (id: string) => void
+}) {
+  if (!nodes.length) return null
+
+  return (
+    <div className="space-y-2 border-l border-slate-200 pl-3 dark:border-slate-700 sm:pl-4">
+      {nodes.map((section) => {
+        const active = activeId === section.id
+        const Icon = section.unit_type === "department" || section.unit_type === "division"
+          ? Building2
+          : MapPin
+        return (
+          <div key={section.id} className="space-y-2">
+            <button
+              type="button"
+              aria-pressed={active}
+              onClick={() => onSelect(section.id)}
+              className={`group inline-flex max-w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                active
+                  ? "border-blue-500 bg-blue-600 text-white shadow-blue-200/70 dark:shadow-blue-950/50"
+                  : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              }`}
+            >
+              <Icon className={`h-4 w-4 shrink-0 ${active ? "text-blue-100" : "text-blue-500"}`} />
+              <span className="min-w-0 truncate font-medium">{section.name}</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${
+                active
+                  ? "bg-white/20 text-white"
+                  : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+              }`}>
+                {counts[section.id] ?? 0}
+              </span>
+              <span className={`hidden text-[10px] sm:inline ${active ? "text-blue-100" : "text-slate-400"}`}>
+                {SECTION_TYPE_LABELS[section.unit_type ?? "section"] ?? "Участок"}
+              </span>
+            </button>
+            {section.children?.length ? (
+              <SectionFilterBranches
+                nodes={section.children}
+                activeId={activeId}
+                counts={counts}
+                onSelect={onSelect}
+              />
+            ) : null}
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 function PassportAndLinks({ assetId, canWrite, sections, types, onUpdated }: {
@@ -1015,8 +1103,11 @@ export default function OsPage() {
   const canWrite = profile?.role === "admin" || profile?.role === "operator"
   const [assetTypes, setAssetTypes] = useState<AssetCatalogItem[]>([])
   const [assetStatuses, setAssetStatuses] = useState<AssetCatalogItem[]>([])
+  const [sectionTree, setSectionTree] = useState<SectionTreeNode[]>([])
+  const [sectionTreeError, setSectionTreeError] = useState("")
   const [assets,    setAssets]    = useState<FixedAsset[]>([])
   const [total,     setTotal]     = useState(0)
+  const [overallTotal, setOverallTotal] = useState<number | null>(null)
   const [page,      setPage]      = useState(0)
   const [loading,   setLoading]   = useState(true)
   const [selected,  setSelected]  = useState<FixedAsset | null>(null)
@@ -1054,20 +1145,18 @@ export default function OsPage() {
   // Load counters and depot names once.
   const fetchCounts = useCallback(async () => {
     try {
-      const params: Parameters<typeof api.fixedAssets.stats>[0] = {};
-      if (debouncedSearch) params.q = debouncedSearch;
-      if (fType) params.asset_type = fType;
-      if (fStatus) params.status = fStatus;
-      if (fBehavior) params.status_behavior = fBehavior;
-      if (fSection) params.section_id = fSection;
-      const stats = await api.fixedAssets.stats(params);
+      const [stats, unified] = await Promise.all([
+        api.fixedAssets.stats(),
+        api.fixedAssets.unified({ limit: 1, offset: 0 }),
+      ])
       setCounts(stats);
+      setOverallTotal(unified.total)
       setStatsError("");
     } catch (error) {
       console.error("Failed to fetch asset counts:", error);
       setStatsError("Не удалось загрузить статистику основных средств.");
     }
-  }, [debouncedSearch, fType, fStatus, fBehavior, fSection])
+  }, [])
 
   useEffect(() => {
     void Promise.all([
@@ -1077,6 +1166,23 @@ export default function OsPage() {
       setAssetTypes(types.items)
       setAssetStatuses(statuses.items)
     }).catch((error) => console.error("Failed to load asset catalogs:", error))
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    api.sections.tree()
+      .then((tree) => {
+        if (active) {
+          setSectionTree(tree)
+          setSectionTreeError("")
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setSectionTreeError(error instanceof Error ? error.message : "Не удалось загрузить дерево участков.")
+        }
+      })
+    return () => { active = false }
   }, [])
 
   const fetchAssets = useCallback(async (
@@ -1168,6 +1274,26 @@ export default function OsPage() {
   const clearFilters  = () => { setFType(""); setFSource(""); setFSection(""); setFStatus(""); setFBehavior(""); setFWithoutOrgUnit(false); setSearch("") }
   const selectType = (code: string) => setFType((current) => current === code ? "" : code)
   const selectBehavior = (code: string) => { setFStatus(""); setFBehavior((current) => current === code ? "" : code) }
+  const selectStatus = (code: string, behavior?: string) => {
+    setFType("")
+    if (behavior) {
+      selectBehavior(behavior)
+      return
+    }
+    setFBehavior("")
+    setFStatus((current) => current === code ? "" : code)
+  }
+  const waitingPartsCode = assetStatuses.find((item) =>
+    item.names.ru.toLocaleLowerCase("ru-RU").includes("запас"),
+  )?.code ?? "waiting_spare_parts"
+  const statusFilters = [
+    { code: "operational", label: "В эксплуатации", behavior: "operational", icon: CheckCircle, tone: "emerald" },
+    { code: "maintenance", label: "На ТО", behavior: "maintenance", icon: Wrench, tone: "amber" },
+    { code: "repair", label: "В ремонте", behavior: "repair", icon: AlertTriangle, tone: "orange" },
+    { code: waitingPartsCode, label: "Ожидание запасных частей", icon: Package, tone: "violet" },
+    { code: "out_of_service", label: "Выведены из ОС", behavior: "out_of_service", icon: XCircle, tone: "rose" },
+  ]
+  const selectedStatus = fBehavior || fStatus
   const filtered      = assets  // Filtering is performed by the server.
   const selectableAssetIds = filtered
     .filter((asset) => asset.source !== "wialon" && !asset.id.startsWith("wialon:"))
@@ -1549,15 +1675,126 @@ export default function OsPage() {
         </div>
       </div>
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
-        <button type="button" aria-pressed={!fType && !fBehavior} onClick={() => { setFType(""); setFStatus(""); setFBehavior("") }} className={`text-left rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${!fType && !fBehavior ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-blue-400"}`}>
-          <div className="flex justify-between"><Hash className="w-4 h-4 text-blue-500"/><span className="text-2xl font-bold text-gray-900 dark:text-white">{counts?.total ?? "—"}</span></div><p className="mt-2 text-xs font-medium text-gray-600 dark:text-gray-300">Всего объектов</p>
-        </button>
-        {assetTypes.map((item) => <button type="button" key={item.code} aria-pressed={fType === item.code} onClick={() => selectType(item.code)} className={`text-left rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${fType === item.code ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400"}`}><div className="flex justify-between"><Train className="w-4 h-4 text-indigo-500"/><span className="text-2xl font-bold text-gray-900 dark:text-white">{counts?.by_asset_type[item.code] ?? 0}</span></div><p className="mt-2 text-xs font-medium text-gray-600 dark:text-gray-300">{item.names.ru || item.code}</p></button>)}
-        {[{code:"operational",label:"В эксплуатации",Icon:CheckCircle},{code:"maintenance",label:"На ТО",Icon:Wrench},{code:"repair",label:"В ремонте",Icon:Wrench},{code:"out_of_service",label:"Выведены из ОС",Icon:XCircle}].map(({code,label,Icon}) => <button type="button" key={code} aria-pressed={fBehavior === code} onClick={() => selectBehavior(code)} className={`text-left rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${fBehavior === code ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-emerald-400"}`}><div className="flex justify-between"><Icon className="w-4 h-4 text-emerald-600"/><span className="text-2xl font-bold text-gray-900 dark:text-white">{counts?.by_status_behavior[code] ?? 0}</span></div><p className="mt-2 text-xs font-medium text-gray-600 dark:text-gray-300">{label}</p></button>)}
-        {assetStatuses.map((item) => <button type="button" key={item.code} aria-pressed={fStatus === item.code} onClick={() => { setFBehavior(""); setFStatus((current) => current === item.code ? "" : item.code) }} className={`text-left rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${fStatus === item.code ? "border-violet-500 bg-violet-50 dark:bg-violet-950/40" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-violet-400"}`}><div className="flex justify-between"><CheckCircle className="w-4 h-4 text-violet-600"/><span className="text-2xl font-bold text-gray-900 dark:text-white">{counts?.by_status[item.code] ?? 0}</span></div><p className="mt-2 text-xs font-medium text-gray-600 dark:text-gray-300">{item.names.ru || item.code}</p></button>)}
-        {sectionsData.map((section) => <button type="button" key={section.id} aria-pressed={fSection === section.id} onClick={() => setFSection((current) => current === section.id ? "" : section.id)} className={`text-left rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${fSection === section.id ? "border-amber-500 bg-amber-50 dark:bg-amber-950/40" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-amber-400"}`}><div className="flex justify-between"><Building2 className="w-4 h-4 text-amber-600"/><span className="text-2xl font-bold text-gray-900 dark:text-white">{counts?.by_section[section.id] ?? 0}</span></div><p className="mt-2 truncate text-xs font-medium text-gray-600 dark:text-gray-300">{section.name}</p></button>)}
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-blue-50/70 shadow-sm dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-blue-950/30">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 px-5 py-4 dark:border-slate-800 sm:px-6">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
+              <Train className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Всего объектов</p>
+              <p className="text-3xl font-bold leading-tight tracking-tight text-slate-900 dark:text-white">
+                {overallTotal ?? "—"}
+              </p>
+            </div>
+          </div>
+          <button type="button" onClick={clearFilters}
+            className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/80 px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:bg-white hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-blue-900 dark:bg-slate-900/80 dark:text-blue-300 dark:hover:bg-slate-800">
+            <X className="h-4 w-4" />
+            Все объекты
+          </button>
+        </div>
+
+        <div className="space-y-6 p-5 sm:p-6">
+          <section aria-labelledby="asset-type-filters">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 id="asset-type-filters" className="text-sm font-bold tracking-wide text-slate-700 dark:text-slate-200">Тип ТС</h2>
+              <span className="text-xs text-slate-400">Выберите один тип</span>
+            </div>
+            <div className="flex flex-wrap gap-2.5">
+              {ASSET_TYPE_FILTERS.map(({ code, label, icon: Icon, tone }) => (
+                <button type="button" key={code} aria-pressed={fType === code}
+                  onClick={() => { setFStatus(""); setFBehavior(""); selectType(code) }}
+                  className={`group inline-flex min-h-11 items-center gap-2 rounded-full border px-3.5 py-2 text-left text-sm shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                    fType === code
+                      ? "border-indigo-500 bg-indigo-600 text-white shadow-indigo-300/40 dark:shadow-indigo-950/50"
+                      : "border-slate-200 bg-white/90 text-slate-700 hover:border-indigo-300 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200"
+                  }`}>
+                  <span className={`flex h-7 w-7 items-center justify-center rounded-full transition-colors ${
+                    fType === code ? "bg-white/15 text-white" : FILTER_TONE_CLASSES[tone].soft
+                  }`}>
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span className="font-semibold">{label}</span>
+                  <span className={`min-w-7 rounded-full px-2 py-0.5 text-center text-xs font-bold tabular-nums ${
+                    fType === code ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                  }`}>
+                    {counts?.by_asset_type[code] ?? 0}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section aria-labelledby="asset-status-filters">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 id="asset-status-filters" className="text-sm font-bold tracking-wide text-slate-700 dark:text-slate-200">Статус</h2>
+              <span className="text-xs text-slate-400">Фильтр по состоянию</span>
+            </div>
+            <div className="flex flex-wrap gap-2.5">
+              {statusFilters.map(({ code, label, behavior, icon: Icon, tone }) => {
+                const count = behavior
+                  ? counts?.by_status_behavior[behavior] ?? 0
+                  : counts?.by_status[code] ?? 0
+                const active = selectedStatus === (behavior || code)
+                return (
+                  <button type="button" key={label} aria-pressed={active}
+                    onClick={() => selectStatus(code, behavior)}
+                    className={`group inline-flex min-h-11 items-center gap-2 rounded-full border px-3.5 py-2 text-left text-sm shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                      active
+                        ? "border-emerald-500 bg-emerald-600 text-white shadow-emerald-300/40 dark:shadow-emerald-950/50"
+                        : "border-slate-200 bg-white/90 text-slate-700 hover:border-emerald-300 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200"
+                    }`}>
+                    <Icon className={`h-4 w-4 ${active ? "text-white" : FILTER_TONE_CLASSES[tone].icon}`} />
+                    <span className="font-semibold">{label}</span>
+                    <span className={`min-w-7 rounded-full px-2 py-0.5 text-center text-xs font-bold tabular-nums ${
+                      active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+
+          <section aria-labelledby="section-tree-filter">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 id="section-tree-filter" className="text-sm font-bold tracking-wide text-slate-700 dark:text-slate-200">Участки</h2>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Структура из дерева участков</p>
+              </div>
+              <button type="button" aria-pressed={!fSection} onClick={() => setFSection("")}
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                  !fSection
+                    ? "border-blue-500 bg-blue-600 text-white"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                }`}>
+                <Building2 className="h-3.5 w-3.5" />
+                Все участки
+                <span className={`rounded-full px-1.5 py-0.5 tabular-nums ${!fSection ? "bg-white/20" : "bg-slate-100 dark:bg-slate-800"}`}>
+                  {overallTotal ?? "—"}
+                </span>
+              </button>
+            </div>
+            {sectionTreeError ? (
+              <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">{sectionTreeError}</p>
+            ) : sectionTree.length ? (
+              <div className="max-h-72 overflow-auto rounded-2xl border border-slate-200/80 bg-white/50 p-3 dark:border-slate-800 dark:bg-slate-950/30">
+                <SectionFilterBranches
+                  nodes={sectionTree}
+                  activeId={fSection}
+                  counts={counts?.by_section ?? {}}
+                  onSelect={(id) => setFSection((current) => current === id ? "" : id)}
+                />
+              </div>
+            ) : (
+              <p className="rounded-xl border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                Дерево участков пока пусто.
+              </p>
+            )}
+          </section>
+        </div>
       </div>
 
       {/* Filters */}
@@ -1572,18 +1809,6 @@ export default function OsPage() {
             <SlidersHorizontal className="w-4 h-4"/><span>Фильтры:</span>
           </div>
 
-          {/* Type */}
-          <div className="relative">
-            <select value={fType} onChange={e => setFType(e.target.value as AssetType | "")} className={selCls}>
-              <option value="">Все типы</option>
-              
-              
-              
-            {assetTypes.map((item) => <option key={item.code} value={item.code}>{item.names.ru || item.code}</option>)}</select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
-            {fType && <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600 rounded-full text-[9px] text-white flex items-center justify-center font-bold">✓</span>}
-          </div>
-
           {/* Source */}
           <div className="relative">
             <select aria-label="Источник" value={fSource} onChange={(event) => setFSource(event.target.value as UnifiedAsset["source"] | "")} className={selCls}>
@@ -1595,32 +1820,10 @@ export default function OsPage() {
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
           </div>
 
-          {/* Section */}
-          <div className="relative">
-            <select aria-label="Участок" value={fSection} onChange={e => setFSection(e.target.value)} className={selCls}>
-              <option value="">Все участки</option>
-              {sectionsData.map(section => <option key={section.id} value={section.id}>{section.name}</option>)}
-            </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
-          </div>
-
           <label className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">
             <input type="checkbox" checked={fWithoutOrgUnit} onChange={(event) => setFWithoutOrgUnit(event.target.checked)} />
             Без участка
           </label>
-
-          {/* Status */}
-          <div className="relative">
-            <select value={fStatus} onChange={e => setFStatus(e.target.value as AssetStatus | "")} className={selCls}>
-              <option value="">Все статусы</option>
-              
-              
-              
-              
-            {assetStatuses.map((item) => <option key={item.code} value={item.code}>{item.names.ru || item.code}</option>)}</select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
-            {fStatus && <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600 rounded-full text-[9px] text-white flex items-center justify-center font-bold">✓</span>}
-          </div>
 
           {activeFilters > 0 && (
             <button onClick={clearFilters}
