@@ -250,3 +250,7 @@ Next: verify the route and card with allowed and restricted users in a browser.
 Moved role permissions to `/dashboard/admin/users/permissions`, added a link on the users page, removed the separate sidebar entry, and added a return link.
 NOT TESTED: browser route and admin access, backend/API, production/deploy.
 Next: verify the route and role restriction in a browser.
+2026-11-09 | Copilot SDK | Moved data conflicts into directories | dashboard layout, directories index, conflicts page route, HANDOFF | build, tsc, focused ESLint, route search, diff check -> passed; 2 existing Hook warnings
+Moved conflicts to `/dashboard/directories/conflicts`, added a card gated by `asset_conflicts.manage`, and removed the separate sidebar entry and old route.
+NOT TESTED: browser route and permissions, backend/API, production/deploy.
+Next: verify the route and access rules in a browser.

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Users, Package, ChevronRight, FolderOpen, Building2, Wrench, Gauge, Landmark } from "@/components/ui/icons"
+import { Users, Package, ChevronRight, FolderOpen, Building2, Wrench, Gauge, Landmark, ShieldCheck } from "@/components/ui/icons"
 import { useAuth } from "@/lib/auth-context"
 
 const DIRECTORIES = [
@@ -94,6 +94,27 @@ export default function DirectoriesPage() {
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Типы и статусы объектов основных средств
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-300 dark:text-gray-600 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
+            </div>
+          </Link>
+        )}
+        {hasPermission("asset_conflicts.manage") && (
+          <Link
+            href="/dashboard/directories/conflicts"
+            className="group bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-lg transition-all"
+          >
+            <div className="flex items-start gap-4">
+              <div className="p-3 rounded-xl bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-400">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                  Конфликты данных
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Предложения источников для паспорта основных средств
                 </p>
               </div>
               <ChevronRight className="w-5 h-5 text-gray-300 dark:text-gray-600 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />

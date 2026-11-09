@@ -61,7 +61,7 @@ export default function AssetConflictsPage() {
     } finally {
       setLoading(false)
     }
-  }, [canManage, offset])
+  }, [authLoading, canManage, offset])
 
   useEffect(() => { void load() }, [load])
 

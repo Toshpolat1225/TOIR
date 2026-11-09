@@ -1027,3 +1027,16 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Verify the new route and admin-only access in a browser. Browser behavior remains NOT TESTED.
+
+## Data conflicts under directories (2026-11-09)
+
+### Verified
+
+- The data-conflicts page moved from `/dashboard/os/conflicts` to `/dashboard/directories/conflicts`.
+- Its standalone sidebar item was removed. The `Справочники` index shows `Конфликты данных` to users with `asset_conflicts.manage`.
+- The existing admin/operator page check remains in place; loading state now waits for auth resolution in its callback dependencies.
+- Frontend build, TypeScript, focused ESLint, old-route source search, and `git diff --check` completed successfully. Build showed two existing React Hook warnings in work-orders.
+
+### Next task
+
+- Verify the new route and permission-gated card in a browser. Browser behavior remains NOT TESTED.
