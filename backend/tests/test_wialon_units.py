@@ -339,6 +339,7 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(),
             ) as rebaseline,
             patch.object(assets, "_commit", new=AsyncMock()),
+            patch.object(assets.repository, "enrich_asset_display_data", new=AsyncMock()),
             patch.object(assets, "asset_read", return_value=_fixed_asset_read()),
         ):
             await assets.update_fixed_asset(
@@ -396,6 +397,7 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(),
             ) as rebaseline,
             patch.object(assets, "_commit", new=AsyncMock()),
+            patch.object(assets.repository, "enrich_asset_display_data", new=AsyncMock()),
             patch.object(assets, "asset_read", return_value=_fixed_asset_read()),
         ):
             await assets.update_fixed_asset(

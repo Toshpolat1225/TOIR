@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.assets import FixedAsset, MileageHistory
+from app.models.assets import FixedAsset, fixed_asset_name_expression, MileageHistory
 from app.models.maintenance import MaintenanceInterval, WorkType
 from app.models.work_orders import WorkOrder, WorkOrderItem, WorkOrderRepair
 from app.models.work_records import AiInsight
@@ -240,7 +240,7 @@ async def list_insights(
 
     count_statement = select(func.count()).select_from(AiInsight)
     statement = (
-        select(AiInsight, FixedAsset.name, WorkOrder.number)
+        select(AiInsight, fixed_asset_name_expression(), WorkOrder.number)
         .outerjoin(FixedAsset, FixedAsset.id == AiInsight.asset_id)
         .outerjoin(WorkOrder, WorkOrder.id == AiInsight.work_order_id)
     )

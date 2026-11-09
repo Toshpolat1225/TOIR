@@ -50,3 +50,8 @@ schema_actual.sql
 schema_fresh.sql
 assets_import.json
 *.dump
+
+schema_actual.sql
+schema_fresh.sql
+assets_import.json
+*.dump

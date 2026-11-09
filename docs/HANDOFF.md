@@ -957,3 +957,21 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### NOT TESTED
 
 - Actual PostgreSQL FK rows/blockers and cascades, Alembic execution/downgrade, import transaction and resulting row count in PostgreSQL, API/browser flow, production, and deployment.
+
+## P9 canonical schema and legacy-column retirement (2026-11-06)
+
+### Verified
+
+- Confirmed Compose does not mount `postgres/schema.sql`; the backend entrypoint runs `alembic upgrade head`, and revision 0001 reads its immutable `0001_baseline.sql`. The schema is not applied twice during the normal clean install.
+- Added forward-only revisions 0023 and 0024. Revision 0023 reconciles duplicate-permitting asset indexes; 0024 copies legacy values to canonical fields, updates dependent views, then drops `name`, `series`, `depot`, `number`, `number_normalized`, `org_unit_id`, and `comm_date`. Applied revisions 0001–0022 were not edited.
+- The fixed-asset API name is computed from its translated type name, `serial_number`, and `inv_number`; `section_id` and `commissioned_at` are canonical, with `org_unit_id` and `comm_date` retained as response aliases. Search/sort and unified assets now use model/section relations rather than removed columns.
+- Updated `postgres/schema.sql` with the final fixed-asset columns, supplementary permission/Wialon tables, indexes, and analytics views. Catalog and permission seed rows remain in migrations only.
+- Schema drift checks validate ORM-vs-schema columns/indexes, legacy-column absence, view/seed definitions, locale characters, Alembic single head and revision lengths, and offline SQL for 0023–0024. Requested asset, GTK, Wialon, unified, attribution, and drift tests: **187 passed, 17 subtests passed** using backend `.venv`.
+
+### Next task
+
+- On a disposable PostgreSQL copy, apply revisions 0023–0024, verify the migration history and row mappings, then compare `pg_dump --schema-only` with the supplied `schema_actual.sql`. Do not run these operations on production from this workspace.
+
+### NOT TESTED
+
+- PostgreSQL execution of either new migration, actual view replacement, database row preservation, live schema dump comparison, API E2E, frontend typecheck/build, browser, server, or deployment.

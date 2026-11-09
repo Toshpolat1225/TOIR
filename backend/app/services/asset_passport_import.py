@@ -238,7 +238,7 @@ async def _prepare_rows(
                     if isinstance(serial_number, str)
                     else None
                 ),
-                "number_normalized": normalized_number or None,
+                "normalized_serial_number": normalized_number or None,
                 "inv_number": (
                     inv_number.strip() if isinstance(inv_number, str) else None
                 ),
@@ -273,11 +273,11 @@ async def _prepare_rows(
         number_key = (
             row["asset_type"],
             row["model_normalized"],
-            row["number_normalized"],
+            row["normalized_serial_number"],
         )
         if (
             row["decommissioned_at"] is None
-            and row["number_normalized"]
+            and row["normalized_serial_number"]
             and number_key in duplicate_number_groups
         ):
             reasons.append("Серийный номер повторяется для модели и типа ОС.")
@@ -430,21 +430,15 @@ async def apply(
                 )
             asset = FixedAsset(
                 inv_number=row["inv_number"],
-                name=row["name"],
                 asset_type=row["asset_type"],
-                series=model_name,
                 section_id=section_id,
                 status="operational",
-                comm_date=row["commissioned_at"],
                 year_built=row["year_built"],
                 serial_number=row["serial_number"],
                 model_id=model_id,
-                org_unit_id=section_id,
                 commissioned_at=row["commissioned_at"],
                 decommissioned_at=row["decommissioned_at"],
                 inv_number_is_provisional=False,
-                number=row["serial_number"],
-                number_normalized=row["number_normalized"],
                 wialon_id=row["wialon_id"],
                 gtk_id=row["gtk_id"],
             )

@@ -48,7 +48,13 @@ async def list_unified_assets(
         ) from exc
 
     items: list[UnifiedAssetRead] = []
-    for asset, unit, section in rows:
+    for row in rows:
+        if len(row) == 3:
+            asset, unit, section = row
+            asset_name = getattr(asset, "name", None)
+            asset_series = getattr(asset, "series", None)
+        else:
+            asset, unit, section, asset_name, asset_series = row
         source_value = (
             "both" if asset is not None and unit is not None
             else "toir" if asset is not None
@@ -59,9 +65,9 @@ async def list_unified_assets(
                 source=source_value,
                 asset_id=asset.id if asset is not None else None,
                 unit_id=unit.unit_id if unit is not None else None,
-                name=asset.name if asset is not None else unit.name,
+                name=(asset_name if asset is not None else unit.name),
                 asset_type=asset.asset_type if asset is not None else None,
-                series=asset.series if asset is not None else None,
+                series=asset_series if asset is not None else None,
                 inv_number=asset.inv_number if asset is not None else None,
                 status=asset.status if asset is not None else None,
                 section=section.name if section is not None else None,

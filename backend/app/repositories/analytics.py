@@ -8,7 +8,8 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.analytics import DailyReadinessSnapshot
-from app.models.assets import FixedAsset
+from app.models.asset_models import AssetModel
+from app.models.assets import FixedAsset, fixed_asset_name_expression
 from app.models.identity import User
 from app.models.localization import FixedAssetStatus
 from app.models.organization import Section
@@ -45,12 +46,19 @@ REPORT_SQL: dict[str, tuple[str, str, tuple[str, ...]]] = {
     ),
     "fixed-assets": (
         """
-        SELECT fa.id, fa.inv_number, fa.name, fa.asset_type, fa.series, fa.depot,
+        SELECT fa.id, fa.inv_number,
+               COALESCE(type_name.name, fa.asset_type) || ' ' ||
+                   COALESCE(fa.serial_number, '') || '-' || fa.inv_number AS name,
+               fa.asset_type, am.series, s.name AS depot,
                fa.section_id,
-               s.name AS section, fa.status, fa.comm_date, fa.year_built, fa.mileage,
+               s.name AS section, fa.status, fa.commissioned_at AS comm_date,
+               fa.year_built, fa.mileage,
                fa.initial_cost, fa.owner, fa.created_at
         FROM fixed_assets fa
         LEFT JOIN sections s ON s.id = fa.section_id
+        LEFT JOIN asset_models am ON am.id = fa.model_id
+        LEFT JOIN fixed_asset_type_translations type_name
+            ON type_name.type_code = fa.asset_type AND type_name.locale = 'ru'
         """,
         "SELECT count(*) FROM fixed_assets fa",
         (
@@ -121,20 +129,31 @@ async def dashboard_assets_and_orders(
     db: AsyncSession, *, section_id: UUID | None
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     asset_query = (
-        select(FixedAsset, Section.name.label("section_name"))
+        select(
+            FixedAsset,
+            Section.name.label("section_name"),
+            AssetModel.series.label("series"),
+            fixed_asset_name_expression().label("asset_name"),
+        )
         .outerjoin(Section, Section.id == FixedAsset.section_id)
-        .order_by(FixedAsset.name, FixedAsset.id)
+        .outerjoin(AssetModel, AssetModel.id == FixedAsset.model_id)
+        .order_by(fixed_asset_name_expression(), FixedAsset.id)
     )
     order_query = (
         text(
             """
-            SELECT wo.id, wo.number, wo.fixed_asset_id, fa.name AS unit, s.name AS section,
+            SELECT wo.id, wo.number, wo.fixed_asset_id,
+                   COALESCE(type_name.name, fa.asset_type) || ' ' ||
+                       COALESCE(fa.serial_number, '') || '-' || fa.inv_number AS unit,
+                   s.name AS section,
                    wo.section_id, wo.status, wo.priority, wo.description,
                    wo.created_at, wo.date_start, e.full_name AS tech,
                    types.work_types AS repair_kind,
                    types.work_type_ids
             FROM work_orders wo
             JOIN fixed_assets fa ON fa.id = wo.fixed_asset_id
+            LEFT JOIN fixed_asset_type_translations type_name
+                ON type_name.type_code = fa.asset_type AND type_name.locale = 'ru'
             JOIN sections s ON s.id = wo.section_id
             LEFT JOIN employees e ON e.id = wo.executor_id
             LEFT JOIN LATERAL (
@@ -157,16 +176,16 @@ async def dashboard_assets_and_orders(
     assets = [
         {
             "id": asset.id,
-            "name": asset.name,
+            "name": asset_name,
             "asset_type": asset.asset_type,
-            "series": asset.series,
+            "series": series,
             "status": asset.status,
             "section_id": asset.section_id,
             "section": section_name,
             "depot": section_name,
             "mileage": asset.mileage,
         }
-        for asset, section_name in assets_result
+        for asset, section_name, series, asset_name in assets_result
     ]
     orders = [dict(row) for row in order_rows.mappings().all()]
     return assets, orders
@@ -322,7 +341,13 @@ async def list_report_rows(
         if report == "work-orders":
             filters.append("(number ILIKE :q OR unit ILIKE :q OR asset_inv_number ILIKE :q OR description ILIKE :q)")
         elif report == "fixed-assets":
-            filters.append("(fa.name ILIKE :q OR fa.inv_number ILIKE :q OR fa.series ILIKE :q)")
+            filters.append(            "("
+            "COALESCE((SELECT fat.name FROM fixed_asset_type_translations fat "
+            "WHERE fat.type_code = fa.asset_type AND fat.locale = 'ru' LIMIT 1), "
+            "fa.asset_type) || ' ' || COALESCE(fa.serial_number, '') || '-' || "
+            "fa.inv_number ILIKE :q OR fa.inv_number ILIKE :q OR "
+            "EXISTS (SELECT 1 FROM asset_models am WHERE am.id = fa.model_id "
+            "AND am.series ILIKE :q))")
         else:
             filters.append("(td.doc_no ILIKE :q OR wo.number ILIKE :q)")
         parameters["q"] = f"%{q.strip()}%"

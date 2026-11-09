@@ -151,17 +151,23 @@ async def create_fixed_asset(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     await _validate_gtk_link(db, payload.gtk_id, payload.asset_type)
-    if payload.section_id is not None and await references_repository.get_non_archived_section(
-        db, payload.section_id
+    section_id = payload.section_id or payload.org_unit_id
+    commissioned_at = payload.commissioned_at or payload.comm_date
+    if (
+        payload.section_id is not None
+        and payload.org_unit_id is not None
+        and payload.section_id != payload.org_unit_id
+    ):
+        raise HTTPException(
+            status_code=422, detail="Section identifiers do not match"
+        )
+    if section_id is not None and await references_repository.get_non_archived_section(
+        db, section_id
     ) is None:
         raise HTTPException(
             status_code=422,
             detail="Cannot assign an archived or missing section to a fixed asset",
         )
-    if payload.org_unit_id is not None and await references_repository.get_non_archived_section(
-        db, payload.org_unit_id
-    ) is None:
-        raise HTTPException(status_code=422, detail="Organization unit is unavailable")
     if not await repository.active_catalog_value_exists(db, kind="types", code=payload.asset_type):
         raise HTTPException(status_code=422, detail="Asset type is unavailable")
     if not await repository.active_catalog_value_exists(db, kind="statuses", code=payload.status):
@@ -172,11 +178,22 @@ async def create_fixed_asset(
         name=payload.name,
         model_id=payload.model_id,
         model_name=payload.series,
-        number=payload.number,
+        number=payload.serial_number or payload.number,
     )
-    asset_values = payload.model_dump()
+    asset_values = payload.model_dump(
+        exclude={
+            "name",
+            "series",
+            "depot",
+            "number",
+            "number_normalized",
+            "org_unit_id",
+            "comm_date",
+        }
+    )
     asset_values.update(passport_fields)
-    asset_values["number_normalized"] = passport_fields["number_normalized"]
+    asset_values["section_id"] = section_id
+    asset_values["commissioned_at"] = commissioned_at
     asset_values["inv_number_is_provisional"] = payload.inv_number.upper().startswith(
         "WIALON-"
     )
@@ -230,6 +247,7 @@ async def create_fixed_asset(
         "Inventory number, accounting number, model, number, source ID, or section conflicts",
     )
     await db.refresh(asset)
+    await repository.enrich_asset_display_data(db, [asset])
     return asset_read(asset)
 
 
@@ -266,6 +284,45 @@ async def update_fixed_asset(
         db, asset_id, master_section_id, for_update=True
     )
     changes = payload.model_dump(exclude_unset=True)
+    legacy_number_changed = "number" in changes
+    if "name" in changes:
+        raise HTTPException(status_code=422, detail="Asset name is read-only")
+    if "number_normalized" in changes:
+        raise HTTPException(
+            status_code=422, detail="Normalized serial number is read-only"
+        )
+    if "org_unit_id" in changes:
+        if (
+            "section_id" in changes
+            and changes["section_id"] != changes["org_unit_id"]
+        ):
+            raise HTTPException(
+                status_code=422, detail="Section identifiers do not match"
+            )
+        changes.setdefault("section_id", changes["org_unit_id"])
+        changes.pop("org_unit_id")
+    if "comm_date" in changes:
+        if (
+            "commissioned_at" in changes
+            and changes["commissioned_at"] != changes["comm_date"]
+        ):
+            raise HTTPException(
+                status_code=422, detail="Commissioning dates do not match"
+            )
+        changes.setdefault("commissioned_at", changes["comm_date"])
+        changes.pop("comm_date")
+    if "number" in changes:
+        if (
+            "serial_number" in changes
+            and changes["serial_number"] != changes["number"]
+        ):
+            raise HTTPException(
+                status_code=422, detail="Serial numbers do not match"
+            )
+        changes.setdefault("serial_number", changes["number"])
+        changes.pop("number")
+    changes.pop("series", None)
+    changes.pop("depot", None)
     active_links = {
         link.source: link
         for link in await asset_links_repository.get_active(db, asset.id)
@@ -289,11 +346,6 @@ async def update_fixed_asset(
     )
     if "status" in changes and not await repository.active_catalog_value_exists(db, kind="statuses", code=changes["status"]):
         raise HTTPException(status_code=422, detail="Asset status is unavailable")
-    if "org_unit_id" in changes and changes["org_unit_id"] is not None:
-        if await references_repository.get_non_archived_section(
-            db, changes["org_unit_id"]
-        ) is None:
-            raise HTTPException(status_code=422, detail="Organization unit is unavailable")
     passport_fields_changed = {
         "year_built",
         "commissioned_at",
@@ -320,10 +372,11 @@ async def update_fixed_asset(
             raise HTTPException(
                 status_code=422, detail="Asset model type does not match asset type"
             )
-    if "number" in changes or "number_normalized" in changes:
-        number = changes.get("number", asset.number)
-        changes["number_normalized"] = (
-            asset_passport.normalize_token(number) if number else None
+    if "serial_number" in changes:
+        changes["serial_number"] = (
+            changes["serial_number"].strip()
+            if changes["serial_number"] is not None
+            else None
         )
     if "inv_number" in changes or "inv_number_is_provisional" in changes:
         inv_number = changes.get("inv_number", asset.inv_number)
@@ -347,6 +400,11 @@ async def update_fixed_asset(
         for field in field_changes_service.PASSPORT_FIELD_NAMES
         if field in changes
     }
+    if "section_id" in changes:
+        new_passport_values["org_unit_id"] = changes["section_id"]
+    if legacy_number_changed:
+        new_passport_values.pop("serial_number", None)
+        new_passport_values["number"] = changes["serial_number"]
     field_changes_service.record_manual_changes(
         db,
         asset,
@@ -431,6 +489,7 @@ async def update_fixed_asset(
         "Inventory number, accounting number, model, number, source ID, or section conflicts",
     )
     await db.refresh(asset)
+    await repository.enrich_asset_display_data(db, [asset])
     return asset_read(asset)
 
 

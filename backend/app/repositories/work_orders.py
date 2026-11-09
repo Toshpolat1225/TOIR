@@ -7,7 +7,11 @@ from uuid import UUID
 from sqlalchemy import Select, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.assets import FixedAsset, MileageHistory
+from app.models.assets import (
+    FixedAsset,
+    MileageHistory,
+    fixed_asset_name_expression,
+)
 from app.models.identity import User
 from app.models.inventory import Nomenclature, NomenclatureNorm, WorkTypeTemplate
 from app.models.maintenance import WorkType
@@ -62,7 +66,7 @@ def _order_rows_statement():
     return (
         select(
             WorkOrder,
-            FixedAsset.name.label("asset_name"),
+            fixed_asset_name_expression().label("asset_name"),
             FixedAsset.inv_number.label("asset_inv_number"),
             Employee.full_name.label("executor_name"),
             Section.name.label("section_name"),
@@ -126,7 +130,7 @@ async def list_orders(
             or_(
                 WorkOrder.number.ilike(term),
                 WorkOrder.description.ilike(term),
-                FixedAsset.name.ilike(term),
+                fixed_asset_name_expression().ilike(term),
             )
         )
     if material_q and material_q.strip():

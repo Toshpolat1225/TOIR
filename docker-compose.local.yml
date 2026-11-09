@@ -1,19 +1,43 @@
+version: '3.8'
+
 services:
   postgres:
+    image: postgres:16-alpine
+    container_name: toir-postgres-1
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: toir_db
     ports:
       - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   backend:
+    build: .
+    container_name: toir-backend-1
     ports:
       - "127.0.0.1:18000:8000"
     environment:
-      CORS_ORIGINS: "http://localhost:3000"
-      API_DOCS_ENABLED: "true"
-      WIALON_SYNC_ENABLED: "false"
+      - CORS_ORIGINS=http://localhost:3000
+      - API_DOCS_ENABLED=true
+      - WIALON_SYNC_ENABLED=false
+      - DATABASE_URL=postgresql://postgres:postgrespassword@postgres:5432/toir_db
+    depends_on:
+      - postgres
+    restart: unless-stopped
 
   frontend:
+    build: ./frontend
+    container_name: toir-frontend-1
     ports:
       - "127.0.0.1:3000:3000"
-    build:
-      args:
-        NEXT_PUBLIC_API_URL: "http://localhost:18000/api/v1"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:18000/api/v1
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

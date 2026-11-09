@@ -229,3 +229,8 @@ Read assets_list.json: 1,075 rows; parser accepts all rows after the user-approv
 Full-file parser probe: 1 passed (1,075 accepted, 0 blocked; temporary probe removed). Related suites: 183 passed; `npx.cmd tsc --noEmit` and `npm.cmd run build` exited 0 (3 existing Hook warnings).
 NOT TESTED: disposable PostgreSQL migration/import, database before/after counts, actual FK rows, API/browser, production/deploy; source file unmodified; no commit.
 Next: apply and verify the migration/import only in an authorized disposable PostgreSQL database; do not run production import before exact database counts are verified.
+2026-11-06 | Copilot SDK | P9 canonicalized fixed-asset schema and removed legacy columns at head.
+Changed: revisions 0023-0024, asset ORM/repositories/services/schemas, `postgres/schema.sql`, drift tests, DEPLOY, DECISIONS, HANDOFF.
+Tested: backend `.venv` requested asset/GTK/Wialon/unified/attribution plus drift suites -> 187 passed, 17 subtests passed.
+NOT TESTED: PostgreSQL migration/view execution, live dump comparison, API E2E, frontend, browser, server/deployment; no secrets opened, no commit.
+Next: apply migrations and compare schema only on a user-controlled disposable PostgreSQL copy.

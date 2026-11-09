@@ -6,7 +6,8 @@ from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.assets import FixedAsset
+from app.models.asset_models import AssetModel
+from app.models.assets import FixedAsset, fixed_asset_name_expression
 from app.models.asset_source_links import AssetSourceLink
 from app.models.organization import Section
 from app.models.wialon_units import WialonUnitRecord
@@ -80,6 +81,7 @@ def _joined_from(unit_links):
             full=True,
         )
         .outerjoin(Section.__table__, FixedAsset.section_id == Section.id)
+        .outerjoin(AssetModel.__table__, FixedAsset.model_id == AssetModel.id)
     )
 
 
@@ -88,14 +90,14 @@ def _sort_columns(now: datetime, unit) -> dict[str, Any]:
         "source": _source_expression(unit),
         "asset_id": FixedAsset.id,
         "unit_id": unit.unit_id,
-        "name": func.coalesce(FixedAsset.name, unit.name),
+        "name": func.coalesce(fixed_asset_name_expression(), unit.name),
         "asset_type": FixedAsset.asset_type,
-        "series": FixedAsset.series,
+        "series": AssetModel.series,
         "inv_number": FixedAsset.inv_number,
         "status": FixedAsset.status,
         "section": Section.name,
         "section_id": FixedAsset.section_id,
-        "org_unit_id": FixedAsset.org_unit_id,
+        "org_unit_id": FixedAsset.section_id,
         "mileage": FixedAsset.mileage,
         "wialon_cnm": unit.cnm,
         "wialon_cneh": unit.cneh,
@@ -141,14 +143,14 @@ async def list_unified_assets(
     if effective_section_id is not None:
         filters.append(FixedAsset.section_id == effective_section_id)
     if without_org_unit:
-        filters.extend((FixedAsset.id.is_not(None), FixedAsset.org_unit_id.is_(None)))
+        filters.extend((FixedAsset.id.is_not(None), FixedAsset.section_id.is_(None)))
     if q:
         pattern = f"%{q.strip()}%"
         filters.append(
             or_(
-                FixedAsset.name.ilike(pattern),
+                fixed_asset_name_expression().ilike(pattern),
                 FixedAsset.inv_number.ilike(pattern),
-                FixedAsset.series.ilike(pattern),
+                AssetModel.series.ilike(pattern),
                 unit.name.ilike(pattern),
                 unit.unit_id.ilike(pattern),
             )
@@ -156,7 +158,13 @@ async def list_unified_assets(
 
     joined = _joined_from(unit_links)
     count_query = select(func.count()).select_from(joined)
-    rows_query = select(FixedAsset, unit, Section).select_from(joined)
+    rows_query = select(
+        FixedAsset,
+        unit,
+        Section,
+        fixed_asset_name_expression(),
+        AssetModel.series,
+    ).select_from(joined)
     if filters:
         count_query = count_query.where(*filters)
         rows_query = rows_query.where(*filters)

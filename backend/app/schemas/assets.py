@@ -288,4 +288,19 @@ def asset_read(asset: object) -> FixedAssetRead:
         last_sync is not None
         and last_sync >= datetime.now(timezone.utc) - timedelta(minutes=15)
     )
-    return result.model_copy(update={"wialon_online": is_recent})
+    from app.services.asset_passport import normalize_token
+
+    type_name = getattr(asset, "_asset_type_name", None) or result.asset_type
+    serial_number = result.serial_number
+    return result.model_copy(
+        update={
+            "name": f"{type_name} {serial_number or ''}-{result.inv_number}",
+            "series": getattr(asset, "series", None),
+            "depot": getattr(asset, "depot", None),
+            "number": serial_number,
+            "number_normalized": normalize_token(serial_number) or None,
+            "org_unit_id": result.section_id,
+            "comm_date": result.commissioned_at,
+            "wialon_online": is_recent,
+        }
+    )

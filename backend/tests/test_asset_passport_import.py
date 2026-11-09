@@ -408,7 +408,8 @@ def test_type_migration_and_schema_have_no_backup_or_rollback_table():
 
     assert 'down_revision = "0020_p7_permission_grants"' in migration_text
     assert all(f"('{asset_type}'" in migration_text for asset_type in expected_types)
-    assert all(f"('{asset_type}'" in schema for asset_type in expected_types)
+    assert "INSERT INTO fixed_asset_types" not in schema
+    assert "INSERT INTO fixed_asset_type_translations" not in schema
     assert "asset_data_import_batches" not in schema
     assert "backup" not in migration_text.lower()
     assert "op.drop_table" not in migration_text

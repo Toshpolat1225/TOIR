@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.wialon_client import WialonUnit
-from app.models.assets import FixedAsset
+from app.models.assets import FixedAsset, fixed_asset_name_expression
 from app.models.asset_source_links import AssetSourceLink
 from app.models.organization import Section
 from app.models.wialon_counters import WialonCounterState, WialonRejectedReading
@@ -247,7 +247,7 @@ async def list_unlinked_assets(
             ~has_link,
             FixedAsset.asset_type.in_(("locomotive", "diesel")),
         )
-        .order_by(FixedAsset.name.asc(), FixedAsset.id.asc())
+        .order_by(fixed_asset_name_expression().asc(), FixedAsset.id.asc())
     )
     if master_section_id is not None:
         query = query.where(FixedAsset.section_id == master_section_id)

@@ -7,9 +7,19 @@ from uuid import UUID
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.assets import FixedAsset, MileageHistory
+from app.models.asset_models import AssetModel
+from app.models.assets import (
+    FixedAsset,
+    MileageHistory,
+    fixed_asset_name_expression,
+)
 from app.models.asset_source_links import AssetSourceLink
-from app.models.localization import FixedAssetStatus, FixedAssetType
+from app.models.localization import (
+    FixedAssetStatus,
+    FixedAssetType,
+    FixedAssetTypeTranslation,
+)
+from app.models.organization import Section
 from app.models.work_orders import WorkOrder
 
 ASSET_SORT_FIELDS = frozenset(
@@ -20,7 +30,6 @@ ASSET_SORT_FIELDS = frozenset(
         "series",
         "depot",
         "number",
-        "number_normalized",
         "serial_number",
         "model_id",
         "accounting_inv_number",
@@ -29,7 +38,6 @@ ASSET_SORT_FIELDS = frozenset(
         "decommissioned_at",
         "section_id",
         "status",
-        "comm_date",
         "year_built",
         "mileage",
         "last_maint_date",
@@ -60,10 +68,17 @@ def _asset_filters(
             select(FixedAssetStatus.code).where(FixedAssetStatus.behavior == status_behavior)
         ))
     if depot is not None and "depot" not in omit:
-        filters.append(FixedAsset.depot == depot)
+        filters.append(Section.name == depot)
     if q:
         pattern = f"%{q.strip()}%"
-        filters.append(or_(FixedAsset.name.ilike(pattern), FixedAsset.inv_number.ilike(pattern), FixedAsset.series.ilike(pattern)))
+        filters.append(
+            or_(
+                fixed_asset_name_expression().ilike(pattern),
+                FixedAsset.inv_number.ilike(pattern),
+                FixedAsset.serial_number.ilike(pattern),
+                AssetModel.series.ilike(pattern),
+            )
+        )
     return filters
 
 
@@ -91,18 +106,48 @@ async def list_assets(
     filters = _asset_filters(asset_type=asset_type, status=status, status_behavior=status_behavior,
                              section_id=section_id, depot=depot, q=q)
 
-    count_query = select(func.count()).select_from(FixedAsset)
-    rows_query: Select[tuple[FixedAsset]] = select(FixedAsset)
+    asset_source = (
+        FixedAsset.__table__
+        .outerjoin(Section.__table__, FixedAsset.section_id == Section.id)
+        .outerjoin(AssetModel.__table__, FixedAsset.model_id == AssetModel.id)
+        .outerjoin(
+            FixedAssetTypeTranslation.__table__,
+            (FixedAssetTypeTranslation.type_code == FixedAsset.asset_type)
+            & (FixedAssetTypeTranslation.locale == "ru"),
+        )
+    )
+    count_query = select(func.count()).select_from(asset_source)
+    rows_query: Select[tuple[FixedAsset]] = select(FixedAsset).select_from(asset_source)
     if filters:
         count_query = count_query.where(*filters)
         rows_query = rows_query.where(*filters)
     total = (await db.execute(count_query)).scalar_one()
-    sort_column = getattr(FixedAsset, sort_by)
+    sort_column = {
+        "name": fixed_asset_name_expression(),
+        "series": AssetModel.series,
+        "depot": Section.name,
+        "number": FixedAsset.serial_number,
+        "org_unit_id": FixedAsset.section_id,
+        **{
+            field: getattr(FixedAsset, field)
+            for field in ASSET_SORT_FIELDS
+            if field
+            not in {
+                "name",
+                "series",
+                "depot",
+                "number",
+                "org_unit_id",
+            }
+        },
+    }[sort_by]
     order_column = sort_column.desc() if sort_order == "desc" else sort_column.asc()
     result = await db.execute(
         rows_query.order_by(order_column, FixedAsset.id.asc()).limit(limit).offset(offset)
     )
-    return list(result.scalars().all()), total
+    assets = list(result.scalars().all())
+    await enrich_asset_display_data(db, assets)
+    return assets, total
 
 
 async def get_asset(
@@ -111,7 +156,10 @@ async def get_asset(
     query = select(FixedAsset).where(FixedAsset.id == asset_id)
     if master_section_id is not None:
         query = query.where(FixedAsset.section_id == master_section_id)
-    return (await db.execute(query)).scalar_one_or_none()
+    asset = (await db.execute(query)).scalar_one_or_none()
+    if asset is not None:
+        await enrich_asset_display_data(db, [asset])
+    return asset
 
 
 async def get_asset_for_update(
@@ -120,7 +168,10 @@ async def get_asset_for_update(
     query = select(FixedAsset).where(FixedAsset.id == asset_id)
     if master_section_id is not None:
         query = query.where(FixedAsset.section_id == master_section_id)
-    return (await db.execute(query.with_for_update())).scalar_one_or_none()
+    asset = (await db.execute(query.with_for_update())).scalar_one_or_none()
+    if asset is not None:
+        await enrich_asset_display_data(db, [asset])
+    return asset
 
 
 async def get_assets_for_update(
@@ -132,12 +183,47 @@ async def get_assets_for_update(
         .order_by(FixedAsset.id.asc())
         .with_for_update()
     )
-    return list(result.scalars().all())
+    assets = list(result.scalars().all())
+    await enrich_asset_display_data(db, assets)
+    return assets
+
+
+async def enrich_asset_display_data(
+    db: AsyncSession, assets: Sequence[FixedAsset]
+) -> None:
+    asset_ids = [asset.id for asset in assets]
+    if not asset_ids:
+        return
+    result = await db.execute(
+        select(
+            FixedAsset.id,
+            FixedAssetTypeTranslation.name,
+            AssetModel.series,
+            Section.name,
+        )
+        .outerjoin(
+            FixedAssetTypeTranslation,
+            (FixedAssetTypeTranslation.type_code == FixedAsset.asset_type)
+            & (FixedAssetTypeTranslation.locale == "ru"),
+        )
+        .outerjoin(AssetModel, AssetModel.id == FixedAsset.model_id)
+        .outerjoin(Section, Section.id == FixedAsset.section_id)
+        .where(FixedAsset.id.in_(asset_ids))
+    )
+    display_data = {
+        asset_id: (type_name, series, section_name)
+        for asset_id, type_name, series, section_name in result.all()
+    }
+    for asset in assets:
+        type_name, series, section_name = display_data[asset.id]
+        asset._asset_type_name = type_name
+        asset.series = series
+        asset.depot = section_name
 
 
 async def list_asset_names(db: AsyncSession) -> list[tuple[UUID, str]]:
     result = await db.execute(
-        select(FixedAsset.id, FixedAsset.name).order_by(FixedAsset.id.asc())
+        select(FixedAsset.id, fixed_asset_name_expression()).order_by(FixedAsset.id.asc())
     )
     return list(result.all())
 
@@ -192,35 +278,48 @@ async def asset_stats(
     common = dict(asset_type=asset_type, status=status, status_behavior=status_behavior,
                   section_id=scoped_section_id, depot=depot, q=q)
     filters = _asset_filters(**common)
+    asset_source = (
+        FixedAsset.__table__
+        .outerjoin(Section.__table__, FixedAsset.section_id == Section.id)
+        .outerjoin(AssetModel.__table__, FixedAsset.model_id == AssetModel.id)
+    )
     total = (
-        await db.execute(select(func.count()).select_from(FixedAsset).where(*filters))
+        await db.execute(select(func.count()).select_from(asset_source).where(*filters))
     ).scalar_one()
     type_result = await db.execute(
         select(FixedAsset.asset_type, func.count(FixedAsset.id))
+        .select_from(asset_source)
         .where(*_asset_filters(**common, omit=frozenset({"asset_type"})))
         .group_by(FixedAsset.asset_type)
     )
     status_result = await db.execute(
         select(FixedAsset.status, func.count(FixedAsset.id))
+        .select_from(asset_source)
         .where(*_asset_filters(**common, omit=frozenset({"status", "status_behavior"})))
         .group_by(FixedAsset.status)
     )
     behavior_result = await db.execute(
         select(FixedAssetStatus.behavior, func.count(FixedAsset.id))
         .join(FixedAsset, FixedAsset.status == FixedAssetStatus.code)
+        .outerjoin(Section, FixedAsset.section_id == Section.id)
+        .outerjoin(AssetModel, FixedAsset.model_id == AssetModel.id)
         .where(*_asset_filters(**common, omit=frozenset({"status", "status_behavior"})))
         .group_by(FixedAssetStatus.behavior)
     )
     section_result = await db.execute(
         select(FixedAsset.section_id, func.count(FixedAsset.id))
+        .select_from(asset_source)
         .where(*_asset_filters(**common, omit=frozenset({"section_id"})), FixedAsset.section_id.is_not(None))
         .group_by(FixedAsset.section_id)
     )
     depot_result = await db.execute(
-        select(FixedAsset.depot)
-        .where(*_asset_filters(**common, omit=frozenset({"depot"})), FixedAsset.depot.is_not(None))
+        select(Section.name)
+        .select_from(FixedAsset)
+        .join(Section, Section.id == FixedAsset.section_id)
+        .outerjoin(AssetModel, AssetModel.id == FixedAsset.model_id)
+        .where(*_asset_filters(**common, omit=frozenset({"depot"})))
         .distinct()
-        .order_by(FixedAsset.depot.asc())
+        .order_by(Section.name.asc())
     )
     return (
         total,
@@ -239,7 +338,9 @@ async def add_asset(db: AsyncSession, asset: FixedAsset) -> None:
 async def list_passport_report_data(db: AsyncSession):
     from app.repositories.asset_models import list_report_data
 
-    return await list_report_data(db)
+    assets, sections = await list_report_data(db)
+    await enrich_asset_display_data(db, assets)
+    return assets, sections
 
 
 async def list_assets_unlinked_from_source(
@@ -257,9 +358,11 @@ async def list_assets_unlinked_from_source(
     result = await db.execute(
         select(FixedAsset)
         .where(~has_link)
-        .order_by(FixedAsset.name.asc(), FixedAsset.id.asc())
+        .order_by(fixed_asset_name_expression().asc(), FixedAsset.id.asc())
     )
-    return list(result.scalars().all())
+    assets = list(result.scalars().all())
+    await enrich_asset_display_data(db, assets)
+    return assets
 
 
 async def add_mileage_history(
@@ -319,12 +422,14 @@ async def find_assets_by_name(db: AsyncSession, name: str) -> list[FixedAsset]:
     result = await db.execute(
         select(FixedAsset)
         .where(
-            func.lower(FixedAsset.name) == name.strip().lower(),
+            func.lower(fixed_asset_name_expression()) == name.strip().lower(),
             FixedAsset.asset_type.in_(("locomotive", "diesel")),
         )
         .order_by(FixedAsset.id.asc())
     )
-    return list(result.scalars().all())
+    assets = list(result.scalars().all())
+    await enrich_asset_display_data(db, assets)
+    return assets
 
 
 async def list_wialon_assets(db: AsyncSession) -> list[FixedAsset]:

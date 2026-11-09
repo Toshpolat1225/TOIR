@@ -161,6 +161,43 @@ CREATE TABLE refresh_tokens (
 );
 CREATE INDEX ix_refresh_tokens_user ON refresh_tokens(user_id);
 
+CREATE TABLE permissions (
+    code   text PRIMARY KEY,
+    module text NOT NULL,
+    action text NOT NULL,
+    label  text NOT NULL,
+    CONSTRAINT ck_permissions_action CHECK (
+        action IN (
+            'view','create','update','delete','export','approve',
+            'manage_permissions','manage_users','manage_reference_data'
+        )
+    )
+);
+
+CREATE TABLE role_permissions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    role text NOT NULL,
+    permission_code text NOT NULL REFERENCES permissions(code) ON DELETE CASCADE,
+    granted boolean NOT NULL DEFAULT false,
+    CONSTRAINT ck_role_permissions_role
+        CHECK (role IN ('admin','operator','master','management')),
+    CONSTRAINT uq_role_permissions_role_code UNIQUE (role, permission_code)
+);
+CREATE INDEX ix_role_permissions_role ON role_permissions(role);
+
+CREATE TABLE permission_audit (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+    target_role text NOT NULL,
+    permission_code text NOT NULL,
+    previous_granted boolean NOT NULL,
+    new_granted boolean NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_permission_audit_role
+        CHECK (target_role IN ('admin','operator','master','management'))
+);
+CREATE INDEX ix_permission_audit_created_at ON permission_audit(created_at);
+
 
 -- Persistent per-account/IP failed-login window; key_hash does not contain raw credentials.
 CREATE TABLE login_attempts (
@@ -192,49 +229,34 @@ CREATE TABLE fixed_asset_types (
     is_active  boolean NOT NULL DEFAULT true,
     color      text NOT NULL DEFAULT 'blue' CHECK (color IN ('blue','green','amber','orange','red','gray','purple'))
 );
-INSERT INTO fixed_asset_types(code, color) VALUES
-    ('locomotive', 'blue'), ('diesel', 'orange'), ('wagon', 'purple'),
-    ('tank_car', 'purple'), ('platform', 'green'),
-    ('special_self_propelled', 'gray');
-
 CREATE TABLE fixed_asset_statuses (
     code       text PRIMARY KEY,
     is_active  boolean NOT NULL DEFAULT true,
     behavior   text NOT NULL DEFAULT 'operational' CHECK (behavior IN ('operational','maintenance','repair','out_of_service')),
     color      text NOT NULL DEFAULT 'green' CHECK (color IN ('blue','green','amber','orange','red','gray','purple'))
 );
-INSERT INTO fixed_asset_statuses(code)
-VALUES ('operational'), ('maintenance'), ('repair'), ('out_of_service');
-UPDATE fixed_asset_statuses SET behavior = code, color = CASE code WHEN 'operational' THEN 'green' WHEN 'maintenance' THEN 'amber' WHEN 'repair' THEN 'orange' ELSE 'gray' END;
-
 CREATE TABLE asset_models (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name            text NOT NULL,
-    name_normalized text NOT NULL UNIQUE,
+    name_normalized text NOT NULL,
     asset_type      text NOT NULL REFERENCES fixed_asset_types(code) ON UPDATE CASCADE ON DELETE RESTRICT,
-    series          text
+    series          text,
+    CONSTRAINT uq_asset_models_name_normalized UNIQUE (name_normalized)
 );
 
 CREATE TABLE fixed_assets (
     id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     inv_number           text NOT NULL,
-    name                 text NOT NULL,
     asset_type           text NOT NULL REFERENCES fixed_asset_types(code) ON UPDATE CASCADE ON DELETE RESTRICT,
-    series               text,
-    depot                text,
     section_id           uuid REFERENCES sections(id) ON DELETE SET NULL,
-    number               text,
-    number_normalized    text,
     serial_number        text,
     model_id             uuid REFERENCES asset_models(id) ON DELETE RESTRICT,
     accounting_inv_number text,
-    org_unit_id          uuid REFERENCES sections(id) ON DELETE SET NULL,
     commissioned_at      date,
     decommissioned_at    date,
     inv_number_is_provisional boolean DEFAULT false,
     status               text NOT NULL DEFAULT 'operational'
                          REFERENCES fixed_asset_statuses(code) ON UPDATE CASCADE ON DELETE RESTRICT,
-    comm_date            date,
     year_built           integer,
     -- Operational maintenance and telemetry fields follow the passport fields.
     mileage              numeric(12,2) NOT NULL DEFAULT 0,
@@ -268,16 +290,58 @@ CREATE TABLE fixed_assets (
 );
 CREATE INDEX ix_assets_type_status ON fixed_assets(asset_type, status);
 CREATE INDEX ix_assets_section     ON fixed_assets(section_id);
-CREATE INDEX ix_assets_series      ON fixed_assets(series);
 CREATE INDEX ix_fixed_assets_model_id ON fixed_assets(model_id);
-CREATE INDEX ix_fixed_assets_org_unit_id ON fixed_assets(org_unit_id);
 CREATE INDEX ix_fixed_assets_inv_number
     ON fixed_assets(inv_number);
 CREATE UNIQUE INDEX uq_fixed_assets_accounting_inv_number
     ON fixed_assets(accounting_inv_number) WHERE accounting_inv_number IS NOT NULL;
-CREATE INDEX ix_fixed_assets_type_model_number
-    ON fixed_assets(asset_type, model_id, number_normalized)
-    WHERE model_id IS NOT NULL AND number_normalized IS NOT NULL;
+CREATE INDEX ix_fixed_assets_type_model_serial
+    ON fixed_assets(asset_type, model_id, serial_number)
+    WHERE model_id IS NOT NULL AND serial_number IS NOT NULL;
+
+CREATE TABLE wialon_counter_state (
+    asset_id uuid PRIMARY KEY REFERENCES fixed_assets(id) ON DELETE CASCADE,
+    baseline_cnm numeric(16,2),
+    last_cnm numeric(16,2),
+    last_cnm_at timestamptz,
+    baseline_cneh numeric(14,3),
+    last_cneh numeric(14,3),
+    last_cneh_at timestamptz,
+    engine_hours numeric(12,3),
+    suspect_absolute boolean NOT NULL DEFAULT false,
+    last_status text,
+    last_reason text,
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE wialon_rejected_readings (
+    id bigserial PRIMARY KEY,
+    asset_id uuid NOT NULL REFERENCES fixed_assets(id) ON DELETE CASCADE,
+    counter text NOT NULL CHECK (counter IN ('mileage','engine_hours')),
+    value numeric(18,3),
+    previous_value numeric(18,3),
+    reading_at timestamptz,
+    reason text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_wialon_rejected_asset_time
+    ON wialon_rejected_readings(asset_id, created_at DESC);
+
+CREATE TABLE wialon_units (
+    unit_id varchar(100) PRIMARY KEY,
+    name text NOT NULL,
+    cnm numeric(16,2),
+    cneh numeric(14,3),
+    calc_flags integer,
+    speed numeric(6,2),
+    last_message_at timestamptz,
+    suspect_absolute boolean NOT NULL DEFAULT false,
+    first_seen_at timestamptz NOT NULL DEFAULT now(),
+    last_synced_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_wialon_units_name ON wialon_units(name);
+CREATE INDEX ix_wialon_units_last_message_at ON wialon_units(last_message_at);
 
 CREATE TABLE asset_source_links (
     id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -746,21 +810,6 @@ CREATE TABLE fixed_asset_status_translations (
 CREATE UNIQUE INDEX uq_fixed_asset_type_translation_name ON fixed_asset_type_translations(locale, lower(name));
 CREATE UNIQUE INDEX uq_fixed_asset_status_translation_name ON fixed_asset_status_translations(locale, lower(name));
 
-INSERT INTO fixed_asset_type_translations(type_code, locale, name) VALUES
-    ('locomotive', 'ru', 'Локомотив'), ('locomotive', 'uz-Latn', 'Lokomotiv'), ('locomotive', 'uz-Cyrl', 'Локомотив'),
-    ('diesel', 'ru', 'Тепловоз'), ('diesel', 'uz-Latn', 'Teplovoz'), ('diesel', 'uz-Cyrl', 'Тепловоз'),
-    ('wagon', 'ru', 'Вагон'), ('wagon', 'uz-Latn', 'Vagon'), ('wagon', 'uz-Cyrl', 'Вагон'),
-    ('tank_car', 'ru', 'Вагон-цистерна'), ('tank_car', 'uz-Latn', 'Sisterna vagoni'), ('tank_car', 'uz-Cyrl', 'Цистерна вагони'),
-    ('platform', 'ru', 'Платформа'), ('platform', 'uz-Latn', 'Platforma'), ('platform', 'uz-Cyrl', 'Платформа'),
-    ('special_self_propelled', 'ru', 'Специальный самоходный подвижной состав'),
-    ('special_self_propelled', 'uz-Latn', 'Maxsus o‘ziyurar temir yo‘l tarkibi'),
-    ('special_self_propelled', 'uz-Cyrl', 'Махсус ўзиюрар темир йўл таркиби');
-INSERT INTO fixed_asset_status_translations(status_code, locale, name) VALUES
-    ('operational', 'ru', 'В эксплуатации'), ('operational', 'uz-Latn', 'Foydalanishda'), ('operational', 'uz-Cyrl', 'Фойдаланишда'),
-    ('maintenance', 'ru', 'На ТО'), ('maintenance', 'uz-Latn', 'Texnik xizmatda'), ('maintenance', 'uz-Cyrl', 'Техник хизматда'),
-    ('repair', 'ru', 'Ремонт'), ('repair', 'uz-Latn', 'Ta’mirda'), ('repair', 'uz-Cyrl', 'Таъмирда'),
-    ('out_of_service', 'ru', 'Выведен'), ('out_of_service', 'uz-Latn', 'Foydalanishdan chiqarilgan'), ('out_of_service', 'uz-Cyrl', 'Фойдаланишдан чиқарилган');
-
 -- =====================================================================
 -- 9. updated_at triggerlari
 -- =====================================================================
@@ -820,10 +869,235 @@ CREATE TRIGGER trg_fixed_assets_notify AFTER INSERT OR UPDATE OR DELETE ON fixed
 CREATE TRIGGER trg_users_notify AFTER INSERT OR UPDATE OR DELETE ON users
     FOR EACH ROW EXECUTE FUNCTION notify_change();
 
--- =====================================================================
--- Keyingi bosqich (alohida migratsiya): analytics view'lari
---   executive_summary, section_efficiency, work_type_efficiency,
---   monthly_efficiency, fleet_health, ai_insights_summary,
---   maintenance_schedule, work_order_tmc_details
--- ТО-reja yaratish (auto_schedule_maintenance) — backend servis qatlamida.
--- =====================================================================
+CREATE OR REPLACE FUNCTION fixed_asset_display_name(
+    asset_type text,
+    serial_number text,
+    inv_number text
+) RETURNS text
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT COALESCE(
+        (
+            SELECT fat.name
+            FROM fixed_asset_type_translations fat
+            WHERE fat.type_code = $1 AND fat.locale = 'ru'
+            LIMIT 1
+        ),
+        $1
+    ) || ' ' || COALESCE($2, '') || '-' || $3
+$$;
+
+CREATE OR REPLACE VIEW work_order_tmc_details AS
+SELECT
+    wo.id AS work_order_id,
+    wo.number AS work_order_number,
+    wo.fixed_asset_id AS asset_id,
+    fixed_asset_display_name(fa.asset_type, fa.serial_number, fa.inv_number) AS unit,
+    fa.inv_number AS asset_inv_number,
+    fa.asset_type AS unit_type,
+    wo.section_id,
+    s.name AS section,
+    wo.department_id,
+    wo.status,
+    wo.order_kind,
+    wo.priority,
+    wo.created_at,
+    wo.closed_at,
+    e.full_name AS tech,
+    wt.id AS work_type_id,
+    wt.code AS item_kind,
+    wt.name AS work_type_name,
+    woi.id AS tmc_item_id,
+    woi.nomenclature_id,
+    COALESCE(n.name, woi.name) AS tmc_name,
+    COALESCE(n.code, woi.inv_no) AS tmc_inv_no,
+    COALESCE(n.unit, woi.unit) AS tmc_unit,
+    woi.qty AS tmc_qty,
+    nn.standard_quantity,
+    nn.avg_price,
+    CASE
+        WHEN nn.standard_quantity > 0
+            THEN round(((woi.qty - nn.standard_quantity) / nn.standard_quantity * 100)::numeric, 2)
+        ELSE NULL
+    END AS deviation_percent,
+    round((woi.qty * COALESCE(nn.avg_price, 0))::numeric, 2) AS item_cost,
+    round((nn.standard_quantity * COALESCE(nn.avg_price, 0))::numeric, 2) AS norm_cost
+FROM work_orders wo
+JOIN fixed_assets fa ON fa.id = wo.fixed_asset_id
+JOIN sections s ON s.id = wo.section_id
+LEFT JOIN employees e ON e.id = wo.executor_id
+JOIN work_order_repairs wor ON wor.work_order_id = wo.id
+JOIN work_types wt ON wt.id = wor.work_type_id
+JOIN work_order_items woi ON woi.repair_id = wor.id
+LEFT JOIN nomenclature n ON n.id = woi.nomenclature_id
+LEFT JOIN nomenclature_norms nn
+    ON nn.nomenclature_id = woi.nomenclature_id
+    AND nn.department_id = wo.department_id
+    AND nn.work_type_id = wor.work_type_id;
+
+CREATE OR REPLACE VIEW executive_summary AS
+WITH costs AS (
+    SELECT
+        wo.id AS work_order_id,
+        wo.number,
+        wo.fixed_asset_id AS asset_id,
+        fixed_asset_display_name(fa.asset_type, fa.serial_number, fa.inv_number) AS unit,
+        fa.inv_number AS asset_inv_number,
+        fa.asset_type AS unit_type,
+        wo.section_id,
+        s.name AS section,
+        wo.department_id,
+        wo.status,
+        wo.order_kind,
+        wo.priority,
+        wo.description,
+        wo.created_at,
+        wo.closed_at AS closed,
+        e.full_name AS tech,
+        count(d.tmc_item_id) AS tmc_count,
+        coalesce(sum(d.tmc_qty), 0) AS total_qty,
+        coalesce(sum(d.item_cost), 0) AS total_cost,
+        coalesce(sum(d.norm_cost), 0) AS total_norm_cost,
+        avg(d.deviation_percent) AS avg_deviation_percent,
+        count(*) FILTER (WHERE d.deviation_percent > 20) AS overrun_count,
+        string_agg(DISTINCT d.item_kind, ', ' ORDER BY d.item_kind)
+            FILTER (WHERE d.item_kind IS NOT NULL) AS repair_kind,
+        wo.mileage_at_creation AS current_mileage
+    FROM work_orders wo
+    JOIN fixed_assets fa ON fa.id = wo.fixed_asset_id
+    JOIN sections s ON s.id = wo.section_id
+    LEFT JOIN employees e ON e.id = wo.executor_id
+    LEFT JOIN work_order_tmc_details d ON d.work_order_id = wo.id
+    GROUP BY
+        wo.id, wo.number, wo.fixed_asset_id, fa.asset_type, fa.serial_number,
+        fa.inv_number, wo.section_id, s.name, wo.department_id, wo.status,
+        wo.order_kind, wo.priority, wo.description, wo.created_at, wo.closed_at,
+        e.full_name, wo.mileage_at_creation
+),
+with_previous AS (
+    SELECT
+        costs.*,
+        lag(current_mileage) OVER (
+            PARTITION BY asset_id, repair_kind ORDER BY created_at, work_order_id
+        ) AS prev_mileage,
+        lag(created_at) OVER (
+            PARTITION BY asset_id, repair_kind ORDER BY created_at, work_order_id
+        ) AS prev_order_date
+    FROM costs
+)
+SELECT
+    *,
+    round((total_norm_cost - total_cost)::numeric, 2) AS cost_savings,
+    CASE WHEN total_norm_cost > 0
+        THEN round(((total_norm_cost - total_cost) / total_norm_cost * 100)::numeric, 2)
+        ELSE 0
+    END AS savings_percent,
+    coalesce(current_mileage - prev_mileage, 0) AS mileage_between_orders,
+    extract(day FROM (created_at - prev_order_date)) AS days_between_orders
+FROM with_previous;
+
+CREATE OR REPLACE VIEW section_efficiency AS
+SELECT
+    section_id,
+    section,
+    count(*) AS total_orders,
+    count(*) FILTER (WHERE status = 'completed') AS completed_orders,
+    sum(tmc_count) AS total_tmc_items,
+    round(sum(total_cost)::numeric, 0) AS total_actual_cost,
+    round(sum(total_norm_cost)::numeric, 0) AS total_norm_cost,
+    round(sum(cost_savings)::numeric, 0) AS total_savings,
+    round(avg(savings_percent)::numeric, 2) AS avg_savings_percent,
+    round(avg(avg_deviation_percent)::numeric, 2) AS avg_deviation_percent,
+    sum(overrun_count) AS total_overruns,
+    round(avg(mileage_between_orders)::numeric, 0) AS avg_mileage_between,
+    round(avg(days_between_orders)::numeric, 1) AS avg_days_between
+FROM executive_summary
+GROUP BY section_id, section;
+
+CREATE OR REPLACE VIEW work_type_efficiency AS
+SELECT
+    es.section_id,
+    es.section,
+    d.item_kind AS repair_kind,
+    count(DISTINCT d.work_order_id) AS total_orders,
+    round(sum(d.item_cost)::numeric, 0) AS total_actual_cost,
+    round(sum(d.norm_cost)::numeric, 0) AS total_norm_cost,
+    round(sum(d.norm_cost - d.item_cost)::numeric, 0) AS total_savings,
+    CASE WHEN sum(d.norm_cost) > 0
+        THEN round(((sum(d.norm_cost) - sum(d.item_cost)) / sum(d.norm_cost) * 100)::numeric, 2)
+        ELSE 0
+    END AS avg_savings_percent,
+    round(avg(d.deviation_percent)::numeric, 2) AS avg_deviation_percent,
+    round(avg(es.mileage_between_orders)::numeric, 0) AS avg_mileage_between,
+    count(*) FILTER (WHERE d.deviation_percent > 20) AS total_overruns
+FROM work_order_tmc_details d
+JOIN executive_summary es ON es.work_order_id = d.work_order_id
+GROUP BY es.section_id, es.section, d.item_kind;
+
+CREATE OR REPLACE VIEW monthly_efficiency AS
+SELECT
+    date_trunc('month', created_at)::date AS month,
+    section_id,
+    section,
+    count(*) AS orders_count,
+    round(sum(total_cost)::numeric, 0) AS actual_cost,
+    round(sum(total_norm_cost)::numeric, 0) AS norm_cost,
+    round(sum(cost_savings)::numeric, 0) AS savings,
+    round(avg(savings_percent)::numeric, 2) AS avg_savings_percent
+FROM executive_summary
+GROUP BY date_trunc('month', created_at), section_id, section;
+
+CREATE OR REPLACE VIEW ai_insights_summary AS
+SELECT
+    fa.section_id,
+    ai.insight_type,
+    ai.severity,
+    count(*) AS total_count,
+    count(*) FILTER (WHERE NOT ai.is_resolved) AS unresolved_count,
+    avg(ai.probability) AS avg_probability,
+    max(ai.created_at) AS last_created
+FROM ai_insights ai
+LEFT JOIN fixed_assets fa ON fa.id = ai.asset_id
+WHERE ai.created_at > now() - interval '30 days'
+GROUP BY fa.section_id, ai.insight_type, ai.severity;
+
+CREATE OR REPLACE VIEW fleet_health AS
+SELECT
+    section_id,
+    count(*) AS total_assets,
+    count(*) FILTER (WHERE failure_probability < 0.2) AS healthy_count,
+    count(*) FILTER (WHERE failure_probability >= 0.2 AND failure_probability < 0.5) AS warning_count,
+    count(*) FILTER (WHERE failure_probability >= 0.5 AND failure_probability < 0.8) AS risk_count,
+    count(*) FILTER (WHERE failure_probability >= 0.8) AS critical_count,
+    round(avg(coalesce(health_score, 100))::numeric, 1) AS avg_health_score,
+    round((1 - avg(coalesce(failure_probability, 0)))::numeric * 100, 1) AS reliability_percent
+FROM fixed_assets
+WHERE asset_type IN ('locomotive', 'diesel', 'wagon')
+GROUP BY section_id;
+
+CREATE OR REPLACE VIEW maintenance_schedule AS
+SELECT
+    mp.id AS plan_id,
+    mp.asset_id,
+    fixed_asset_display_name(fa.asset_type, fa.serial_number, fa.inv_number) AS asset_name,
+    fa.inv_number,
+    fa.section_id,
+    mi.id AS interval_id,
+    mi.code AS interval_code,
+    mi.name AS interval_name,
+    mi.work_type_id,
+    mp.status,
+    mp.trigger_mileage,
+    mp.scheduled_date,
+    mp.completed_date,
+    mp.work_order_id,
+    fa.mileage AS current_mileage,
+    CASE WHEN mp.trigger_mileage IS NOT NULL
+        THEN mp.trigger_mileage - fa.mileage
+        ELSE NULL
+    END AS remaining_km
+FROM maintenance_plan mp
+JOIN fixed_assets fa ON fa.id = mp.asset_id
+JOIN maintenance_intervals mi ON mi.id = mp.interval_id
+WHERE mi.is_active;

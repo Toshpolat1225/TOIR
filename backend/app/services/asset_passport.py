@@ -57,7 +57,6 @@ def plan_passport_backfill(
         model_name = derive_model_name(name, series=row["series"])
         normalized_model = normalize_token(model_name) if model_name else ""
         number = extract_passport_number(name, series=model_name)
-        normalized_number = normalize_token(number) if number else None
         if normalized_model:
             models.setdefault(
                 normalized_model,
@@ -72,8 +71,9 @@ def plan_passport_backfill(
             {
                 "id": row["id"],
                 "model_normalized": normalized_model or None,
+                "serial_number": number,
                 "number": number,
-                "number_normalized": normalized_number,
+                "number_normalized": normalize_token(number) or None,
                 "commissioned_at": row["comm_date"],
                 "inv_number_is_provisional": (
                     (row["inv_number"] or "").upper().startswith("WIALON-")
@@ -178,13 +178,9 @@ async def prepare_new_asset(
             status_code=422, detail="Asset number is required for a new asset"
         )
     normalized_number = normalized_number.strip()
-    generated_name = " ".join((model.name, normalized_number))
     return {
-        "name": (name or "").strip() or generated_name,
         "model_id": model.id,
-        "series": model.series or model.name,
-        "number": normalized_number,
-        "number_normalized": normalize_token(normalized_number),
+        "serial_number": normalized_number,
     }
 
 
@@ -245,12 +241,15 @@ def build_passport_report(
                 {"asset_id": asset.id, "inv_number": asset.inv_number, "issues": issues}
             )
 
-        if (
-            asset.model_id is not None
-            and asset.number_normalized
-        ):
+        serial_number = getattr(asset, "serial_number", None) or getattr(
+            asset, "number", None
+        )
+        normalized_serial = normalize_token(serial_number) or getattr(
+            asset, "number_normalized", None
+        )
+        if asset.model_id is not None and normalized_serial:
             duplicate_groups.setdefault(
-                (asset.asset_type, asset.model_id, asset.number_normalized), []
+                (asset.asset_type, asset.model_id, normalized_serial), []
             ).append(asset)
 
     duplicate_numbers = [

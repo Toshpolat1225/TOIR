@@ -53,6 +53,7 @@ def test_backfill_merges_normalized_model_duplicates_and_is_repeatable():
     models, assets = planned
     assert len(models) == 1
     assert models[0]["name_normalized"] == normalize_token("ТЭМ18ДМ")
+    assert [row["serial_number"] for row in assets] == ["1234", "1234"]
     assert [row["number"] for row in assets] == ["1234", "1234"]
     assert assets[0]["number_normalized"] == "1234"
     assert assets[0]["commissioned_at"] == date(2000, 1, 2)
@@ -162,8 +163,9 @@ async def test_missing_name_is_generated_from_model_and_number():
             model_name="ТЭМ18ДМ",
             number="1234",
         )
-    assert prepared["name"] == "ТЭМ18ДМ 1234"
-    assert prepared["number_normalized"] == "1234"
+    assert prepared["serial_number"] == "1234"
+    assert "name" not in prepared
+    assert "number_normalized" not in prepared
     assert prepared["model_id"] == model.id
 
 
@@ -202,6 +204,7 @@ async def test_patch_recomputes_normalized_number():
             new=AsyncMock(return_value=[]),
         ),
         patch.object(assets_service, "_commit", new=AsyncMock()),
+        patch.object(assets_service.repository, "enrich_asset_display_data", new=AsyncMock()),
         patch.object(assets_service, "asset_read", return_value=asset),
     ):
         db = SimpleNamespace(refresh=AsyncMock(), add=Mock())
@@ -210,8 +213,8 @@ async def test_patch_recomputes_normalized_number():
             asset.id,
             FixedAssetUpdate(number="ПЭ-2М 111"),
         )
-    assert asset.number == "ПЭ-2М 111"
-    assert asset.number_normalized == normalize_token("ПЭ-2М 111")
+    assert asset.serial_number == "ПЭ-2М 111"
+    assert normalize_token(asset.serial_number) == normalize_token("ПЭ-2М 111")
     assert db.add.call_args.args[0].field == "number"
 
 

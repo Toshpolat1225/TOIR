@@ -51,13 +51,15 @@ async def test_org_unit_patch_is_persisted_audited_and_read_back():
             new=AsyncMock(return_value=[]),
         ),
         patch.object(assets_service, "_commit", new=AsyncMock()) as commit,
+        patch.object(assets_service.repository, "enrich_asset_display_data", new=AsyncMock()),
         patch.object(assets_service, "asset_read", side_effect=lambda value: value),
     ):
         response = await assets_service.update_fixed_asset(
             db, asset_id, FixedAssetUpdate(org_unit_id=org_unit_id)
         )
 
-    assert response.org_unit_id == org_unit_id
+    assert response.section_id == org_unit_id
+    assert asset.section_id == org_unit_id
     journal = db.add.call_args.args[0]
     assert (journal.field, journal.old_value, journal.new_value) == (
         "org_unit_id",
@@ -99,10 +101,11 @@ async def test_unrelated_patch_does_not_clear_org_unit():
             new=AsyncMock(return_value=[]),
         ),
         patch.object(assets_service, "_commit", new=AsyncMock()),
+        patch.object(assets_service.repository, "enrich_asset_display_data", new=AsyncMock()),
         patch.object(assets_service, "asset_read", side_effect=lambda value: value),
     ):
         response = await assets_service.update_fixed_asset(
-            db, asset_id, FixedAssetUpdate(name="Wagon renamed")
+            db, asset_id, FixedAssetUpdate(inv_number="ASSET-2")
         )
 
     assert response.org_unit_id == org_unit_id
@@ -194,6 +197,7 @@ async def test_create_preserves_org_unit_and_journals_passport_fields():
             new=AsyncMock(side_effect=lambda db, asset: created.append(asset)),
         ),
         patch.object(assets_service, "_commit", new=AsyncMock()) as commit,
+        patch.object(assets_service.repository, "enrich_asset_display_data", new=AsyncMock()),
         patch.object(
             assets_service,
             "asset_read",

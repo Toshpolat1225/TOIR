@@ -4,8 +4,9 @@ from uuid import UUID
 
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
-from app.models.assets import FixedAsset
+from app.models.assets import FixedAsset, fixed_asset_name_expression
 from app.models.maintenance import WorkType
 from app.models.organization import Section
 from app.models.tmc import TmcDocument, TmcDocumentItem
@@ -48,6 +49,7 @@ async def list_documents(
         filters.append(TmcDocument.doc_date <= date_to)
     if q and q.strip():
         term = f"%{q.strip()}%"
+        asset_name = fixed_asset_name_expression()
         filters.append(or_(
             TmcDocument.doc_no.ilike(term),
             TmcDocument.warehouse.ilike(term),
@@ -58,7 +60,11 @@ async def list_documents(
                 FixedAsset, FixedAsset.id == WorkOrder.fixed_asset_id
             ).where(
                 WorkOrder.id == TmcDocument.work_order_id,
-                or_(WorkOrder.number.ilike(term), FixedAsset.name.ilike(term), FixedAsset.inv_number.ilike(term)),
+                or_(
+                    WorkOrder.number.ilike(term),
+                    asset_name.ilike(term),
+                    FixedAsset.inv_number.ilike(term),
+                ),
             )),
             exists(select(TmcDocumentItem.id).where(
                 TmcDocumentItem.document_id == TmcDocument.id,
@@ -74,18 +80,20 @@ async def list_documents(
     if work_order_id is not None and section_id is not None:
         count_query = count_query.join(WorkOrder, WorkOrder.id == TmcDocument.work_order_id)
     total = (await db.execute(count_query.where(*filters))).scalar_one()
+    asset_section = aliased(Section)
     rows = (
         await db.execute(
             select(
                 TmcDocument,
                 WorkOrder.number.label("work_order_number"),
-                FixedAsset.name.label("loco"),
-                FixedAsset.depot.label("depot"),
+                fixed_asset_name_expression().label("loco"),
+                asset_section.name.label("depot"),
                 WorkType.name.label("work_type"),
                 Section.name.label("section_name"),
             )
             .outerjoin(WorkOrder, WorkOrder.id == TmcDocument.work_order_id)
             .outerjoin(FixedAsset, FixedAsset.id == WorkOrder.fixed_asset_id)
+            .outerjoin(asset_section, asset_section.id == FixedAsset.section_id)
             .outerjoin(WorkType, WorkType.id == TmcDocument.work_type_id)
             .outerjoin(Section, Section.id == TmcDocument.section_id)
             .where(*filters)

@@ -7,7 +7,7 @@ from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.assets import FixedAsset
+from app.models.assets import FixedAsset, fixed_asset_name_expression
 from app.models.maintenance import (
     MaintenanceInterval,
     MaintenancePlan,
@@ -86,7 +86,9 @@ async def list_schedule_assets(
     statement = select(FixedAsset)
     if master_section_id is not None:
         statement = statement.where(FixedAsset.section_id == master_section_id)
-    result = await db.execute(statement.order_by(FixedAsset.name.asc(), FixedAsset.id.asc()))
+    result = await db.execute(
+        statement.order_by(fixed_asset_name_expression().asc(), FixedAsset.id.asc())
+    )
     return list(result.scalars().all())
 
 
@@ -211,7 +213,7 @@ def _plan_statement() -> Select[Any]:
     return (
         select(
             MaintenancePlan,
-            FixedAsset.name.label("asset_name"),
+            fixed_asset_name_expression().label("asset_name"),
             FixedAsset.inv_number.label("asset_inv_number"),
             FixedAsset.mileage.label("mileage"),
             FixedAsset.section_id.label("section_id"),
@@ -414,7 +416,7 @@ async def list_work_orders_for_schedule(
     statement = (
         select(
             WorkOrder,
-            FixedAsset.name.label("asset_name"),
+            fixed_asset_name_expression().label("asset_name"),
             FixedAsset.inv_number.label("asset_inv_number"),
             FixedAsset.mileage.label("mileage"),
             FixedAsset.section_id.label("asset_section_id"),

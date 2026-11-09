@@ -83,7 +83,7 @@ def test_p6_migration_chain_is_linear_from_0012_to_head():
             parents.add(down_revision)
         elif isinstance(down_revision, (tuple, list)):
             parents.update(down_revision)
-    assert all_revisions - parents == {"0022_asset_number_dupes"}
+    assert all_revisions - parents == {"0024_asset_column_contract"}
     assert all(len(revision) <= 32 for revision in all_revisions)
 
     p6_revisions = [
@@ -132,7 +132,10 @@ def test_p6_asset_models_and_links_match_orm_and_canonical_schema():
     assert "uq_fixed_assets_inv_number_real" not in schema
     assert "CREATE INDEX ix_fixed_assets_inv_number" in schema
     assert "uq_fixed_assets_active_model_number" not in schema
-    assert "CREATE INDEX ix_fixed_assets_type_model_number" in schema
+    assert "CREATE INDEX ix_fixed_assets_type_model_serial" in schema
+    assert "DROP COLUMN IF EXISTS number_normalized" in (
+        MIGRATIONS / "0024_fixed_asset_column_contract.py"
+    ).read_text(encoding="utf-8")
     assert "uq_fixed_assets_accounting_inv_number" in schema
     assert "ck_fixed_assets_year_built_min" in schema
     assert "ck_fixed_assets_commissioned_at_year_built" in schema
@@ -271,6 +274,7 @@ async def test_p6_asset_patch_replaces_provisional_wialon_number_with_real_numbe
         patch.object(assets_service, "_get_scoped_asset", new=AsyncMock(return_value=asset)),
         patch.object(assets_service.asset_links_repository, "get_active", new=AsyncMock(return_value=[])),
         patch.object(assets_service, "_commit", new=AsyncMock()),
+        patch.object(assets_service.repository, "enrich_asset_display_data", new=AsyncMock()),
         patch.object(assets_service, "asset_read", return_value=asset),
     ):
         db = SimpleNamespace(refresh=AsyncMock(), add=lambda _: None)
@@ -339,12 +343,13 @@ async def test_p6_single_asset_patch_can_manually_assign_org_unit():
         ),
         patch.object(assets_service.asset_links_repository, "get_active", new=AsyncMock(return_value=[])),
         patch.object(assets_service, "_commit", new=AsyncMock()),
+        patch.object(assets_service.repository, "enrich_asset_display_data", new=AsyncMock()),
         patch.object(assets_service, "asset_read", return_value=asset),
     ):
         await assets_service.update_fixed_asset(
             db, asset.id, assets_service.FixedAssetUpdate(org_unit_id=new_section_id)
         )
-    assert asset.org_unit_id == new_section_id
+    assert asset.section_id == new_section_id
     journal_entry = db.add.call_args.args[0]
     assert (journal_entry.field, journal_entry.old_value, journal_entry.new_value) == (
         "org_unit_id",
