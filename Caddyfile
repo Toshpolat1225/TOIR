@@ -1,16 +1,19 @@
 {$DOMAIN} {
-	encode zstd gzip
+    tls internal
 
-	header {
-		Strict-Transport-Security "max-age=31536000"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=()"
-		-Server
-	}
+    encode zstd gzip
 
-	@backend path /api /api/* /ws /docs /redoc /openapi.json
-	reverse_proxy @backend backend:8000
-	reverse_proxy frontend:3000
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        -Server
+    }
+
+    @backend path /api /api/* /ws /docs /redoc /openapi.json
+    reverse_proxy @backend backend:8000
+
+    reverse_proxy frontend:3000
 }
