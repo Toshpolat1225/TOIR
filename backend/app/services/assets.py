@@ -11,11 +11,9 @@ from app.models.assets import FixedAsset
 from app.repositories import asset_source_links as asset_links_repository
 from app.repositories import assets as repository
 from app.repositories import references as references_repository
-from app.repositories import maintenance as maintenance_repository
 from app.repositories import wialon_counters as wialon_counters_repository
 from app.repositories import wialon_units as wialon_units_repository
 from app.repositories import gtk as gtk_repository
-from app.services import maintenance as maintenance_service
 from app.services import asset_links as asset_links_service
 from app.services import asset_passport
 from app.services import asset_field_changes as field_changes_service
@@ -142,6 +140,11 @@ async def get_fixed_asset_passport_report(db: AsyncSession) -> dict:
 async def create_fixed_asset(
     db: AsyncSession, payload: FixedAssetCreate, *, by: UUID | None = None
 ):
+    if payload.mileage != 0:
+        raise HTTPException(
+            status_code=422,
+            detail="Mileage must be recorded through the wagon opening-balance workflow",
+        )
     try:
         asset_passport.validate_passport_values(
             year_built=payload.year_built,
@@ -251,27 +254,6 @@ async def create_fixed_asset(
     return asset_read(asset)
 
 
-async def _save_mileage_change(
-    db: AsyncSession, asset: FixedAsset, mileage: Decimal, source: str
-) -> None:
-    previous_mileage = await maintenance_repository.lock_asset_mileage(db, asset.id)
-    if previous_mileage is None or previous_mileage == mileage:
-        return
-    asset.mileage = mileage
-    asset.updated_at = datetime.now(timezone.utc)
-    await repository.add_mileage_history(db, asset.id, mileage, source)
-    try:
-        async with db.begin_nested():
-            await maintenance_service.reconcile_asset_plans(db, asset, mileage)
-    except Exception:
-        logger.exception(
-            "Could not reconcile maintenance plans for fixed asset %s",
-            asset.id,
-        )
-    if source == "wialon" and mileage < previous_mileage:
-        logger.warning("Wialon mileage decreased for fixed asset %s", asset.id)
-
-
 async def update_fixed_asset(
     db: AsyncSession,
     asset_id: UUID,
@@ -284,6 +266,11 @@ async def update_fixed_asset(
         db, asset_id, master_section_id, for_update=True
     )
     changes = payload.model_dump(exclude_unset=True)
+    if "mileage" in changes:
+        raise HTTPException(
+            status_code=422,
+            detail="Mileage must be recorded through the wagon opening-balance workflow",
+        )
     legacy_number_changed = "number" in changes
     if "name" in changes:
         raise HTTPException(status_code=422, detail="Asset name is read-only")
@@ -332,6 +319,15 @@ async def update_fixed_asset(
         active_links.get("wialon").external_id if "wialon" in active_links else None
     )
     next_asset_type = changes.get("asset_type", asset.asset_type)
+    if (
+        next_asset_type == "wagon"
+        and asset.asset_type != "wagon"
+        and asset.mileage not in (None, Decimal("0"))
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Asset type change to wagon is blocked until legacy mileage is reviewed",
+        )
     if "asset_type" in changes and not await repository.active_catalog_value_exists(db, kind="types", code=changes["asset_type"]):
         raise HTTPException(status_code=422, detail="Asset type is unavailable")
     for source, link_row in active_links.items():
@@ -390,7 +386,6 @@ async def update_fixed_asset(
                 status_code=422,
                 detail="Cannot assign an archived or missing section to a fixed asset",
             )
-    mileage = changes.pop("mileage", None)
     old_passport_values = {
         field: getattr(asset, field, None)
         for field in field_changes_service.PASSPORT_FIELD_NAMES
@@ -482,8 +477,6 @@ async def update_fixed_asset(
                 else asset.updated_at
             ),
         )
-    if mileage is not None:
-        await _save_mileage_change(db, asset, mileage, "manual")
     await _commit(
         db,
         "Inventory number, accounting number, model, number, source ID, or section conflicts",
@@ -520,11 +513,10 @@ async def set_fixed_asset_mileage(
     *,
     master_section_id: UUID | None = None,
 ):
-    asset = await _get_scoped_asset(db, asset_id, master_section_id)
-    await _save_mileage_change(db, asset, payload.mileage, "manual")
-    await _commit(db, "Could not update fixed asset mileage")
-    await db.refresh(asset)
-    return asset_read(asset)
+    raise HTTPException(
+        status_code=422,
+        detail="Mileage must be recorded through the wagon opening-balance workflow",
+    )
 
 
 async def bulk_update_org_unit(
@@ -629,13 +621,15 @@ async def receive_wialon_update(
         asset.wialon_speed = speed
     asset.wialon_online = online
     if mileage is not None and (mileage > 0 or allow_zero_mileage):
-        await _save_mileage_change(db, asset, mileage, "wialon")
+        logger.warning(
+            "Wialon odometer input was not projected for fixed asset %s",
+            asset.id,
+        )
     await _commit(db, "Could not save Wialon update")
     return {
         "found": True,
         "asset_id": str(asset.id),
         "name": asset.name,
-        "mileage": str(asset.mileage),
         "wialon_online": online,
     }
 

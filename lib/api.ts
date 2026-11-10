@@ -1093,15 +1093,30 @@ export type MileageHistory = {
 };
 
 export type FixedAssetCreate = Pick<FixedAsset, "inv_number" | "asset_type"> &
-  Partial<Omit<FixedAsset, "id" | "inv_number" | "name" | "asset_type" | "created_at" | "updated_at" |
+  Partial<Omit<FixedAsset, "id" | "inv_number" | "name" | "asset_type" | "mileage" | "created_at" | "updated_at" |
     "wialon_last_sync" | "wialon_speed" | "wialon_online" | "failure_probability" |
     "health_score" | "predicted_failure_km" | "last_ml_update">> & {
       name?: string | null;
     };
 
 export type FixedAssetUpdate = Partial<Omit<FixedAsset, "id" | "created_at" | "updated_at" |
+  "mileage" |
   "wialon_last_sync" | "wialon_speed" | "wialon_online" | "failure_probability" |
   "health_score" | "predicted_failure_km" | "last_ml_update">>;
+
+export type WagonMileageOpening = {
+  id: string;
+  asset_id: string;
+  mileage_km: number | string;
+  effective_at: string;
+  created_by: string | null;
+  approved_by: string | null;
+  supersedes_id: string | null;
+  note: string | null;
+  status: "pending" | "approved" | "rejected" | "superseded";
+  approved_at: string | null;
+  created_at: string;
+};
 
 export type FixedAssetPassportReport = {
   depot_matches: Array<{
@@ -1174,13 +1189,6 @@ const fixedAssets = {
   }> {
     return request({ method: "GET", path: `/fixed-assets/${id}/mileage-history`, params });
   },
-  async setMileage(id: string, mileage: number): Promise<FixedAsset> {
-    return request<FixedAsset>({
-      method: "POST",
-      path: `/fixed-assets/${id}/mileage`,
-      body: { mileage },
-    });
-  },
   async create(data: FixedAssetCreate): Promise<FixedAsset> {
     return request<FixedAsset>({ method: "POST", path: "/fixed-assets", body: data });
   },
@@ -1232,6 +1240,39 @@ const fixedAssets = {
   },
   async remove(id: string): Promise<void> {
     await request<null>({ method: "DELETE", path: `/fixed-assets/${id}` });
+  },
+};
+
+const wagonMileage = {
+  async openings(params: { asset_id?: string; status?: WagonMileageOpening["status"]; limit?: number; offset?: number } = {}): Promise<{
+    items: WagonMileageOpening[];
+    total: number;
+    limit: number;
+    offset: number;
+  }> {
+    return request({
+      method: "GET",
+      path: "/wagon-mileage/openings",
+      params,
+    });
+  },
+  async submitOpening(data: {
+    asset_id: string;
+    mileage_km: string | number;
+    effective_at: string;
+    note?: string;
+  }): Promise<WagonMileageOpening> {
+    return request({
+      method: "POST",
+      path: "/wagon-mileage/openings",
+      body: data,
+    });
+  },
+  async approveOpening(id: string): Promise<WagonMileageOpening> {
+    return request({
+      method: "POST",
+      path: `/wagon-mileage/openings/${id}/approve`,
+    });
   },
 };
 
@@ -2049,6 +2090,7 @@ export const api = {
   departments,
   nomenclature,
   fixedAssets,
+  wagonMileage,
   assetConflicts,
   wialon,
   gtk,

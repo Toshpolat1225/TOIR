@@ -441,7 +441,6 @@ def main() -> int:
                 "name": f"Nomenclature work-order asset {suffix[:8]}",
                 "asset_type": "locomotive",
                 "section_id": section_id,
-                "mileage": "10",
             },
         )
         asset_id = _record_created(

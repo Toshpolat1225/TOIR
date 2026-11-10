@@ -194,7 +194,6 @@ def main() -> int:
                 "name": f"Work order unit {suffix[:8]}",
                 "asset_type": "locomotive",
                 "section_id": own_section_id,
-                "mileage": "1234.50",
             },
         )
         asset_id = _record_created(
@@ -415,8 +414,8 @@ def main() -> int:
         )
         check_condition(
             checks,
-            "Mileage snapshot is server-derived",
-            str(primary.get("mileage_at_creation")) == "1234.50",
+            "Locomotive mileage snapshot stays unknown without an approved source",
+            primary.get("mileage_at_creation") is None,
             str(primary.get("mileage_at_creation")),
         )
 
@@ -569,7 +568,7 @@ def main() -> int:
         detail_nested_ok = (
             detail_data.get("id") == primary_id
             and detail_data.get("fixed_asset_id") == asset_id
-            and str(detail_data.get("mileage_at_creation")) == "1234.50"
+            and detail_data.get("mileage_at_creation") is None
             and isinstance(detail_repairs, list)
             and len(detail_repairs) == 1
             and detail_repairs[0].get("work_type_id") == work_type_id
@@ -581,13 +580,13 @@ def main() -> int:
             detail_nested_ok,
             "Detail fields retain their expected foreign-key relations"
             if detail_nested_ok
-            else "A detail relation or opening-mileage snapshot is missing",
+            else "A detail relation is missing or the locomotive snapshot is not blank",
         )
         changed_mileage = request(
             "POST", f"/api/v1/fixed-assets/{asset_id}/mileage",
             bearer=operator_token, payload={"mileage": "2234.50"},
         )
-        require_status(checks, "Update current asset mileage after opening", changed_mileage, 200)
+        require_status(checks, "Legacy mileage write is blocked", changed_mileage, 422)
         reassign_attempt = request(
             "PATCH", f"/api/v1/work-orders/{primary_id}", bearer=operator_token,
             payload={"fixed_asset_id": foreign_asset_id},
@@ -603,16 +602,16 @@ def main() -> int:
         )
         check_condition(
             checks,
-            "Opening snapshot remains unchanged after asset mileage update",
+            "Work-order mileage snapshot remains unknown",
             unchanged_snapshot.status == 200
-            and str(parse_object(unchanged_snapshot).get("mileage_at_creation")) == "1234.50",
+            and parse_object(unchanged_snapshot).get("mileage_at_creation") is None,
             str(parse_object(unchanged_snapshot).get("mileage_at_creation")) if unchanged_snapshot.status == 200 else f"HTTP {unchanged_snapshot.status}",
         )
         update_unknown_asset = request(
             "POST", f"/api/v1/fixed-assets/{missing_mileage_asset_id}/mileage",
             bearer=operator_token, payload={"mileage": "50"},
         )
-        require_status(checks, "Set mileage after unknown snapshot was recorded", update_unknown_asset, 200)
+        require_status(checks, "Legacy mileage write remains blocked", update_unknown_asset, 422)
         preserved_unknown = request(
             "GET", f"/api/v1/work-orders/{missing_mileage_order_id}", bearer=operator_token
         )
@@ -629,8 +628,6 @@ def main() -> int:
             "q": primary_description,
             "status": "pending",
             "fixed_asset_id": asset_id,
-            "mileage_from": "1234.50",
-            "mileage_to": "1234.50",
         })
         report_response = request(
             "GET", f"/api/v1/reports/work-orders?{report_query}", bearer=operator_token
@@ -639,9 +636,9 @@ def main() -> int:
         report_row = next((row for row in report_rows if row.get("number") == primary.get("number")), None)
         check_condition(
             checks,
-            "Work-order report returns opening mileage snapshot with combined filters",
+            "Work-order report keeps locomotive mileage snapshot unknown",
             report_response.status == 200 and report_row is not None
-            and str(report_row.get("mileage_at_creation")) == "1234.50"
+            and report_row.get("mileage_at_creation") is None
             and report_row.get("asset_inv_number") == f"WO-{suffix}",
             "Report snapshot and asset inventory number match the created work order"
             if report_row is not None else f"HTTP {report_response.status}; matching row not found",
@@ -654,9 +651,9 @@ def main() -> int:
         check_condition(
             checks,
             "CSV export includes the same opening mileage snapshot",
-            csv_report.status == 200 and "Пробег на момент открытия, км" in csv_text and "1234.50" in csv_text,
-            "Localized CSV header and snapshot value are present"
-            if csv_report.status == 200 and "1234.50" in csv_text else f"HTTP {csv_report.status}",
+            csv_report.status == 200 and "Пробег на момент открытия, км" in csv_text,
+            "Localized CSV header is present; the locomotive snapshot is blank"
+            if csv_report.status == 200 else f"HTTP {csv_report.status}",
         )
         russian_detail = request(
             "GET",

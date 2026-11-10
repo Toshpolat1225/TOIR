@@ -165,17 +165,17 @@ def _seed_demo(checks: list[Check], token: str) -> None:
 
     assets_by_number = {row.get("inv_number"): row for row in assets}
     asset_specs = [
-        ("ПЭ-2У 111", "locomotive", "operational", "ПЭ-2У", 128450),
-        ("ТЭМ18Д 204", "diesel", "maintenance", "ТЭМ18Д", 88420),
-        ("2ТЭ10М 315", "diesel", "repair", "2ТЭ10М", 219760),
-        ("ЧМЭ3 407", "locomotive", "operational", "ЧМЭ3", 176300),
-        ("Вагон 501", "wagon", "operational", "ЦМГВ", 56320),
-        ("Вагон 502", "wagon", "maintenance", "ЦМГВ", 74810),
-        ("Вагон 503", "wagon", "repair", "ЦМГВ", 91240),
-        ("Вагон 504", "wagon", "operational", "ЦМГВ", 33700),
+        ("ПЭ-2У 111", "locomotive", "operational", "ПЭ-2У"),
+        ("ТЭМ18Д 204", "diesel", "maintenance", "ТЭМ18Д"),
+        ("2ТЭ10М 315", "diesel", "repair", "2ТЭ10М"),
+        ("ЧМЭ3 407", "locomotive", "operational", "ЧМЭ3"),
+        ("Вагон 501", "wagon", "operational", "ЦМГВ"),
+        ("Вагон 502", "wagon", "maintenance", "ЦМГВ"),
+        ("Вагон 503", "wagon", "repair", "ЦМГВ"),
+        ("Вагон 504", "wagon", "operational", "ЦМГВ"),
     ]
     demo_assets: list[dict[str, Any]] = []
-    for index, (name, asset_type, asset_status, series, mileage) in enumerate(asset_specs, 1):
+    for index, (name, asset_type, asset_status, series) in enumerate(asset_specs, 1):
         inv_number = f"DEMO-{index:03d}"
         asset = assets_by_number.get(inv_number)
         if asset is None:
@@ -190,7 +190,6 @@ def _seed_demo(checks: list[Check], token: str) -> None:
                     "depot": section.get("name") or "NAMUNA depo",
                     "section_id": section["id"],
                     "status": asset_status,
-                    "mileage": str(mileage),
                 },
                 f"Create asset {inv_number}",
             )

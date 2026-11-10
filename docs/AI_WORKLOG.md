@@ -266,3 +266,6 @@ Next: verify header spacing and sidebar profile in a browser at desktop and mobi
 Picker uses authenticated APIs, paginated search, separate GTK locomotive/carriage lists, and the existing fixed-asset link API; placeholders remain disabled.
 NOT TESTED: browser UI, live Wialon/GTK responses, and link/unlink API behavior.
 Next: verify search, paging, binding, and placeholder controls in a browser with an authorized account.
+2026-11-10 | Copilot SDK | Implemented controlled P0.3 opening, GTK/Wialon inputs, calculation guards, and mileage-source separation | backend mileage/GTK/Wialon, assets UI, maintenance/work-orders/ML, E2E and seed scripts, HANDOFF | frontend build + tsc, Python syntax + diff check passed; earlier backend selection: 117 passed, 4 subtests, not rerun after final refinements
+NOT TESTED: PostgreSQL migration/integration, E2E, browser behavior, and production; ledger publish/projection remains unimplemented pending policy.
+Next: resolve UNKNOWN/PENDING mileage policies, then implement the idempotent ledger publisher and confirmed projection pipeline.

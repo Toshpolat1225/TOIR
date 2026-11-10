@@ -36,12 +36,11 @@ class WagonMileageEngineTests(unittest.TestCase):
         self.assertEqual(decision.selected.source_id, "a")
         self.assertEqual(decision.confidence, "high")
 
-    def test_multiple_odometer_readings_are_not_summed_or_averaged(self):
+    def test_multiple_locomotives_are_held_until_selection_policy_is_approved(self):
         second = self.interval(loco=uuid4(), start_km="500", end_km="540", source="b")
         decision = select_main_locomotive([self.interval(), second])
-        self.assertIsNotNone(decision.selected)
-        self.assertEqual(decision.selected.end_km - decision.selected.start_km, Decimal("40"))
-        self.assertEqual(decision.confidence, "corroborated")
+        self.assertIsNone(decision.selected)
+        self.assertEqual(decision.confidence, "conflict")
 
     def test_disagreeing_locomotives_are_held(self):
         second = self.interval(loco=uuid4(), start_km="500", end_km="560", source="b")
@@ -49,10 +48,10 @@ class WagonMileageEngineTests(unittest.TestCase):
         self.assertIsNone(decision.selected)
         self.assertEqual(decision.confidence, "conflict")
 
-    def test_stale_reading_is_not_selected(self):
+    def test_no_unapproved_receipt_lag_cutoff_is_applied(self):
         stale = self.interval(received=self.end + timedelta(hours=1))
         decision = select_main_locomotive([stale])
-        self.assertIsNone(decision.selected)
+        self.assertIsNotNone(decision.selected)
 
     def test_full_membership_receives_full_distance(self):
         allocations = allocate_distance_to_wagons(
@@ -63,13 +62,13 @@ class WagonMileageEngineTests(unittest.TestCase):
         self.assertEqual(allocations[0].km, Decimal("40.00"))
         self.assertFalse(allocations[0].estimated)
 
-    def test_partial_membership_is_interpolated_and_flagged(self):
+    def test_partial_membership_is_estimated_without_fabricated_distance(self):
         membership_start = self.start + timedelta(minutes=30)
         allocations = allocate_distance_to_wagons(
             self.interval(),
             [WagonMembershipInterval(self.wagon_a, 10, membership_start, self.end)],
         )
-        self.assertEqual(allocations[0].km, Decimal("30.00"))
+        self.assertIsNone(allocations[0].km)
         self.assertTrue(allocations[0].estimated)
 
     def test_non_overlapping_wagon_gets_no_mileage(self):
@@ -86,6 +85,20 @@ class WagonMileageEngineTests(unittest.TestCase):
         membership = WagonMembershipInterval(self.wagon_a, 10, self.start, self.end)
         allocations = allocate_distance_to_wagons(self.interval(), [membership, membership])
         self.assertEqual(len(allocations), 1)
+
+    def test_membership_starting_at_interval_end_is_outside_half_open_interval(self):
+        allocations = allocate_distance_to_wagons(
+            self.interval(),
+            [
+                WagonMembershipInterval(
+                    self.wagon_a,
+                    10,
+                    self.end,
+                    self.end + timedelta(hours=1),
+                )
+            ],
+        )
+        self.assertEqual(allocations, ())
 
     def test_invalid_odometer_decrease_is_rejected(self):
         decision = select_main_locomotive([self.interval(start_km="140", end_km="100")])

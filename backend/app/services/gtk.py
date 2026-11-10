@@ -10,7 +10,6 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,13 +35,7 @@ from app.services import asset_passport
 from app.services import asset_field_changes as field_changes_service
 from app.services.audit_log import set_audit_system_context
 from app.services import gtk_matching
-from app.services.mileage_attribution import (
-    LocomotiveMileage,
-    MileageCheckpoint,
-    TrainMembership,
-    WagonAsset,
-    compute_attribution,
-)
+from app.services.gtk_membership import snapshot_transition_evidence
 
 logger = logging.getLogger(__name__)
 _sync_lock = asyncio.Lock()
@@ -86,138 +79,6 @@ async def _write_run(db: AsyncSession, run: GtkSyncRun) -> GtkSyncRun:
     async with db.begin():
         await repository.add_sync_run(db, run)
     return run
-
-
-def _snapshot_memberships(
-    snapshot: dict[str, Any],
-) -> list[TrainMembership]:
-    memberships: list[TrainMembership] = []
-    for train in snapshot["trains"]:
-        if not train["is_open"]:
-            continue
-        memberships.extend(
-            TrainMembership(
-                train_gtk_id=train["gtk_id"],
-                kind="locomotive",
-                object_gtk_id=member["gtk_id"],
-                is_main=member["is_main"],
-            )
-            for member in train["locomotives"]
-        )
-        memberships.extend(
-            TrainMembership(
-                train_gtk_id=train["gtk_id"],
-                kind="carriage",
-                object_gtk_id=member["gtk_id"],
-            )
-            for member in train["carriages"]
-        )
-    return memberships
-
-
-async def _attribute_snapshot_mileage(
-    db: AsyncSession,
-    snapshot: dict[str, Any],
-    previous_memberships: list[TrainMembership],
-    run_id: int,
-    base_counts: dict[str, int],
-    *,
-    observed_at: datetime,
-) -> dict[str, int | float]:
-    current_memberships = _snapshot_memberships(snapshot)
-    locomotive_ids = {row["gtk_id"] for row in snapshot["locomotives"]}
-    carriage_rows = {row["gtk_id"]: row for row in snapshot["carriages"]}
-    carriage_ids = set(carriage_rows)
-    all_gtk_ids = locomotive_ids | carriage_ids
-
-    async with db.begin():
-        linked_assets = await repository.get_linked_assets_for_update(
-            db, {str(gtk_id) for gtk_id in all_gtk_ids}
-        )
-        locomotive_assets = {
-            gtk_id: LocomotiveMileage(asset.id, asset.mileage)
-            for gtk_id in locomotive_ids
-            if (asset := linked_assets.get(str(gtk_id))) is not None
-            and asset.asset_type in {"locomotive", "diesel"}
-        }
-        wagon_assets = {
-            gtk_id: WagonAsset(asset.id, carriage_rows[gtk_id]["is_active"])
-            for gtk_id in carriage_ids
-            if (asset := linked_assets.get(str(gtk_id))) is not None
-            and asset.asset_type == "wagon"
-        }
-        checkpoint_rows = await repository.get_locomotive_mileage_checkpoints(
-            db, locomotive_ids
-        )
-        checkpoints = {
-            gtk_id: MileageCheckpoint(
-                row.locomotive_asset_id,
-                row.mileage,
-                row.checkpoint_at,
-            )
-            for gtk_id, row in checkpoint_rows.items()
-        }
-        result = compute_attribution(
-            previous_memberships,
-            current_memberships,
-            locomotive_assets,
-            wagon_assets,
-            checkpoints,
-            observed_at=observed_at,
-        )
-        if result.loco_rejected:
-            logger.warning(
-                "GTK locomotive mileage attribution rejected: count=%s",
-                result.loco_rejected,
-            )
-
-        updated_mileage: dict[UUID, Decimal] = {}
-        assets_by_id = {asset.id: asset for asset in linked_assets.values()}
-        for entry in result.entries:
-            updated_mileage[entry.wagon_asset_id] = (
-                updated_mileage.get(
-                    entry.wagon_asset_id,
-                    assets_by_id[entry.wagon_asset_id].mileage,
-                )
-                + entry.km
-            )
-            await repository.add_wagon_mileage_log(
-                db,
-                GtkWagonMileageLog(
-                    wagon_asset_id=entry.wagon_asset_id,
-                    loco_asset_id=entry.loco_asset_id,
-                    train_gtk_id=entry.train_gtk_id,
-                    period_from=entry.period_from,
-                    period_to=entry.period_to,
-                    km=entry.km,
-                ),
-            )
-        for asset_id, mileage in updated_mileage.items():
-            asset = assets_by_id[asset_id]
-            asset.mileage = mileage
-            asset.updated_at = observed_at
-            await assets_service.repository.add_mileage_history(
-                db, asset_id, mileage, "gtk"
-            )
-
-        await repository.save_locomotive_mileage_checkpoints(
-            db,
-            {
-                gtk_id: (checkpoint.asset_id, checkpoint.mileage, checkpoint.at)
-                for gtk_id, checkpoint in result.checkpoints.items()
-            },
-        )
-        attribution_counts: dict[str, int | float] = {
-            "attributed_km": float(result.attributed_km),
-            "unattributed_km": float(result.unattributed_km),
-            "wagons_updated": result.wagons_updated,
-            "loco_unlinked": result.loco_unlinked,
-            "loco_rejected": result.loco_rejected,
-        }
-        await repository.update_sync_run_counts(
-            db, run_id, {**base_counts, **attribution_counts}
-        )
-        return attribution_counts
 
 
 async def _propose_gtk_passport_fields(
@@ -304,24 +165,14 @@ async def sync_gtk(db: AsyncSession) -> GtkSyncRun | None:
             snapshot = await adapter.fetch_gtk_snapshot()
             counts = _counts(snapshot)
             run_at = datetime.now(timezone.utc)
-            previous_memberships: list[TrainMembership] = []
             async with db.begin():
                 previous = await repository.latest_successful_counts(db)
                 is_suspicious = _suspicious(counts, previous)
-                if not is_suspicious:
-                    previous_memberships = [
-                        TrainMembership(
-                            train_gtk_id=member.train_gtk_id,
-                            kind=member.kind,
-                            object_gtk_id=member.object_gtk_id,
-                            is_main=member.is_main,
-                        )
-                        for member in await repository.list_open_memberships(db)
-                    ]
-                    await repository.upsert_mirror(db, snapshot, synced_at=run_at)
-                    await repository.sync_memberships(
-                        db, snapshot, observed_at=run_at
-                    )
+                previous_memberships = (
+                    await repository.list_open_memberships(db)
+                    if not is_suspicious
+                    else []
+                )
                 run = GtkSyncRun(
                     started_at=started_at,
                     finished_at=run_at,
@@ -342,34 +193,33 @@ async def sync_gtk(db: AsyncSession) -> GtkSyncRun | None:
                     raw_payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')
                 ).encode('utf-8')
                 payload_hash = hashlib.sha256(payload_bytes).hexdigest()
-                await db.execute(
-                    pg_insert(GtkRawSnapshot)
-                    .values(
-                        sync_run_id=run.id,
-                        effective_at=run_at,
-                        payload_hash=payload_hash,
-                        is_complete=True,
-                        payload=raw_payload,
-                    )
-                    .on_conflict_do_nothing(index_elements=[GtkRawSnapshot.payload_hash])
+                raw_snapshot = GtkRawSnapshot(
+                    sync_run_id=run.id,
+                    effective_at=None,
+                    observed_at=run_at,
+                    payload_hash=payload_hash,
+                    is_complete=not is_suspicious,
+                    payload=raw_payload,
                 )
-            if not is_suspicious:
-                try:
-                    async with SessionFactory() as attribution_db:
-                        set_audit_system_context(attribution_db, "gtk")
-                        attribution_counts = await _attribute_snapshot_mileage(
-                            attribution_db,
-                            snapshot,
-                            previous_memberships,
-                            run.id,
-                            counts,
-                            observed_at=run_at,
-                        )
-                    run.counts = {**counts, **attribution_counts}
-                except Exception:
-                    logger.exception(
-                        "GTK locomotive mileage attribution failed; GTK snapshot was retained"
+                db.add(raw_snapshot)
+                await db.flush()
+                if not is_suspicious:
+                    await repository.upsert_mirror(db, snapshot, synced_at=run_at)
+                    await repository.sync_memberships(
+                        db,
+                        snapshot,
+                        observed_at=run_at,
+                        snapshot_id=raw_snapshot.id,
                     )
+                    run.quality = {
+                        **(snapshot.get("quality") or {}),
+                        **snapshot_transition_evidence(
+                            previous_memberships,
+                            snapshot,
+                            observed_at=run_at,
+                        ),
+                    }
+            if not is_suspicious:
                 await _run_gtk_passport_proposals(snapshot)
             _consecutive_login_failures = 0
             logger.info("GTK sync finished with status=%s counts=%s", run.status, counts)

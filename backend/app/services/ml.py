@@ -13,6 +13,7 @@ from app.core.database import SessionFactory
 from app.models.assets import FixedAsset
 from app.models.identity import User
 from app.models.work_records import AiInsight
+from app.repositories import mileage as mileage_repository
 from app.repositories import ml as repository
 from app.schemas.ml import MlAnalyzeResponse, MlInsightRead
 
@@ -96,7 +97,7 @@ def detect_consumption_anomaly(
 def predict_failure(
     maintenance_dates: Sequence[datetime],
     mileage_samples: Sequence[tuple[datetime, Decimal]],
-    current_mileage: Decimal,
+    current_mileage: Decimal | None,
     *,
     today: date,
 ) -> dict[str, Any] | None:
@@ -137,12 +138,12 @@ def predict_failure(
         daily_mileage = None
     predicted_failure_km = (
         float(current_mileage) + daily_mileage * remaining_days
-        if daily_mileage is not None and daily_mileage > 0
+        if current_mileage is not None and daily_mileage is not None and daily_mileage > 0
         else None
     )
     remaining_km = (
         predicted_failure_km - float(current_mileage)
-        if predicted_failure_km is not None
+        if predicted_failure_km is not None and current_mileage is not None
         else None
     )
     if failure_probability >= 0.7 or (
@@ -299,11 +300,19 @@ async def _analyze_asset(
         )
         if not event_dates or asset_maintenance > max(event_dates):
             event_dates.append(asset_maintenance)
-    mileage_samples = await repository.list_mileage_samples(db, asset.id)
+    has_wagon_projection = (
+        asset.asset_type == "wagon"
+        and await mileage_repository.has_confirmed_projection(db, asset.id)
+    )
+    mileage_samples = (
+        await repository.list_mileage_samples(db, asset.id)
+        if has_wagon_projection
+        else []
+    )
     prediction = predict_failure(
         event_dates,
         mileage_samples,
-        asset.mileage,
+        asset.mileage if has_wagon_projection else None,
         today=date.today(),
     )
     prediction_count = 0

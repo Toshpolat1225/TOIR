@@ -10,6 +10,7 @@ import os
 import secrets
 import sys
 import uuid
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 from urllib.parse import urlencode
@@ -34,38 +35,6 @@ def _record_ok(response: Any, expected_id: str) -> bool:
         return response.status == 200 and parse_object(response).get("id") == expected_id
     except SmokeError:
         return False
-
-
-def _check_history(
-    checks: list[Check],
-    label: str,
-    response: Any,
-    source: str,
-    expected_mileage: str,
-) -> None:
-    try:
-        payload = parse_object(response)
-        items = payload.get("items")
-        valid = (
-            response.status == 200
-            and isinstance(items, list)
-            and any(
-                item.get("source") == source
-                and Decimal(str(item.get("mileage"))) == Decimal(expected_mileage)
-                for item in items
-                if isinstance(item, dict)
-            )
-        )
-    except SmokeError:
-        valid = False
-    check_condition(
-        checks,
-        label,
-        valid,
-        "Expected mileage history record is present"
-        if valid
-        else f"HTTP {response.status}; expected {source} history at {expected_mileage}",
-    )
 
 
 def main() -> int:
@@ -186,7 +155,6 @@ def main() -> int:
                 "depot": "ASSET TEST",
                 "section_id": own_section_id,
                 "status": "operational",
-                "mileage": 100,
                 "wialon_id": wialon_id,
             },
         )
@@ -384,26 +352,109 @@ def main() -> int:
             bearer=operator_token,
             payload={"mileage": 111.25},
         )
-        check_status(checks, "PATCH mileage", manual_patch, 200)
-        manual_history = request(
-            "GET",
-            f"/api/v1/fixed-assets/{asset_id}/mileage-history?days=30&limit=100",
-            bearer=operator_token,
-        )
-        _check_history(checks, "PATCH records manual mileage history", manual_history, "manual", "111.25")
+        check_status(checks, "PATCH cannot bypass opening approval", manual_patch, 422)
         post_mileage = request(
             "POST",
             f"/api/v1/fixed-assets/{asset_id}/mileage",
             bearer=operator_token,
             payload={"mileage": 112.5},
         )
-        check_status(checks, "POST mileage", post_mileage, 200)
-        manual_history = request(
+        check_status(checks, "Legacy mileage endpoint is disabled", post_mileage, 422)
+
+        opening_response = request(
+            "POST",
+            "/api/v1/wagon-mileage/openings",
+            bearer=operator_token,
+            payload={
+                "asset_id": other_asset_id,
+                "mileage_km": 50,
+                "effective_at": datetime.now(timezone.utc).isoformat(),
+                "note": "P0.3 E2E",
+            },
+        )
+        opening_payload = parse_object(opening_response)
+        opening_id = opening_payload.get("id")
+        check_condition(
+            checks,
+            "Submit wagon opening balance",
+            opening_response.status == 201
+            and opening_payload.get("status") == "pending"
+            and isinstance(opening_id, str),
+            "Opening balance is pending approval"
+            if opening_response.status == 201
+            and opening_payload.get("status") == "pending"
+            else f"HTTP {opening_response.status}",
+        )
+        if not isinstance(opening_id, str):
+            raise SmokeError("Opening submission did not return an ID")
+        opening_list = request(
             "GET",
-            f"/api/v1/fixed-assets/{asset_id}/mileage-history?days=30&limit=100",
+            f"/api/v1/wagon-mileage/openings?asset_id={other_asset_id}&status=pending",
             bearer=operator_token,
         )
-        _check_history(checks, "POST records manual mileage history", manual_history, "manual", "112.5")
+        opening_list_body = parse_object(opening_list)
+        opening_items = opening_list_body.get("items")
+        has_pending_opening = isinstance(opening_items, list) and any(
+            isinstance(item, dict)
+            and item.get("id") == opening_id
+            and item.get("status") == "pending"
+            for item in opening_items
+        )
+        check_condition(
+            checks,
+            "List wagon opening balances",
+            opening_list.status == 200
+            and opening_list_body.get("total") == 1
+            and has_pending_opening,
+            "Pending opening is visible"
+            if opening_list.status == 200
+            and opening_list_body.get("total") == 1
+            else f"HTTP {opening_list.status}",
+        )
+        check_status(
+            checks,
+            "Master cannot read opening from another section",
+            request(
+                "GET",
+                f"/api/v1/wagon-mileage/openings?asset_id={other_asset_id}",
+                bearer=master_token,
+            ),
+            404,
+        )
+        approved_opening = request(
+            "POST",
+            f"/api/v1/wagon-mileage/openings/{opening_id}/approve",
+            bearer=admin_token,
+        )
+        approved_payload = parse_object(approved_opening)
+        check_condition(
+            checks,
+            "Admin approves opening balance",
+            approved_opening.status == 200
+            and approved_payload.get("status") == "approved"
+            and approved_payload.get("approved_by") is not None
+            and approved_payload.get("approved_at") is not None,
+            "Approval audit is returned"
+            if approved_opening.status == 200
+            and approved_payload.get("status") == "approved"
+            else f"HTTP {approved_opening.status}",
+        )
+        approved_asset = request(
+            "GET",
+            f"/api/v1/fixed-assets/{other_asset_id}",
+            bearer=operator_token,
+        )
+        approved_asset_body = parse_object(approved_asset)
+        check_condition(
+            checks,
+            "Approved opening does not auto-publish the mileage projection",
+            approved_asset.status == 200
+            and Decimal(str(approved_asset_body.get("mileage"))) == Decimal("0"),
+            "Opening is approved without changing the existing projection"
+            if approved_asset.status == 200
+            and Decimal(str(approved_asset_body.get("mileage"))) == Decimal("0")
+            else f"HTTP {approved_asset.status}; mileage projection changed",
+        )
 
         check_status(
             checks,
@@ -432,16 +483,19 @@ def main() -> int:
             and wialon_by_id_body.get("asset_id") == asset_id
             else f"HTTP {wialon_by_id.status}; no matching asset returned",
         )
-        _check_history(
+        reading_body = wialon_by_id_body.get("reading")
+        reading_body = reading_body if isinstance(reading_body, dict) else {}
+        check_condition(
             checks,
-            "Wialon writes mileage history",
-            request(
-                "GET",
-                f"/api/v1/fixed-assets/{asset_id}/mileage-history?days=30&limit=100",
-                bearer=operator_token,
-            ),
-            "wialon",
-            "222.25",
+            "Wialon reading remains held and separate from asset mileage",
+            reading_body.get("accepted") is True
+            and reading_body.get("calculation_eligible") is False
+            and reading_body.get("classification") == "HELD"
+            and "mileage" not in wialon_by_id_body,
+            "Reading is retained without returning fixed-asset mileage"
+            if reading_body.get("classification") == "HELD"
+            and "mileage" not in wialon_by_id_body
+            else "Wialon reading was projected into fixed-asset mileage",
         )
 
         fallback_name = f"Reference Unit Number {number_suffix}"
@@ -514,13 +568,16 @@ def main() -> int:
             and number_body.get("asset_id") == fallback_asset_id
             else f"HTTP {wialon_by_id.status}; no explicitly linked asset returned",
         )
+        fallback_reading = number_body.get("reading")
+        fallback_reading = fallback_reading if isinstance(fallback_reading, dict) else {}
         check_condition(
             checks,
-            "Wialon mileage is updated",
-            str(number_body.get("mileage")) == "333.75",
-            "Current mileage in the Wialon response is updated"
-            if str(number_body.get("mileage")) == "333.75"
-            else "Returned mileage did not match the incoming value",
+            "Linked locomotive odometer is not projected into asset mileage",
+            "mileage" not in number_body
+            and fallback_reading.get("classification") == "HELD",
+            "Wialon odometer remains separate and held"
+            if "mileage" not in number_body
+            else "Wialon odometer changed fixed-asset mileage",
         )
 
         unknown_query = urlencode(

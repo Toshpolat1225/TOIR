@@ -400,14 +400,14 @@ class WialonClientTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ) as update_asset,
             patch(
-                "app.services.wialon.counters_repo.get_asset_by_wialon_id",
+                "app.services.wialon.ingest_wialon_reading",
                 new=AsyncMock(
                     side_effect=[
-                        SimpleNamespace(id="asset-1", mileage=Decimal("80")),
-                        None,
+                        SimpleNamespace(accepted=True, asset_id="asset-1"),
+                        SimpleNamespace(accepted=True, asset_id=None),
                     ]
                 ),
-            ),
+            ) as ingest_reading,
             patch(
                 "app.services.wialon.counters_repo.get_state_row",
                 new=AsyncMock(return_value=None),
@@ -426,7 +426,10 @@ class WialonClientTests(unittest.IsolatedAsyncioTestCase):
             ) as upsert_units,
         ):
             client_type.return_value.fetch_units = AsyncMock(return_value=units)
-            db = SimpleNamespace(commit=AsyncMock())
+            db = SimpleNamespace(
+                commit=AsyncMock(),
+                sync_session=SimpleNamespace(info={}),
+            )
             result = await wialon.sync_wialon_assets(db)
 
         self.assertEqual(result.found, 1)
@@ -435,9 +438,12 @@ class WialonClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.not_found_units, ["Unknown 7777"])
         self.assertTrue(update_asset.await_args_list[0].kwargs["online"])
         self.assertFalse(update_asset.await_args_list[1].kwargs["online"])
+        self.assertIsNone(update_asset.await_args_list[0].kwargs["mileage"])
+        self.assertEqual(ingest_reading.await_count, 2)
+        self.assertFalse(ingest_reading.await_args_list[0].kwargs["source_time_verified"])
         self.assertNotIn("test-token", save_status.await_args.kwargs["status"])
         upsert_units.assert_awaited_once_with(db, units, synced_at=unittest.mock.ANY)
-        db.commit.assert_awaited_once()
+        self.assertEqual(db.commit.await_count, 2)
 
     async def test_login_failure_is_sanitized_and_recorded(self):
         settings = SimpleNamespace(
@@ -450,7 +456,10 @@ class WialonClientTests(unittest.IsolatedAsyncioTestCase):
                 side_effect=WialonClientError("authentication rejected")
             )
         )
-        db = SimpleNamespace(rollback=AsyncMock())
+        db = SimpleNamespace(
+            rollback=AsyncMock(),
+            sync_session=SimpleNamespace(info={}),
+        )
         with (
             patch("app.services.wialon.settings", settings),
             patch("app.services.wialon.WialonClient", return_value=failed_client),
@@ -559,7 +568,7 @@ class WialonAssetMappingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result)
         by_id.assert_awaited_once_with(unittest.mock.ANY, "wialon", "unlinked-id")
 
-    async def test_lower_odometer_updates_are_recorded_and_zero_is_allowed(self):
+    async def test_wialon_odometer_is_never_projected_to_fixed_asset(self):
         asset = SimpleNamespace(
             id="asset-id",
             name="ТЭМ 1234",
@@ -575,10 +584,6 @@ class WialonAssetMappingTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=asset),
             ),
             patch(
-                "app.services.assets._save_mileage_change",
-                new=AsyncMock(),
-            ) as save_mileage,
-            patch(
                 "app.services.assets._commit",
                 new=AsyncMock(),
             ),
@@ -592,45 +597,35 @@ class WialonAssetMappingTests(unittest.IsolatedAsyncioTestCase):
                 online=False,
                 allow_zero_mileage=True,
             )
-        save_mileage.assert_awaited_once_with(
-            unittest.mock.ANY, asset, Decimal("0"), "wialon"
-        )
+        self.assertEqual(asset.mileage, Decimal("1000"))
         self.assertFalse(asset.wialon_online)
         self.assertEqual(asset.wialon_speed, Decimal("0"))
         self.assertEqual(result["wialon_online"], False)
 
-    async def test_decreased_mileage_is_persisted_with_wialon_source(self):
+    async def test_decreased_mileage_is_not_projected_to_fixed_asset(self):
         asset = SimpleNamespace(
             id="asset-id",
+            name="Locomotive",
             mileage=Decimal("1000"),
+            wialon_speed=None,
+            wialon_online=True,
+            wialon_last_sync=None,
             updated_at=None,
         )
-        class Savepoint:
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *_):
-                return None
-
-        db = SimpleNamespace(begin_nested=Mock(return_value=Savepoint()))
+        db = object()
         with (
             patch(
-                "app.services.assets.maintenance_repository.lock_asset_mileage",
-                new=AsyncMock(return_value=Decimal("1000")),
+                "app.services.assets.find_wialon_asset",
+                new=AsyncMock(return_value=asset),
             ),
-            patch(
-                "app.services.assets.repository.add_mileage_history",
-                new=AsyncMock(),
-            ) as add_history,
-            patch(
-                "app.services.assets.maintenance_service.reconcile_asset_plans",
-                new=AsyncMock(),
-            ),
+            patch("app.services.assets._commit", new=AsyncMock()),
         ):
-            await assets._save_mileage_change(
-                db, asset, Decimal("900"), "wialon"
+            await assets.receive_wialon_update(
+                db,
+                unit_id="w-1",
+                unit_name="Locomotive",
+                mileage=Decimal("900"),
+                speed=None,
+                online=True,
             )
-        self.assertEqual(asset.mileage, Decimal("900"))
-        add_history.assert_awaited_once_with(
-            db, asset.id, Decimal("900"), "wialon"
-        )
+        self.assertEqual(asset.mileage, Decimal("1000"))

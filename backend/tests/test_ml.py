@@ -73,6 +73,7 @@ class MlHistoryTests(unittest.IsolatedAsyncioTestCase):
         )
         asset = SimpleNamespace(
             id=uuid4(),
+            asset_type="locomotive",
             mileage=Decimal("100"),
             last_maint_date=None,
         )

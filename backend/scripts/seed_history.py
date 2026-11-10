@@ -1,11 +1,11 @@
-"""Generate two years of marked history data through the authenticated HTTP API.
+"""Generate two years of marked maintenance history through the authenticated HTTP API.
 
 Every generated row carries a GT-HIST / GT- marker so it can be filtered or
 removed later. The script is resumable: completed asset numbers are stored in a
 local state file and existing work orders are detected by description.
 
-The API cannot backdate closed_at or mileage_history.recorded_at, therefore the
-dates are corrected afterwards with backend/scripts/sql/fix_history_dates.sql.
+The API cannot backdate closed_at, therefore work-order dates are corrected
+afterwards with backend/scripts/sql/fix_history_dates.sql. No mileage is seeded.
 """
 
 from __future__ import annotations
@@ -34,7 +34,6 @@ from e2e_smoke import ApiResponse, ApiSession, SmokeError, parse_object
 BASE_URL = os.environ.get("TOIR_API_BASE_URL", "http://localhost:8010").rstrip("/")
 MARKER = "GT-HIST"
 HISTORY_DAYS = 730
-MILEAGE_BLOCKS = 24
 ORDER_TIMEOUT = 60
 TOKEN_LIFETIME_SECONDS = 20 * 60
 
@@ -407,8 +406,6 @@ class AssetSpec:
     section_index: int
     year_built: int
     comm_date: date
-    initial_mileage: Decimal
-    monthly_km: Decimal
     initial_cost: Decimal
     status: str
 
@@ -457,10 +454,6 @@ def build_asset_specs(
         prefix: str,
         asset_type: str,
         series_pool: list[str],
-        mileage_low: int,
-        mileage_high: int,
-        monthly_low: int,
-        monthly_high: int,
         cost_low: int,
         cost_high: int,
         name_template: str,
@@ -484,8 +477,6 @@ def build_asset_specs(
                     section_index=index % len(sections),
                     year_built=year_built,
                     comm_date=comm_date,
-                    initial_mileage=_dec(rng.randint(mileage_low, mileage_high)),
-                    monthly_km=_dec(rng.randint(monthly_low, monthly_high)),
                     initial_cost=_dec(rng.randint(cost_low, cost_high), "1"),
                     status=status_codes[
                         rng.choices(
@@ -498,17 +489,17 @@ def build_asset_specs(
 
     add(
         wagons, "GT-W", "wagon", WAGON_SERIES,
-        20_000, 180_000, 900, 3_600, 80_000_000, 450_000_000,
+        80_000_000, 450_000_000,
         "Полувагон {series} № {number}",
     )
     add(
         electric, "GT-L", "locomotive", ELECTRIC_SERIES,
-        200_000, 1_400_000, 7_000, 16_000, 1_200_000_000, 3_500_000_000,
+        1_200_000_000, 3_500_000_000,
         "Электровоз {series}-{number}",
     )
     add(
         diesel, "GT-D", "diesel", DIESEL_SERIES,
-        150_000, 900_000, 4_000, 11_000, 700_000_000, 2_200_000_000,
+        700_000_000, 2_200_000_000,
         "Тепловоз {series}-{number}",
     )
     return specs
@@ -935,10 +926,6 @@ def build_plans(
     return plans
 
 
-def block_mileage(spec: AssetSpec, block: int) -> Decimal:
-    return (spec.initial_mileage + spec.monthly_km * block).quantize(Decimal("0.01"))
-
-
 def existing_orders(client: WorkerClient, asset_id: str) -> dict[str, dict[str, Any]]:
     rows = list_all(
         client,
@@ -1092,36 +1079,10 @@ def process_asset(
         now,
     )
     known = {} if was_created_now else existing_orders(client, str(asset["id"]))
-    current_mileage = Decimal(str(asset.get("mileage") or "0"))
 
     errors: list[str] = []
     created = 0
-    next_block = 0
     for plan in plans:
-        target_block = min(
-            MILEAGE_BLOCKS - 1,
-            max(0, (plan.start.date() - history_start).days // 30),
-        )
-        while next_block <= target_block:
-            value = block_mileage(spec, next_block)
-            if value > current_mileage:
-                try:
-                    response = client.call(
-                        "POST",
-                        f"/api/v1/fixed-assets/{asset['id']}/mileage",
-                        {"mileage": f"{value:.2f}"},
-                    )
-                except SmokeError as exc:
-                    errors.append(f"{spec.inv_number} mileage: {exc}")
-                    response = None
-                if response is not None and response.status == 200:
-                    current_mileage = value
-                elif response is not None:
-                    errors.append(
-                        f"{spec.inv_number} mileage: {response_detail(response)}"
-                    )
-            next_block += 1
-
         row = known.get(plan.description)
         marker = plan.description.split(":", 1)[0]
         if row is None:
@@ -1151,20 +1112,6 @@ def process_asset(
         except SmokeError as exc:
             errors.append(f"{marker} status {plan.status}: {exc}")
 
-    final_mileage = block_mileage(spec, MILEAGE_BLOCKS - 1)
-    if final_mileage > current_mileage:
-        try:
-            response = client.call(
-                "POST",
-                f"/api/v1/fixed-assets/{asset['id']}/mileage",
-                {"mileage": f"{final_mileage:.2f}"},
-            )
-            if response.status != 200:
-                errors.append(
-                    f"{spec.inv_number} final mileage: {response_detail(response)}"
-                )
-        except SmokeError as exc:
-            errors.append(f"{spec.inv_number} final mileage: {exc}")
     return created, errors
 
 
@@ -1249,7 +1196,6 @@ def ensure_assets(
             "status": spec.status,
             "comm_date": spec.comm_date.isoformat(),
             "year_built": spec.year_built,
-            "mileage": f"{spec.initial_mileage:.2f}",
             "last_maint_date": (today - timedelta(days=rng.randint(5, 90))).isoformat(),
             "next_maint_date": (today + timedelta(days=rng.randint(1, 60))).isoformat(),
             "initial_cost": f"{spec.initial_cost:.2f}",

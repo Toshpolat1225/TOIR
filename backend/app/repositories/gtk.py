@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import String, cast, delete, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
@@ -9,6 +10,7 @@ from app.models.gtk import (
     GtkCarriage,
     GtkLocomotive,
     GtkLocomotiveMileageCheckpoint,
+    GtkMembershipObservation,
     GtkSyncRun,
     GtkTrain,
     GtkTrainMember,
@@ -686,7 +688,11 @@ async def upsert_mirror(
 
 
 async def sync_memberships(
-    db: AsyncSession, snapshot: dict[str, Any], *, observed_at: datetime
+    db: AsyncSession,
+    snapshot: dict[str, Any],
+    *,
+    observed_at: datetime,
+    snapshot_id: UUID | None = None,
 ) -> None:
     incoming: dict[tuple[int, str, int], dict[str, Any]] = {}
     for train in snapshot["trains"]:
@@ -717,23 +723,41 @@ async def sync_memberships(
     for key, member in existing.items():
         if key not in incoming:
             member.observed_to = observed_at
+            if snapshot_id is not None:
+                db.add(
+                    GtkMembershipObservation(
+                        membership_id=member.id,
+                        snapshot_id=snapshot_id,
+                        observed_at=observed_at,
+                        change_type="closed",
+                    )
+                )
             continue
         details = incoming.pop(key)
         member.is_main = details["is_main"]
         member.ord = details["ord"]
         member.gtk_begin_time = details["gtk_begin_time"]
     for (train_id, kind, object_id), details in incoming.items():
-        db.add(
-            GtkTrainMember(
-                train_gtk_id=train_id,
-                kind=kind,
-                object_gtk_id=object_id,
-                is_main=details["is_main"],
-                ord=details["ord"],
-                gtk_begin_time=details["gtk_begin_time"],
-                observed_from=observed_at,
-            )
+        member = GtkTrainMember(
+            train_gtk_id=train_id,
+            kind=kind,
+            object_gtk_id=object_id,
+            is_main=details["is_main"],
+            ord=details["ord"],
+            gtk_begin_time=details["gtk_begin_time"],
+            observed_from=observed_at,
         )
+        db.add(member)
+        if snapshot_id is not None:
+            await db.flush()
+            db.add(
+                GtkMembershipObservation(
+                    membership_id=member.id,
+                    snapshot_id=snapshot_id,
+                    observed_at=observed_at,
+                    change_type="opened",
+                )
+            )
 
 
 async def add_sync_run(db: AsyncSession, run: GtkSyncRun) -> None:

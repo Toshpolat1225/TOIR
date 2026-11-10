@@ -8,15 +8,18 @@ from app.models.base import Base
 from app.models.identity import LoginAttempt, RefreshToken, User
 from app.models.mileage import (
     GtkRawSnapshot,
+    MileageCalculationInput,
     MileageCalculationRun,
     WagonIdlePeriod,
     WagonMileageLedger,
     WagonMileageOpeningBalance,
     WialonOdometerReading,
+    WialonRawReceipt,
 )
 from app.models.gtk import (
     GtkCarriage,
     GtkLocomotive,
+    GtkMembershipObservation,
     GtkSyncRun,
     GtkTrain,
     GtkTrainMember,
@@ -62,6 +65,7 @@ __all__ = [
     "FixedAsset",
     "GtkCarriage",
     "GtkLocomotive",
+    "GtkMembershipObservation",
     "GtkSyncRun",
     "GtkTrain",
     "GtkTrainMember",
@@ -74,6 +78,7 @@ __all__ = [
     "MaintenanceLog",
     "MaintenancePlan",
     "MaintenanceSettings",
+    "MileageCalculationInput",
     "MileageHistory",
     "Nomenclature",
     "NomenclatureTranslation",
@@ -89,6 +94,8 @@ __all__ = [
     "User",
     "WialonSettings",
     "WialonCounterState",
+    "WialonOdometerReading",
+    "WialonRawReceipt",
     "WialonRejectedReading",
     "WialonUnitRecord",
     "WorkOrder",

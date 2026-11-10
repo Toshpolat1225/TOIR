@@ -23,6 +23,7 @@ from app.routers.analytics import router as analytics_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.health import router as health_router
 from app.routers.gtk import router as gtk_router
+from app.routers.mileage import router as mileage_router
 from app.routers.maintenance import router as maintenance_router
 from app.routers.localization import router as localization_router
 from app.routers.asset_catalogs import router as asset_catalogs_router
@@ -243,6 +244,7 @@ app.include_router(asset_links_router, prefix="/api/v1")
 app.include_router(wialon_router, prefix="/api/v1")
 app.include_router(wialon_pull_router, prefix="/api/v1")
 app.include_router(gtk_router, prefix="/api/v1")
+app.include_router(mileage_router, prefix="/api/v1")
 app.include_router(work_orders_router, prefix="/api/v1")
 app.include_router(maintenance_router, prefix="/api/v1")
 app.include_router(localization_router, prefix="/api/v1")

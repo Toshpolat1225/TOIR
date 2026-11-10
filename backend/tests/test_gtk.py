@@ -117,8 +117,18 @@ class _Transaction:
 
 
 class _Database:
+    def __init__(self):
+        self.sync_session = SimpleNamespace(info={})
+        self.added = []
+
     def begin(self):
         return _Transaction()
+
+    def add(self, value):
+        self.added.append(value)
+
+    async def flush(self):
+        return None
 
 
 class GtkParserTests(unittest.IsolatedAsyncioTestCase):

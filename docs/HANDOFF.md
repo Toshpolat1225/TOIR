@@ -1079,3 +1079,18 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 
 - Verify search, paging, link/unlink, and placeholder states in a browser with an authorized API account.
+
+## Wagon mileage P0.3 implementation (2026-11-10)
+
+### Verified
+
+- Added revision `0028_wagon_mileage_approval_and_inputs` after `0027`; source history reports one Alembic head. No database migration was run.
+- Added opening-balance submit/list/admin-approval, GTK membership evidence, Wialon raw-input ingestion, and pure wagon-mileage calculation rules. Uncertain Wialon mileage remains `HELD`; no ledger publisher or projection writer was connected.
+- Prevented legacy fixed-asset mileage writes and removed locomotive mileage from maintenance/work-order/ML calculations. Wagon mileage is read only from an active, calculation-eligible `CONFIRMED` ledger projection.
+- Frontend production build and `npx.cmd tsc --noEmit` exited successfully; build reported two React Hook warnings in work-orders. Python syntax check and `git diff --check` exited successfully.
+- A selected backend test run earlier in this work reported 117 passed and 4 subtests passed; it was not rerun after final response/UI/E2E refinements.
+
+### Next task
+
+- Resolve `UNKNOWN/PENDING` policies in `WAGON_MILEAGE_P0_DECISIONS.md` (Wialon timestamp/identity, GTK handoff and allocation, idle behavior, source priority, estimated projection, and maker-checker). Then implement the idempotent ledger publisher, confirmed projection/read path, and sync orchestration against those approved rules.
+- Still required: PostgreSQL integration and migration rehearsal, E2E scripts, browser checks, and any production rollout. None was run in this task.

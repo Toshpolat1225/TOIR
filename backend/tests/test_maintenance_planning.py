@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from datetime import date, timedelta
 from decimal import Decimal
@@ -8,7 +9,6 @@ from uuid import uuid4
 from sqlalchemy.dialects import postgresql
 
 from app.repositories import maintenance as repository
-from app.services import assets as assets_service
 from app.services import maintenance as maintenance_service
 from app.services.maintenance_planning import (
     calculate_maintenance_target,
@@ -100,16 +100,32 @@ class MaintenancePlanningTests(unittest.TestCase):
         self.assertEqual(maintenance_urgency(Decimal("8"), Decimal("10")), "low")
         self.assertIsNone(maintenance_urgency(Decimal("11"), Decimal("10")))
 
+    def test_locomotive_fixed_asset_mileage_is_not_used_for_maintenance_target(self):
+        today = date.today()
+        asset = SimpleNamespace(
+            id=uuid4(), asset_type="locomotive", mileage=Decimal("90000")
+        )
+        interval = SimpleNamespace(id=uuid4(), interval_km=Decimal("10000"))
+
+        self.assertEqual(
+            asyncio.run(
+                maintenance_service._interval_target(
+                    asset, interval, {}, Decimal("200"), today
+                )
+            ),
+            (None, today),
+        )
+
 
 class MaintenancePlanPersistenceTests(unittest.IsolatedAsyncioTestCase):
     async def test_reconcile_upserts_targets_for_matching_active_interval(self):
         today = date.today()
         asset = SimpleNamespace(
-            id=uuid4(), asset_type="locomotive", mileage=Decimal("199000")
+            id=uuid4(), asset_type="wagon", mileage=Decimal("199000")
         )
         interval = SimpleNamespace(
             id=uuid4(),
-            asset_types=["locomotive", "diesel"],
+            asset_types=["wagon"],
             interval_km=Decimal("200000"),
             warn_percent=Decimal("10"),
             is_active=True,
@@ -122,6 +138,11 @@ class MaintenancePlanPersistenceTests(unittest.IsolatedAsyncioTestCase):
                 maintenance_service.repository,
                 "list_active_intervals",
                 new=AsyncMock(return_value=[interval]),
+            ),
+            patch.object(
+                maintenance_service.mileage_repository,
+                "has_confirmed_projection",
+                new=AsyncMock(return_value=True),
             ),
             patch.object(
                 maintenance_service.repository,
@@ -141,6 +162,21 @@ class MaintenancePlanPersistenceTests(unittest.IsolatedAsyncioTestCase):
             trigger_mileage=Decimal("200000"),
             scheduled_date=today + timedelta(days=5),
         )
+
+    async def test_reconcile_does_not_use_locomotive_fixed_asset_mileage(self):
+        asset = SimpleNamespace(
+            id=uuid4(), asset_type="locomotive", mileage=Decimal("199000")
+        )
+        with patch.object(
+            maintenance_service.repository,
+            "list_active_intervals",
+            new=AsyncMock(),
+        ) as list_intervals:
+            created = await maintenance_service.reconcile_asset_plans(
+                db=Mock(), asset=asset, mileage=asset.mileage
+            )
+        self.assertEqual(created, 0)
+        list_intervals.assert_not_awaited()
 
     async def test_upsert_uses_unique_conflict_key(self):
         plan = SimpleNamespace(status="scheduled")
@@ -163,40 +199,6 @@ class MaintenancePlanPersistenceTests(unittest.IsolatedAsyncioTestCase):
             "maintenance_plan_asset_id_interval_id_trigger_mileage_key",
             str(statement.compile(dialect=postgresql.dialect())),
         )
-
-    async def test_plan_error_does_not_fail_mileage_update(self):
-        class Savepoint:
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *_):
-                return None
-
-        asset = SimpleNamespace(
-            id=uuid4(), mileage=Decimal("100"), updated_at=None
-        )
-        db = SimpleNamespace(begin_nested=Mock(return_value=Savepoint()))
-        with (
-            patch(
-                "app.services.assets.maintenance_repository.lock_asset_mileage",
-                new=AsyncMock(return_value=Decimal("100")),
-            ),
-            patch(
-                "app.services.assets.repository.add_mileage_history",
-                new=AsyncMock(),
-            ),
-            patch(
-                "app.services.assets.maintenance_service.reconcile_asset_plans",
-                new=AsyncMock(side_effect=RuntimeError("plan failure")),
-            ),
-            self.assertLogs("app.services.assets", level="ERROR"),
-        ):
-            await assets_service._save_mileage_change(
-                db, asset, Decimal("200"), "manual"
-            )
-
-        self.assertEqual(asset.mileage, Decimal("200"))
-
 
 if __name__ == "__main__":
     unittest.main()

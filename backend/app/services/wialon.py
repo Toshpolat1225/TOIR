@@ -1,6 +1,4 @@
 import asyncio
-import hashlib
-import json
 import logging
 import re
 from collections import Counter
@@ -8,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException, status
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -18,9 +15,9 @@ from app.repositories import wialon as repository
 from app.repositories import wialon_counters as counters_repo
 from app.repositories import wialon_units as units_repo
 from app.schemas.wialon import WialonSyncResult, WialonSyncStatus
-from app.models.mileage import WialonOdometerReading
 from app.services import assets as assets_service
 from app.services.audit_log import set_audit_system_context
+from app.services.wialon_ingestion import ingest_wialon_reading
 from app.services.wialon_quality import Reading, Verdict, evaluate
 
 logger = logging.getLogger(__name__)
@@ -87,56 +84,30 @@ async def _record_failure(
 
 
 async def _gated_mileage(db, unit, *, now: datetime, stats: Counter) -> Decimal | None:
-    """Wialon `cnm` ni TOIR mileage'iga ABSOLYUT emas, DELTA sifatida o'tkazadi.
-
-    None qaytsa mileage yangilanmaydi (baseline, o'zgarishsiz, rad etilgan, eski, mapping yo'q).
-    Mapping faqat aniq wialon_id bo'yicha: topilmasa mileage yozilmaydi (tezlik/online avvalgidek yangilanadi).
-    """
-    asset = await counters_repo.get_asset_by_wialon_id(db, unit.unit_id)
-    if asset is None:
+    result = await ingest_wialon_reading(
+        db,
+        unit_id=unit.unit_id,
+        odometer_km=unit.mileage,
+        reading_at=unit.last_message_at,
+        engine_hours=unit.engine_hours,
+        speed=unit.speed,
+        transport="pull",
+        received_at=now,
+        source_time_verified=False,
+    )
+    if result.asset_id is None:
         stats["unmapped"] += 1
         return None
-    row = await counters_repo.get_state_row(db, asset.id)
+    row = await counters_repo.get_state_row(db, result.asset_id)
     reading = Reading(unit.mileage, unit.engine_hours, unit.last_message_at)
     gate = evaluate(counters_repo.to_state(row), reading, now=now)
-    if unit.mileage is not None and unit.last_message_at is not None:
-        raw_payload = {
-            "unit_id": unit.unit_id,
-            "name": unit.name,
-            "odometer_km": str(unit.mileage),
-            "engine_hours": str(unit.engine_hours) if unit.engine_hours is not None else None,
-            "reading_at": unit.last_message_at.isoformat(),
-            "speed": str(unit.speed) if unit.speed is not None else None,
-            "calc_flags": unit.calc_flags,
-        }
-        payload_bytes = json.dumps(
-            raw_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
-        payload_hash = hashlib.sha256(payload_bytes).hexdigest()
-        accepted = gate.mileage.verdict in {
-            Verdict.ACCEPTED, Verdict.BASELINE, Verdict.UNCHANGED
-        }
-        await db.execute(
-            pg_insert(WialonOdometerReading)
-            .values(
-                asset_id=asset.id,
-                source_unit_id=unit.unit_id,
-                odometer_km=unit.mileage,
-                reading_at=unit.last_message_at,
-                accepted=accepted,
-                rejection_reason=gate.mileage.reason,
-                payload_hash=payload_hash,
-                payload=raw_payload,
-            )
-            .on_conflict_do_nothing(
-                index_elements=[WialonOdometerReading.payload_hash]
-            )
-        )
-    await counters_repo.save_decision(db, asset.id, row, gate, reading, now=now)
+    await counters_repo.save_decision(
+        db, result.asset_id, row, gate, reading, now=now
+    )
     stats[f"mileage_{gate.mileage.verdict.value}"] += 1
     stats[f"hours_{gate.hours.verdict.value}"] += 1
-    if gate.mileage.verdict is Verdict.ACCEPTED and gate.mileage.delta:
-        return asset.mileage + gate.mileage.delta
+    if not result.accepted:
+        stats["raw_rejected"] += 1
     return None
 
 
@@ -187,6 +158,7 @@ async def sync_wialon_assets(db: AsyncSession) -> WialonSyncResult:
                     updated_names.append(unit.name)
                 else:
                     missing_names.append(unit.name)
+                    await db.commit()
 
             logger.info("Wialon counter gate: %s", dict(gate_stats))
             result = WialonSyncResult(

@@ -15,6 +15,7 @@ from app.models.assets import FixedAsset
 from app.models.identity import User
 from app.models.maintenance import MaintenanceInterval, MaintenancePlan
 from app.repositories import maintenance as repository
+from app.repositories import mileage as mileage_repository
 from app.schemas.maintenance import (
     MaintenancePlanRead,
     MaintenancePlanUpdate,
@@ -102,6 +103,11 @@ async def update_settings(
 async def reconcile_asset_plans(
     db: AsyncSession, asset: FixedAsset, mileage: Decimal
 ) -> int:
+    if (
+        asset.asset_type != "wagon"
+        or not await mileage_repository.has_confirmed_projection(db, asset.id)
+    ):
+        return 0
     today = date.today()
     created = 0
     intervals = await repository.list_active_intervals(db, asset.asset_type)
@@ -275,6 +281,8 @@ async def _interval_target(
 ) -> tuple[Decimal | None, date]:
     plans = plans_by_key.get((asset.id, interval.id), [])
     if interval.interval_km is not None:
+        if asset.asset_type != "wagon":
+            return None, today
         if daily_average_km is None:
             return None, today
         trigger = next_mileage_threshold(asset.mileage, interval.interval_km)
@@ -407,8 +415,14 @@ async def get_schedule(
         db, master_section_id=master_section_id
     )
     for asset in assets:
+        has_wagon_projection = (
+            asset.asset_type == "wagon"
+            and await mileage_repository.has_confirmed_projection(db, asset.id)
+        )
         intervals = await repository.list_active_intervals(db, asset.asset_type)
         for interval in intervals:
+            if interval.interval_km is not None and not has_wagon_projection:
+                continue
             if interval.interval_km is not None and daily_average_km is None:
                 continue
             plans = plans_by_key.get((asset.id, interval.id), [])
@@ -450,7 +464,7 @@ async def get_schedule(
                     depot=asset.depot or "",
                     tech="",
                     status=display_status,
-                    mileage=asset.mileage,
+                    mileage=asset.mileage if has_wagon_projection else None,
                     remainingKm=remaining,
                     nextThreshold=trigger,
                     asset_id=asset.id,

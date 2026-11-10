@@ -49,7 +49,7 @@ class WagonMileageAllocation:
     train_gtk_id: int
     period_from: datetime
     period_to: datetime
-    km: Decimal
+    km: Decimal | None
     estimated: bool
     source_id: str
 
@@ -62,67 +62,56 @@ def _round_km(value: Decimal) -> Decimal:
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
-def _valid_interval(row: OdometerInterval, *, max_speed_kmh: Decimal) -> bool:
+def _valid_interval(row: OdometerInterval) -> bool:
     if row.end_at <= row.start_at or row.end_km < row.start_km:
         return False
     elapsed = _hours(row.start_at, row.end_at)
     if elapsed <= ZERO:
         return False
-    # A small tolerance accommodates integer-km Wialon rounding.
-    return row.end_km - row.start_km <= max_speed_kmh * elapsed + Decimal("10")
+    return row.end_at <= row.received_at
 
 
 def select_main_locomotive(
     candidates: Iterable[OdometerInterval],
-    *,
-    max_speed_kmh: Decimal = Decimal("150"),
-    agreement_tolerance_km: Decimal = Decimal("3"),
-    max_received_lag_seconds: int = 900,
 ) -> MainLocomotiveDecision:
     """Select one trusted physical odometer source, without sum/average.
 
-    If several valid locomotive odometers describe the same interval, they must
-    agree within tolerance. The freshest received reading wins; ties are stable
-    by source_id. A disagreement is held for review rather than guessed.
+    A choice between different locomotives needs an approved policy. This
+    primitive therefore holds multi-locomotive candidates instead of applying
+    an unapproved tolerance, freshness window, or priority.
     """
     rows = [
-        row for row in candidates
-        if _valid_interval(row, max_speed_kmh=max_speed_kmh)
-        and row.end_at <= row.received_at
-        and (row.received_at - row.end_at).total_seconds() <= max_received_lag_seconds
+        row for row in candidates if _valid_interval(row)
     ]
     if not rows:
-        return MainLocomotiveDecision(None, "no_valid_fresh_odometer_interval", 0, "none")
-
-    reference = rows[0].end_km - rows[0].start_km
-    reference_start = rows[0].start_at
-    reference_end = rows[0].end_at
-    for row in rows[1:]:
-        distance = row.end_km - row.start_km
-        if row.start_at != reference_start or row.end_at != reference_end:
-            return MainLocomotiveDecision(
-                None, "locomotive_odometer_time_boundaries_disagree", len(rows), "conflict"
-            )
-        if abs(distance - reference) > agreement_tolerance_km:
-            return MainLocomotiveDecision(
-                None, "locomotive_odometer_disagreement", len(rows), "conflict"
-            )
-
-    # Pick one physical odometer source; never combine candidate distances.
-    rows.sort(key=lambda row: (row.received_at, row.end_at, row.source_id), reverse=True)
-    confidence = "high" if len(rows) == 1 else "corroborated"
-    return MainLocomotiveDecision(rows[0], "selected_freshest_consistent_source", len(rows), confidence)
+        return MainLocomotiveDecision(None, "no_valid_odometer_interval", 0, "none")
+    if len({row.locomotive_asset_id for row in rows}) != 1:
+        return MainLocomotiveDecision(
+            None, "multiple_locomotives_require_policy", len(rows), "conflict"
+        )
+    reference = rows[0]
+    if any(
+        row.start_at != reference.start_at
+        or row.end_at != reference.end_at
+        or row.start_km != reference.start_km
+        or row.end_km != reference.end_km
+        for row in rows[1:]
+    ):
+        return MainLocomotiveDecision(
+            None, "same_locomotive_readings_disagree", len(rows), "conflict"
+        )
+    rows.sort(key=lambda row: row.source_id)
+    return MainLocomotiveDecision(rows[0], "single_locomotive_source", len(rows), "high")
 
 
 def allocate_distance_to_wagons(
     odometer: OdometerInterval,
     memberships: Iterable[WagonMembershipInterval],
 ) -> tuple[WagonMileageAllocation, ...]:
-    """Allocate selected physical distance over each wagon's membership overlap.
+    """Allocate only exact membership intervals over the odometer interval.
 
-    Partial-interval allocations use elapsed-time interpolation and are marked
-    estimated. Full-interval membership is not estimated. Non-overlapping or
-    invalid intervals produce no mileage.
+    Partial intervals are retained as estimated evidence with no invented
+    distance. The interval boundaries are half-open: [start, end).
     """
     total_km = odometer.end_km - odometer.start_km
     total_seconds = Decimal(str((odometer.end_at - odometer.start_at).total_seconds()))
@@ -141,10 +130,8 @@ def allocate_distance_to_wagons(
             continue
         seen.add(key)
         overlap_seconds = Decimal(str((end - start).total_seconds()))
-        km = _round_km(total_km * overlap_seconds / total_seconds)
-        if km <= ZERO:
-            continue
         full_interval = start == odometer.start_at and end == odometer.end_at
+        km = _round_km(total_km) if full_interval else None
         allocations.append(
             WagonMileageAllocation(
                 wagon_asset_id=membership.wagon_asset_id,

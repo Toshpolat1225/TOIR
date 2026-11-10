@@ -25,8 +25,8 @@ ROOT = Path(__file__).resolve().parents[2]
 MIGRATIONS = ROOT / "backend" / "alembic" / "versions"
 SCHEMA = ROOT / "postgres" / "schema.sql"
 FRONTEND_FILES = (
-    ROOT / "app" / "dashboard" / "os" / "page.tsx",
-    ROOT / "app" / "dashboard" / "os" / "conflicts" / "page.tsx",
+    ROOT / "app" / "dashboard" / "directories" / "assets" / "page.tsx",
+    ROOT / "app" / "dashboard" / "directories" / "conflicts" / "page.tsx",
     ROOT / "app" / "dashboard" / "os" / "gtk" / "page.tsx",
     ROOT / "lib" / "api.ts",
 )
@@ -83,7 +83,7 @@ def test_p6_migration_chain_is_linear_from_0012_to_head():
             parents.add(down_revision)
         elif isinstance(down_revision, (tuple, list)):
             parents.update(down_revision)
-    assert all_revisions - parents == {"0026_audit_logs"}
+    assert all_revisions - parents == {"0028_mileage_approval_inputs"}
     assert all(len(revision) <= 32 for revision in all_revisions)
 
     p6_revisions = [
@@ -103,6 +103,28 @@ def test_p6_migration_chain_is_linear_from_0012_to_head():
         "0018_asset_passport",
     ]
     assert p6_revisions[-1][0] == "0019_asset_field_changes"
+
+
+def test_wagon_mileage_migration_chain_is_linear_and_bounded():
+    revision_map = {
+        revision: down_revision
+        for revision, down_revision in (
+            _revision(path)
+            for path in MIGRATIONS.glob("*.py")
+            if path.name != "__init__.py"
+        )
+    }
+    assert revision_map["0027_wagon_mileage_engine"] == "0026_audit_logs"
+    assert revision_map["0028_mileage_approval_inputs"] == "0027_wagon_mileage_engine"
+    assert all(len(revision) <= 32 for revision in revision_map)
+
+    migration = (MIGRATIONS / "0028_wagon_mileage_approval_and_inputs.py").read_text(
+        encoding="utf-8"
+    )
+    assert "ck_wagon_mileage_opening_approval_audit" in migration
+    assert "uq_wagon_mileage_opening_active_approved" in migration
+    assert "mileage_calculation_inputs" in migration
+    assert "def downgrade()" in migration
 
 
 def test_p6_0017_to_0019_migration_operations_have_matching_downgrades():

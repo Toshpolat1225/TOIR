@@ -1,5 +1,6 @@
 import json
 import hmac
+from datetime import datetime
 from typing import Annotated, Any, Literal
 from urllib.parse import parse_qs
 
@@ -19,6 +20,7 @@ from app.schemas.wialon import (
     WialonUnitRead,
 )
 from app.services import assets as service
+from app.services import wialon_ingestion
 from app.services import wialon_units as units_service
 
 router = APIRouter(prefix="/wialon", tags=["wialon"])
@@ -213,13 +215,43 @@ async def _handle_input(request: Request, db: AsyncSession) -> dict[str, Any]:
         _first_value(payload, MILEAGE_KEYS), "mileage"
     )
     speed = service.parse_wialon_decimal(_first_value(payload, SPEED_KEYS), "speed")
-    return await service.receive_wialon_update(
+    raw_reading_at = _first_value(payload, ("reading_at",))
+    reading_at = None
+    if isinstance(raw_reading_at, str):
+        try:
+            normalized_time = raw_reading_at.strip().replace("Z", "+00:00")
+            parsed_time = datetime.fromisoformat(normalized_time)
+            if parsed_time.tzinfo is not None and parsed_time.utcoffset() is not None:
+                reading_at = parsed_time
+        except ValueError:
+            reading_at = None
+    ingestion = await wialon_ingestion.ingest_wialon_reading(
+        db,
+        unit_id=str(unit_id).strip() if unit_id is not None else None,
+        odometer_km=mileage,
+        reading_at=reading_at,
+        speed=speed,
+        transport="push",
+        source_time_raw=(
+            raw_reading_at if isinstance(raw_reading_at, str) else None
+        ),
+        source_time_verified=False,
+    )
+    result = await service.receive_wialon_update(
         db,
         unit_id=str(unit_id).strip() if unit_id is not None else None,
         unit_name=str(unit_name).strip() if unit_name is not None else None,
-        mileage=mileage,
+        mileage=None,
         speed=speed,
     )
+    if not result.get("found"):
+        await db.commit()
+    result["reading"] = {
+        "accepted": ingestion.accepted,
+        "calculation_eligible": ingestion.calculation_eligible,
+        "classification": ingestion.classification,
+    }
+    return result
 
 
 @router.post("/input", dependencies=[Depends(require_ingest_token)])

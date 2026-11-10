@@ -12,6 +12,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -113,6 +114,32 @@ class GtkTrainMember(Base):
         DateTime(timezone=True), nullable=False
     )
     observed_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class GtkMembershipObservation(Base):
+    __tablename__ = "gtk_membership_observations"
+    __table_args__ = (
+        CheckConstraint(
+            "change_type IN ('opened','closed')",
+            name="ck_gtk_membership_observations_change_type",
+        ),
+        UniqueConstraint(
+            "membership_id",
+            "snapshot_id",
+            "change_type",
+            name="uq_gtk_membership_observation",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    membership_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("gtk_train_members.id", ondelete="CASCADE"), nullable=False
+    )
+    snapshot_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("gtk_raw_snapshots.id", ondelete="RESTRICT"), nullable=False
+    )
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    change_type: Mapped[Literal["opened", "closed"]] = mapped_column(Text, nullable=False)
 
 
 class GtkSyncRun(Base):

@@ -23,6 +23,7 @@ import {
   type FixedAssetInventoryImportPreviewItem,
   type FixedAssetInventoryImportApplyRow,
   type FixedAssetsPassportImportPreview,
+  type WagonMileageOpening,
 } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { useSections, type SectionData } from "@/lib/use-sections"
@@ -460,7 +461,7 @@ const sourceLabels: Record<AssetSource, string> = {
 /* ════════════════════════════════════════
    View and edit modal
 ════════════════════════════════════════ */
-function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, types, statuses, canWrite, onUpdated }: {
+function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, types, statuses, canWrite, canApproveOpening, currentUserId, onUpdated }: {
   asset: FixedAsset
   onClose: () => void
   onSave: (a: FixedAsset) => void
@@ -470,13 +471,14 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
   types: AssetCatalogItem[]
   statuses: AssetCatalogItem[]
   canWrite: boolean
+  canApproveOpening: boolean
+  currentUserId: string | undefined
   onUpdated: (asset?: ApiFixedAsset) => void
 }) {
   const [editing,      setEditing]      = useState(false)
   const [commDate,     setCommDate]     = useState(asset.commDate)
   const [status,       setStatus]       = useState(asset.status)
   const [depot,        setDepot]        = useState(asset.depot)
-  const [mileage,      setMileage]      = useState(asset.mileage)
   const [lastMaint,    setLastMaint]    = useState(asset.lastMaint)
   const [nextMaint,    setNextMaint]    = useState(asset.nextMaint)
   const [initialCost,  setInitialCost]  = useState(asset.initialCost)
@@ -488,6 +490,26 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
   const [unitLoadError, setUnitLoadError] = useState("")
   const [gtkDetail, setGtkDetail] = useState<GtkFixedAssetDetail | null>(null)
   const [gtkLoadState, setGtkLoadState] = useState<"loading" | "linked" | "unlinked" | "error">("loading")
+  const [openingBalances, setOpeningBalances] = useState<WagonMileageOpening[]>([])
+  const [openingMileage, setOpeningMileage] = useState("")
+  const [openingEffectiveAt, setOpeningEffectiveAt] = useState("")
+  const [openingNote, setOpeningNote] = useState("")
+  const [openingBusy, setOpeningBusy] = useState(false)
+  const [openingError, setOpeningError] = useState("")
+
+  const refreshOpeningBalances = async () => {
+    const result = await api.wagonMileage.openings({ asset_id: asset.id, limit: 20 })
+    setOpeningBalances(result.items)
+  }
+
+  useEffect(() => {
+    if (asset.assetType !== "wagon") return
+    let active = true
+    api.wagonMileage.openings({ asset_id: asset.id, limit: 20 })
+      .then((result) => { if (active) setOpeningBalances(result.items) })
+      .catch(() => { if (active) setOpeningError("Не удалось загрузить историю начального пробега.") })
+    return () => { active = false }
+  }, [asset.assetType, asset.id])
 
   useEffect(() => {
     let active = true
@@ -573,8 +595,61 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
   }
 
   const handleSave = () => {
-    onSave({ ...asset, commDate, status, depot, mileage, lastMaint, nextMaint, initialCost, owner, wialonId: wialonId || null })
+    onSave({ ...asset, commDate, status, depot, lastMaint, nextMaint, initialCost, owner, wialonId: wialonId || null })
     setEditing(false)
+  }
+
+  const submitOpening = async () => {
+    const mileageValue = Number(openingMileage)
+    if (!Number.isFinite(mileageValue) || mileageValue < 0 || !openingEffectiveAt) {
+      setOpeningError("Укажите пробег и дату начала действия.")
+      return
+    }
+    setOpeningBusy(true)
+    setOpeningError("")
+    try {
+      const created = await api.wagonMileage.submitOpening({
+        asset_id: asset.id,
+        mileage_km: openingMileage,
+        effective_at: new Date(openingEffectiveAt).toISOString(),
+        note: openingNote.trim() || undefined,
+      })
+      setOpeningBalances((current) => [created, ...current].slice(0, 20))
+      setOpeningMileage("")
+      setOpeningEffectiveAt("")
+      setOpeningNote("")
+      onUpdated()
+      try {
+        await refreshOpeningBalances()
+      } catch {
+        setOpeningError("Запрос отправлен, но историю не удалось обновить.")
+      }
+    } catch (error) {
+      setOpeningError(russianApiError(error, "Не удалось отправить начальный пробег."))
+    } finally {
+      setOpeningBusy(false)
+    }
+  }
+
+  const approveOpening = async (openingId: string) => {
+    setOpeningBusy(true)
+    setOpeningError("")
+    try {
+      const approved = await api.wagonMileage.approveOpening(openingId)
+      setOpeningBalances((current) =>
+        current.map((item) => item.id === openingId ? approved : item)
+      )
+      onUpdated()
+      try {
+        await refreshOpeningBalances()
+      } catch {
+        setOpeningError("Баланс подтверждён, но историю не удалось обновить.")
+      }
+    } catch (error) {
+      setOpeningError(russianApiError(error, "Не удалось подтвердить начальный пробег."))
+    } finally {
+      setOpeningBusy(false)
+    }
   }
 
   const fieldCls = (edit: boolean) =>
@@ -622,7 +697,7 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
             </div>
             <div className="rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-3 text-center">
               <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-1">Пробег (км)</p>
-              <p className="font-bold text-sm text-gray-900 dark:text-white">{asset.mileage}</p>
+              <p className="font-bold text-sm text-gray-900 dark:text-white">—</p>
             </div>
           </div>
 
@@ -789,18 +864,75 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
             </div>
 
             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Пробег (км)</p>
-              {editing ? (
-                <input value={mileage} onChange={e => setMileage(e.target.value)} className={fieldCls(true)}/>
-              ) : (
-                <>
-                  <p className={fieldCls(false)}>{mileage || "—"}</p>
-                  {(asset.assetType === "locomotive" || asset.assetType === "diesel") && asset.wialonOnline && asset.wialonLastSync && (
-                    <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1">
-                      <Radio className="w-3 h-3"/> Актуальные данные с Wialon · обновлено {new Date(asset.wialonLastSync).toLocaleString("ru-RU")}
-                    </p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                {asset.assetType === "wagon" ? "Подтверждённая проекция (км)" : "Пробег из источника ТОИР (км)"}
+              </p>
+              <p className={fieldCls(false)}>—</p>
+              <p className="mt-1 text-[10px] text-gray-500">
+                Старое значение не показывается до подключения подтверждённого журнала пробега.
+              </p>
+              {(asset.assetType === "locomotive" || asset.assetType === "diesel") && asset.wialonOnline && asset.wialonLastSync && (
+                <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1">
+                  <Radio className="w-3 h-3"/> Актуальные данные Wialon · обновлено {new Date(asset.wialonLastSync).toLocaleString("ru-RU")}
+                </p>
+              )}
+              {asset.assetType === "wagon" && (
+                <div className="mt-3 space-y-3">
+                  {canWrite && (
+                    <div className="grid gap-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+                      <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Запрос начального пробега</p>
+                      <input
+                        aria-label="Начальный пробег, км"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={openingMileage}
+                        onChange={(event) => setOpeningMileage(event.target.value)}
+                        className={fieldCls(true)}
+                      />
+                      <input
+                        aria-label="Дата начала действия"
+                        type="datetime-local"
+                        value={openingEffectiveAt}
+                        onChange={(event) => setOpeningEffectiveAt(event.target.value)}
+                        className={fieldCls(true)}
+                      />
+                      <input
+                        aria-label="Основание"
+                        value={openingNote}
+                        onChange={(event) => setOpeningNote(event.target.value)}
+                        maxLength={2000}
+                        placeholder="Основание (необязательно)"
+                        className={fieldCls(true)}
+                      />
+                      <Button size="sm" onClick={() => void submitOpening()} disabled={openingBusy}>
+                        {openingBusy ? "Отправка..." : "Отправить на подтверждение"}
+                      </Button>
+                    </div>
                   )}
-                </>
+                  {openingBalances.map((opening) => (
+                    <div key={opening.id} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 text-xs dark:bg-gray-800">
+                      <span>
+                        {opening.mileage_km} км · {new Date(opening.effective_at).toLocaleDateString("ru-RU")} · {
+                          opening.status === "pending" ? "Ожидает подтверждения" :
+                          opening.status === "approved" ? "Подтверждён" :
+                          opening.status === "superseded" ? "Заменён" : "Отклонён"
+                        }
+                      </span>
+                      {opening.status === "pending" && canApproveOpening && opening.created_by !== currentUserId && (
+                        <Button size="sm" onClick={() => void approveOpening(opening.id)} disabled={openingBusy}>
+                          Подтвердить
+                        </Button>
+                      )}
+                      {opening.status === "pending" && canApproveOpening && opening.created_by === currentUserId && (
+                        <span className="text-[10px] text-gray-500">Нужно подтверждение другого администратора.</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {openingError && asset.assetType === "wagon" && (
+                <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">{openingError}</p>
               )}
             </div>
 
@@ -1140,7 +1272,6 @@ function toRow(
     status:       a.status,
     comm_date:    apiDate(a.commDate),
     year_built:   a.yearBuilt ? Number(a.yearBuilt) : null,
-    mileage:      Number(a.mileage) || 0,
     last_maint_date: apiDate(a.lastMaint),
     next_maint_date: apiDate(a.nextMaint),
     initial_cost: a.initialCost ? Number(a.initialCost) : null,
@@ -1558,7 +1689,7 @@ export default function OsPage() {
 
   return (
     <div className="p-8 space-y-6">
-      {selected && <AssetModal asset={selected} onClose={() => setSelected(null)} onSave={handleSave} onDelete={canWrite ? handleDelete : undefined} sections={sections} sectionsData={sectionsData} types={assetTypes} statuses={assetStatuses} canWrite={canWrite} onUpdated={(updatedAsset) => {
+      {selected && <AssetModal asset={selected} onClose={() => setSelected(null)} onSave={handleSave} onDelete={canWrite ? handleDelete : undefined} sections={sections} sectionsData={sectionsData} types={assetTypes} statuses={assetStatuses} canWrite={canWrite} canApproveOpening={profile?.role === "admin"} currentUserId={profile?.id} onUpdated={(updatedAsset) => {
         if (updatedAsset) setSelected((current) => current ? {
           ...current,
           assetType: updatedAsset.asset_type,
@@ -1955,7 +2086,7 @@ export default function OsPage() {
                     {(a.invNumber || a.unitId) && <p className="text-xs text-gray-400 truncate max-w-[220px]">{a.invNumber ? `Инв. № ${a.invNumber}` : `ID ${a.unitId}`}</p>}
                   </td>
                   <td className="px-4 py-3.5 text-xs text-gray-600 dark:text-gray-300">{orgUnit?.name || a.depot || "—"}</td>
-                  <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.source !== "wialon" ? a.mileage || "—" : "—"}</td>
+                  <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">—</td>
                   <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.unitId ? a.wialonMileage || "—" : "—"}</td>
                   <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.unitId ? a.engineHours || "—" : "—"}</td>
                   <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.unitId ? `${a.speed || "0"} км/ч` : "—"}</td>

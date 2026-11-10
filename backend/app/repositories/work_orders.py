@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assets import (
     FixedAsset,
-    MileageHistory,
     fixed_asset_name_expression,
 )
 from app.models.identity import User
@@ -17,6 +16,7 @@ from app.models.inventory import Nomenclature, NomenclatureNorm, WorkTypeTemplat
 from app.models.maintenance import WorkType
 from app.models.organization import Employee, Section
 from app.models.work_orders import WorkOrder, WorkOrderItem, WorkOrderRepair
+from app.repositories import mileage as mileage_repository
 
 SORT_FIELDS = frozenset(
     {"created_at", "updated_at", "date_start", "date_end", "status", "priority"}
@@ -31,16 +31,11 @@ async def get_asset(db: AsyncSession, asset_id: UUID, *, lock: bool = False) -> 
 
 
 async def get_known_asset_mileage(db: AsyncSession, asset: FixedAsset) -> Decimal | None:
-    if asset.mileage != 0:
-        return asset.mileage
-    latest = await db.execute(
-        select(MileageHistory.mileage)
-        .where(MileageHistory.asset_id == asset.id)
-        .order_by(MileageHistory.recorded_at.desc(), MileageHistory.id.desc())
-        .limit(1)
-    )
-    recorded_mileage = latest.scalar_one_or_none()
-    return asset.mileage if recorded_mileage == asset.mileage else None
+    if asset.asset_type != "wagon" or not await mileage_repository.has_confirmed_projection(
+        db, asset.id
+    ):
+        return None
+    return asset.mileage
 
 
 async def get_section(db: AsyncSession, section_id: UUID) -> Section | None:
