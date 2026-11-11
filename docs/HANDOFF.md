@@ -1094,3 +1094,21 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 
 - Resolve `UNKNOWN/PENDING` policies in `WAGON_MILEAGE_P0_DECISIONS.md` (Wialon timestamp/identity, GTK handoff and allocation, idle behavior, source priority, estimated projection, and maker-checker). Then implement the idempotent ledger publisher, confirmed projection/read path, and sync orchestration against those approved rules.
 - Still required: PostgreSQL integration and migration rehearsal, E2E scripts, browser checks, and any production rollout. None was run in this task.
+
+## GTK exact-inventory link proposals (2026-11-11)
+
+### Verified
+
+- GTK locomotive and carriage suggestions now use the same rule: raw, non-empty inventory strings must be exactly equal. Model, registration, name, and partial matches do not create proposals. Duplicate TOIR inventory candidates are marked ambiguous without selecting an asset.
+- Existing GTK links and assets already linked to GTK are not proposed again. Confirming a proposal sends `expected_inventory_number`; the API locks and reloads the GTK row and fixed asset, checks the exact number and unique candidate count again, and returns 409 for stale/ambiguous proposals or a conflicting existing link. Repeating the same confirmation uses the existing idempotent source-link service.
+- The carriage table now shows its proposal, ambiguity state, and the same explicit confirmation dialog as locomotives. No route or migration was added.
+- `npx.cmd tsc --noEmit`, `npm.cmd run lint`, `npm.cmd run build`, backend `compileall`, and `git diff --check` completed successfully. Lint/build reported two existing React Hook warnings in work-orders.
+- Added offline unit coverage and extended `backend/scripts/e2e_gtk_links.py` for exact proposal shapes and stale confirmation rejection; backend pytest and API E2E were not run under the local-only syntax-check rule.
+
+### Next task
+
+- Run `python scripts/e2e_gtk_links.py` only against a disposable test API/database, then verify the locomotive and carriage proposal/confirm flows in an authorized browser.
+
+### NOT TESTED
+
+- Backend pytest, API E2E, PostgreSQL transaction/race behavior, browser interaction, production, and deployment.

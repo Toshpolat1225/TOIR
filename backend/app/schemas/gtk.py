@@ -114,6 +114,7 @@ class GtkLinkItem(BaseModel):
     asset_id: UUID
     gtk_id: int
     kind: Literal["locomotive", "carriage"]
+    expected_inventory_number: str | None = Field(default=None, max_length=100)
 
 
 class GtkLinkBatchRequest(BaseModel):

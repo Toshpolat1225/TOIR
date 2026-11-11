@@ -6,15 +6,10 @@ from collections import defaultdict
 from typing import Any
 from uuid import UUID
 
-from app.integrations.base import SourceObject
 from app.services.asset_matching import (
     _PARENTHETICAL,
-    _real_inventory,
-    extract_asset_numbers,
-    extract_asset_series,
     extract_series,
     extract_vehicle_numbers,
-    match_source_objects,
     normalize_token,
 )
 
@@ -42,87 +37,93 @@ def preferred_carriage_ids(
     return duplicates
 
 
-def _source_object(kind: str, row: Any) -> SourceObject:
-    if kind == "locomotive":
-        return SourceObject(
-            source="gtk",
-            external_id=str(row.gtk_id),
-            name=getattr(row, "name", None),
-            number=getattr(row, "garage_number", None),
-            inventory=getattr(row, "inventory_number", None),
-            model=getattr(row, "model_name", None),
-            type="locomotive",
-        )
-    return SourceObject(
-        source="gtk",
-        external_id=str(row.gtk_id),
-        name=getattr(row, "name", None),
-        number=getattr(row, "reg_number", None),
-        inventory=getattr(row, "inventory_number", None),
-        model=getattr(row, "model_name", None),
-        type="carriage",
-    )
-
-
 def match_report(
     kind: str,
     gtk_rows: list[Any],
     assets: list[Any],
     *,
-    in_train_ids: set[int] | None = None,
+    linked_asset_ids: frozenset[UUID] | set[UUID] = frozenset(),
+    linked_gtk_ids: frozenset[int] | set[int] = frozenset(),
 ) -> list[dict[str, Any]]:
     if kind not in {"locomotive", "carriage"}:
         raise ValueError("Unsupported GTK match kind")
-    duplicate_ids = (
-        preferred_carriage_ids(gtk_rows, in_train_ids or set())
-        if kind == "carriage"
-        else set()
+    allowed_types = (
+        {"locomotive", "diesel"} if kind == "locomotive" else {"wagon"}
     )
-    matchable_rows = [
-        row for row in gtk_rows if int(row.gtk_id) not in duplicate_ids
-    ]
-    generic_rows = match_source_objects(
-        (_source_object(kind, row) for row in matchable_rows),
-        assets,
-    )
-    by_id = {int(row["external_id"]): row for row in generic_rows}
+    assets_by_inventory: dict[str, list[Any]] = defaultdict(list)
+    for asset in assets:
+        inventory = getattr(asset, "inv_number", None)
+        if (
+            getattr(asset, "asset_type", None) in allowed_types
+            and isinstance(inventory, str)
+            and inventory.strip()
+        ):
+            assets_by_inventory[inventory].append(asset)
+
+    candidates_by_gtk_id: dict[int, list[Any]] = {}
+    source_counts: dict[str, int] = defaultdict(int)
+    for row in gtk_rows:
+        gtk_id = int(row.gtk_id)
+        inventory = getattr(row, "inventory_number", None)
+        if (
+            gtk_id in linked_gtk_ids
+            or not isinstance(inventory, str)
+            or not inventory.strip()
+        ):
+            candidates_by_gtk_id[gtk_id] = []
+            continue
+        candidates = assets_by_inventory.get(inventory, [])
+        candidates_by_gtk_id[gtk_id] = candidates
+        if candidates:
+            source_counts[inventory] += 1
+
     report: list[dict[str, Any]] = []
     for gtk in gtk_rows:
         gtk_id = int(gtk.gtk_id)
-        if gtk_id in duplicate_ids:
-            report.append(
-                {
-                    "gtk_id": gtk_id,
-                    "kind": kind,
-                    "level": "duplicate",
-                    "candidate_count": 0,
-                    "suggestion": None,
-                    "signals": [],
-                    "duplicate": True,
-                }
-            )
-            continue
-        match = by_id[gtk_id]
-        best = match["suggestion"]
+        inventory = getattr(gtk, "inventory_number", None)
+        candidates = candidates_by_gtk_id[gtk_id]
+        ambiguous = len(candidates) > 1 or (
+            isinstance(inventory, str)
+            and source_counts[inventory] > 1
+            and bool(candidates)
+        )
+        is_unique_source = (
+            isinstance(inventory, str)
+            and source_counts[inventory] == 1
+        )
+        selected = (
+            candidates[0]
+            if len(candidates) == 1
+            and is_unique_source
+            and candidates[0].id not in linked_asset_ids
+            else None
+        )
+        level = (
+            "high"
+            if selected is not None
+            else "ambiguous"
+            if ambiguous
+            else "none"
+        )
         suggestion = (
             {
-                "id": best["asset_id"],
-                "name": best["name"],
-                "inv_number": best["inv_number"],
-                "asset_type": best["asset_type"],
-                "signals": best["signals"],
+                "id": selected.id,
+                "name": selected.name,
+                "inv_number": selected.inv_number,
+                "asset_type": selected.asset_type,
+                "signals": ["inventory_number"],
             }
-            if best
+            if selected is not None
             else None
         )
         report.append(
             {
                 "gtk_id": gtk_id,
                 "kind": kind,
-                "level": match["level"],
-                "candidate_count": match["candidate_count"],
+                "level": level,
+                "candidate_count": len(candidates),
                 "suggestion": suggestion,
-                "signals": match["signals"],
+                "signals": ["inventory_number"] if candidates else [],
                 "duplicate": False,
             }
         )

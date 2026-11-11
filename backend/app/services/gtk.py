@@ -28,7 +28,7 @@ from app.repositories import asset_source_links as asset_links_repository
 from app.repositories import asset_models as asset_models_repository
 from app.repositories import gtk as repository
 from app.models.assets import FixedAsset
-from app.schemas.gtk import GtkLinkBatchRequest
+from app.schemas.gtk import GtkLinkBatchRequest, GtkLinkItem
 from app.services import assets as assets_service
 from app.services import asset_links as asset_links_service
 from app.services import asset_passport
@@ -263,14 +263,18 @@ async def get_status(db: AsyncSession) -> dict[str, Any]:
 async def list_locomotives(db: AsyncSession, **filters: Any):
     rows, total = await repository.list_locomotives(db, **filters)
     matches = await _match_context(db, "locomotive")
+    linked_assets = await repository.get_linked_assets(
+        db, {str(row.gtk_id) for row in matches["gtk_rows"]}
+    )
     all_report = {
         row["gtk_id"]: row for row in gtk_matching.match_report(
-            "locomotive", matches["gtk_rows"], matches["assets"]
+            "locomotive",
+            matches["gtk_rows"],
+            matches["assets"],
+            linked_asset_ids=matches["linked_asset_ids"],
+            linked_gtk_ids={int(gtk_id) for gtk_id in linked_assets},
         )
     }
-    linked_assets = await repository.get_linked_assets(
-        db, {str(row.gtk_id) for row, _ in rows}
-    )
     return [
         {
             **{
@@ -288,16 +292,17 @@ async def list_locomotives(db: AsyncSession, **filters: Any):
 async def list_carriages(db: AsyncSession, **filters: Any):
     rows, total = await repository.list_carriages(db, **filters)
     context = await _match_context(db, "carriage")
+    linked_assets = await repository.get_linked_assets(
+        db, {str(row.gtk_id) for row in context["gtk_rows"]}
+    )
     all_report = gtk_matching.match_report(
         "carriage",
         context["gtk_rows"],
         context["assets"],
-        in_train_ids=context["in_train_ids"],
+        linked_asset_ids=context["linked_asset_ids"],
+        linked_gtk_ids={int(gtk_id) for gtk_id in linked_assets},
     )
     report_by_id = {row["gtk_id"]: row for row in all_report}
-    linked_assets = await repository.get_linked_assets(
-        db, {str(row.gtk_id) for row, _, _ in rows}
-    )
     return [
         {
             **{
@@ -415,19 +420,17 @@ async def get_fixed_asset_gtk_detail(
 
 
 async def _match_context(db: AsyncSession, kind: str) -> dict[str, Any]:
-    in_train_ids: set[int] = set()
     if kind == "locomotive":
         gtk_rows = await repository.list_all_locomotives(db)
     else:
         rows = await repository.list_all_carriages(db)
         gtk_rows = [carriage for carriage, _ in rows]
-        in_train_ids = {
-            carriage.gtk_id for carriage, in_train in rows if in_train
-        }
     return {
         "gtk_rows": gtk_rows,
-        "in_train_ids": in_train_ids,
-        "assets": await repository.list_assets_for_kind(db, kind),
+        "assets": await repository.list_assets_for_kind(
+            db, kind, include_linked=True
+        ),
+        "linked_asset_ids": await repository.list_gtk_linked_asset_ids(db),
     }
 
 
@@ -453,16 +456,66 @@ def _suggestion(match: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
+async def _validate_inventory_proposal(
+    db: AsyncSession,
+    link: GtkLinkItem,
+    asset: FixedAsset,
+    gtk_object: Any,
+) -> None:
+    expected_inventory = link.expected_inventory_number
+    if expected_inventory is None:
+        return
+    if (
+        not expected_inventory.strip()
+        or gtk_object.inventory_number != expected_inventory
+        or asset.inv_number != expected_inventory
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Inventory number changed since the suggestion",
+        )
+    inventory_matches = await repository.list_assets_by_inventory(
+        db, link.kind, expected_inventory
+    )
+    if len(inventory_matches) != 1 or inventory_matches[0].id != asset.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Inventory number no longer identifies one fixed asset",
+        )
+
+
+def _validate_proposal_link_state(
+    link: GtkLinkItem,
+    asset: FixedAsset,
+    linked_gtk_assets: dict[str, FixedAsset],
+    current: Any,
+) -> None:
+    if link.expected_inventory_number is None:
+        return
+    linked_to_object = linked_gtk_assets.get(str(link.gtk_id))
+    if linked_to_object is not None and linked_to_object.id != asset.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="GTK object is already linked to another fixed asset",
+        )
+    if current is not None and current.external_id != str(link.gtk_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Fixed asset is already linked to another GTK object",
+        )
+
+
 async def get_match_report(db: AsyncSession, kind: str) -> dict[str, Any]:
     context = await _match_context(db, kind)
+    linked_assets = await repository.get_linked_assets(
+        db, {str(row.gtk_id) for row in context["gtk_rows"]}
+    )
     report = gtk_matching.match_report(
         kind,
         context["gtk_rows"],
         context["assets"],
-        in_train_ids=context["in_train_ids"],
-    )
-    linked_assets = await repository.get_linked_assets(
-        db, {str(row.gtk_id) for row in context["gtk_rows"]}
+        linked_asset_ids=context["linked_asset_ids"],
+        linked_gtk_ids={int(gtk_id) for gtk_id in linked_assets},
     )
     for item in report:
         item["linked_asset"] = _asset_preview(
@@ -527,6 +580,16 @@ async def save_links(
             )
             for kind in ("locomotive", "carriage")
         }
+        proposal_gtk_ids = {
+            str(link.gtk_id)
+            for link in links
+            if link.expected_inventory_number is not None
+        }
+        linked_gtk_assets = (
+            await repository.get_linked_assets_for_update(db, proposal_gtk_ids)
+            if proposal_gtk_ids
+            else {}
+        )
         if len(assets) != len(asset_ids):
             raise HTTPException(status_code=404, detail="Fixed asset not found")
         for link in links:
@@ -534,6 +597,20 @@ async def save_links(
             gtk_object = objects_by_kind[link.kind].get(link.gtk_id)
             if gtk_object is None:
                 raise HTTPException(status_code=404, detail="GTK record not found")
+            if link.expected_inventory_number is not None:
+                locked_asset = await repository.get_asset_for_update(
+                    db, asset.id
+                )
+                locked_gtk_object = await repository.get_gtk_object_for_update(
+                    db, link.kind, link.gtk_id
+                )
+                if locked_asset is None or locked_gtk_object is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="GTK record or fixed asset not found",
+                    )
+                asset = locked_asset
+                gtk_object = locked_gtk_object
             if link.kind == "locomotive" and asset.asset_type not in {
                 "locomotive",
                 "diesel",
@@ -541,8 +618,15 @@ async def save_links(
                 raise HTTPException(status_code=422, detail="GTK locomotive needs a locomotive or diesel asset")
             if link.kind == "carriage" and asset.asset_type != "wagon":
                 raise HTTPException(status_code=422, detail="GTK carriage needs a wagon asset")
+            await _validate_inventory_proposal(db, link, asset, gtk_object)
             current = await asset_links_repository.get_active_for_update(
                 db, asset.id, "gtk"
+            )
+            _validate_proposal_link_state(
+                link,
+                asset,
+                linked_gtk_assets,
+                current,
             )
             previous_id = current.external_id if current is not None else None
             await asset_links_service.link(

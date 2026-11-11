@@ -11,7 +11,7 @@ from app.schemas.assets import FixedAssetCreate, FixedAssetUpdate
 from app.services import assets as assets_service
 from app.services import gtk as gtk_service
 from app.services import gtk_matching
-from app.schemas.gtk import GtkLinkBatchRequest
+from app.schemas.gtk import GtkLinkBatchRequest, GtkLinkItem
 
 
 def _asset(name: str, *, asset_type: str = "locomotive", inv: str = "I-1"):
@@ -48,45 +48,47 @@ class GtkMatchingTests(unittest.TestCase):
             frozenset({111}),
         )
 
-    def test_locomotive_match_levels_require_unique_pair(self):
+    def test_locomotive_suggestion_requires_exact_unique_inventory_number(self):
         gtk = SimpleNamespace(
             gtk_id=1,
             name="Locomotive",
             model_name="ПЭ-2М",
             garage_number="298",
-            inventory_number="GTK-1",
+            inventory_number="I-1",
         )
-        only_asset = _asset("ПЭ-2М 298")
+        only_asset = _asset("ПЭ-2М 298", inv="I-1")
         report = gtk_matching.match_report("locomotive", [gtk], [only_asset])
         self.assertEqual(report[0]["level"], "high")
         self.assertEqual(report[0]["candidate_count"], 1)
-        self.assertEqual(report[0]["signals"], ["series", "vehicle_number"])
+        self.assertEqual(report[0]["signals"], ["inventory_number"])
+        self.assertEqual(report[0]["suggestion"]["id"], only_asset.id)
 
-        another_asset = _asset("ПЭ2М 298", inv="I-2")
+        another_asset = _asset("ПЭ2М 298", inv="I-1")
         report = gtk_matching.match_report(
             "locomotive", [gtk], [only_asset, another_asset]
         )
         self.assertEqual(report[0]["level"], "ambiguous")
         self.assertEqual(report[0]["candidate_count"], 2)
+        self.assertIsNone(report[0]["suggestion"])
 
         no_match = gtk_matching.match_report(
-            "locomotive", [gtk], [_asset("ТЭМ18ДМ 298")]
+            "locomotive", [gtk], [_asset("ПЭ-2М 298", inv="I-2")]
         )
         self.assertEqual(no_match[0]["level"], "none")
 
-    def test_real_inventory_is_secondary_but_wialon_inventory_is_ignored(self):
+    def test_locomotive_matching_does_not_use_names_or_partial_inventory(self):
         gtk = SimpleNamespace(
             gtk_id=1,
-            name="",
-            model_name=None,
-            garage_number=None,
+            name="ПЭ-2М 298",
+            model_name="ПЭ-2М",
+            garage_number="298",
             inventory_number="ABC-1",
         )
         self.assertEqual(
             gtk_matching.match_report(
-                "locomotive", [gtk], [_asset("Unrelated", inv="ABC-1")]
+                "locomotive", [gtk], [_asset("ПЭ-2М 298", inv="ABC-10")]
             )[0]["level"],
-            "high",
+            "none",
         )
         self.assertEqual(
             gtk_matching.match_report(
@@ -95,11 +97,11 @@ class GtkMatchingTests(unittest.TestCase):
             "none",
         )
 
-    def test_carriage_registration_selects_in_train_duplicate(self):
+    def test_carriage_registration_and_train_membership_do_not_affect_match(self):
         carriages = [
-            SimpleNamespace(gtk_id=1, reg_number="REG-1"),
-            SimpleNamespace(gtk_id=2, reg_number="REG-1"),
-            SimpleNamespace(gtk_id=3, reg_number="UNIQUE"),
+            SimpleNamespace(gtk_id=1, reg_number="REG-1", inventory_number="W-1"),
+            SimpleNamespace(gtk_id=2, reg_number="REG-1", inventory_number="W-2"),
+            SimpleNamespace(gtk_id=3, reg_number="UNIQUE", inventory_number=None),
         ]
         self.assertEqual(
             gtk_matching.preferred_carriage_ids(carriages, {2}), {1}
@@ -107,12 +109,47 @@ class GtkMatchingTests(unittest.TestCase):
         report = gtk_matching.match_report(
             "carriage",
             carriages,
-            [_asset("REG-1", asset_type="wagon", inv="REG-1")],
-            in_train_ids={2},
+            [
+                _asset("REG-1", asset_type="wagon", inv="W-1"),
+                _asset("REG-1", asset_type="wagon", inv="W-2"),
+            ],
         )
         self.assertEqual(
-            [row["level"] for row in report], ["duplicate", "high", "none"]
+            [row["level"] for row in report], ["high", "high", "none"]
         )
+
+    def test_exact_inventory_duplicates_are_ambiguous_without_asset_selection(self):
+        gtk = SimpleNamespace(gtk_id=1, inventory_number="W-1")
+        report = gtk_matching.match_report(
+            "carriage",
+            [gtk],
+            [
+                _asset("Wagon 1", asset_type="wagon", inv="W-1"),
+                _asset("Wagon 2", asset_type="wagon", inv="W-1"),
+            ],
+        )
+        self.assertEqual(report[0]["level"], "ambiguous")
+        self.assertEqual(report[0]["candidate_count"], 2)
+        self.assertIsNone(report[0]["suggestion"])
+
+    def test_empty_inventory_and_already_linked_records_have_no_suggestion(self):
+        asset = _asset("Wagon", asset_type="wagon", inv="W-1")
+        rows = [
+            SimpleNamespace(gtk_id=1, inventory_number=" "),
+            SimpleNamespace(gtk_id=2, inventory_number="W-1"),
+            SimpleNamespace(gtk_id=3, inventory_number="W-1"),
+        ]
+        report = gtk_matching.match_report(
+            "carriage",
+            rows,
+            [asset],
+            linked_asset_ids={asset.id},
+            linked_gtk_ids={3},
+        )
+        self.assertEqual(
+            [item["level"] for item in report], ["none", "none", "none"]
+        )
+        self.assertTrue(all(item["suggestion"] is None for item in report))
 
     def test_carriage_duplicates_without_train_use_stable_id_tiebreak(self):
         carriages = [
@@ -127,6 +164,182 @@ class GtkMatchingTests(unittest.TestCase):
                 {"level": "duplicate", "candidate_count": 0}
             )["level"],
             "none",
+        )
+
+
+class GtkInventoryProposalTests(unittest.IsolatedAsyncioTestCase):
+    async def test_repeated_confirmation_keeps_the_existing_link(self):
+        asset = _asset("Wagon", asset_type="wagon", inv="W-1")
+        asset.gtk_id = "8"
+        gtk_object = SimpleNamespace(
+            gtk_id=8, name="GTK wagon", inventory_number="W-1"
+        )
+        current_link = SimpleNamespace(
+            external_id="8", external_name=None, id=uuid4()
+        )
+
+        class Result:
+            def scalar_one_or_none(self):
+                return asset
+
+        db = SimpleNamespace(
+            execute=AsyncMock(return_value=Result()),
+            commit=AsyncMock(),
+            rollback=AsyncMock(),
+        )
+        payload = GtkLinkBatchRequest(
+            links=[
+                {
+                    "asset_id": str(asset.id),
+                    "gtk_id": 8,
+                    "kind": "carriage",
+                    "expected_inventory_number": "W-1",
+                }
+            ]
+        )
+        with (
+            patch.object(
+                gtk_service.repository,
+                "list_assets_by_ids",
+                new=AsyncMock(return_value={asset.id: asset}),
+            ),
+            patch.object(
+                gtk_service.repository,
+                "list_gtk_objects",
+                new=AsyncMock(return_value={8: gtk_object}),
+            ),
+            patch.object(
+                gtk_service.repository,
+                "get_asset_for_update",
+                new=AsyncMock(return_value=asset),
+            ),
+            patch.object(
+                gtk_service.repository,
+                "get_gtk_object_for_update",
+                new=AsyncMock(return_value=gtk_object),
+            ),
+            patch.object(
+                gtk_service.repository,
+                "get_linked_assets_for_update",
+                new=AsyncMock(return_value={"8": asset}),
+            ),
+            patch.object(
+                gtk_service.repository,
+                "list_assets_by_inventory",
+                new=AsyncMock(return_value=[asset]),
+            ),
+            patch.object(
+                gtk_service.asset_links_repository,
+                "get_active_for_update",
+                new=AsyncMock(return_value=current_link),
+            ),
+            patch.object(
+                gtk_service.asset_links_service.repository,
+                "find_active",
+                new=AsyncMock(return_value=(current_link, asset)),
+            ),
+            patch.object(
+                gtk_service.asset_links_service.repository,
+                "add",
+                new=AsyncMock(),
+            ) as add_link,
+            patch.object(
+                gtk_service.asset_links_service.gtk_repository,
+                "gtk_kind",
+                new=AsyncMock(return_value="carriage"),
+            ),
+        ):
+            self.assertEqual(await gtk_service.save_links(db, payload), 1)
+            self.assertEqual(await gtk_service.save_links(db, payload), 1)
+
+        add_link.assert_not_awaited()
+        self.assertEqual(asset.gtk_id, "8")
+        self.assertEqual(db.commit.await_count, 2)
+
+    async def test_confirmation_rechecks_exact_unique_inventory_number(self):
+        asset = _asset("Wagon", asset_type="wagon", inv="W-1")
+        link = GtkLinkItem(
+            asset_id=asset.id,
+            gtk_id=8,
+            kind="carriage",
+            expected_inventory_number="W-1",
+        )
+        gtk_object = SimpleNamespace(inventory_number="W-1")
+        with patch.object(
+            gtk_service.repository,
+            "list_assets_by_inventory",
+            new=AsyncMock(return_value=[asset]),
+        ):
+            await gtk_service._validate_inventory_proposal(
+                object(), link, asset, gtk_object
+            )
+
+    async def test_confirmation_rejects_stale_or_ambiguous_inventory(self):
+        asset = _asset("Wagon", asset_type="wagon", inv="W-1")
+        link = GtkLinkItem(
+            asset_id=asset.id,
+            gtk_id=8,
+            kind="carriage",
+            expected_inventory_number="W-1",
+        )
+        with patch.object(
+            gtk_service.repository,
+            "list_assets_by_inventory",
+            new=AsyncMock(return_value=[asset]),
+        ) as find_matches:
+            with self.assertRaises(HTTPException) as stale:
+                await gtk_service._validate_inventory_proposal(
+                    object(),
+                    link,
+                    asset,
+                    SimpleNamespace(inventory_number="W-2"),
+                )
+            self.assertEqual(stale.exception.status_code, 409)
+            find_matches.assert_not_awaited()
+
+            with patch.object(
+                gtk_service.repository,
+                "list_assets_by_inventory",
+                new=AsyncMock(return_value=[asset, _asset("Duplicate", asset_type="wagon", inv="W-1")]),
+            ):
+                with self.assertRaises(HTTPException) as ambiguous:
+                    await gtk_service._validate_inventory_proposal(
+                        object(),
+                        link,
+                        asset,
+                        SimpleNamespace(inventory_number="W-1"),
+                    )
+            self.assertEqual(ambiguous.exception.status_code, 409)
+
+    def test_confirmation_never_replaces_an_existing_gtk_link(self):
+        asset = _asset("Wagon", asset_type="wagon", inv="W-1")
+        other_asset = _asset("Other wagon", asset_type="wagon", inv="W-2")
+        link = GtkLinkItem(
+            asset_id=asset.id,
+            gtk_id=8,
+            kind="carriage",
+            expected_inventory_number="W-1",
+        )
+        with self.assertRaises(HTTPException) as object_conflict:
+            gtk_service._validate_proposal_link_state(
+                link, asset, {"8": other_asset}, None
+            )
+        self.assertEqual(object_conflict.exception.status_code, 409)
+
+        with self.assertRaises(HTTPException) as asset_conflict:
+            gtk_service._validate_proposal_link_state(
+                link,
+                asset,
+                {},
+                SimpleNamespace(external_id="9"),
+            )
+        self.assertEqual(asset_conflict.exception.status_code, 409)
+
+        gtk_service._validate_proposal_link_state(
+            link,
+            asset,
+            {"8": asset},
+            SimpleNamespace(external_id="8"),
         )
 
 
@@ -296,6 +509,11 @@ class GtkLinkServiceTests(unittest.IsolatedAsyncioTestCase):
                 gtk_service.repository,
                 "list_gtk_objects",
                 new=AsyncMock(return_value={8: carriage}),
+            ),
+            patch.object(
+                gtk_service.repository,
+                "get_linked_assets_for_update",
+                new=AsyncMock(return_value={}),
             ),
             patch.object(
                 gtk_service.repository,

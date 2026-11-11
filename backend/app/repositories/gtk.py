@@ -299,7 +299,9 @@ async def list_unlinked_source_objects(
     return records
 
 
-async def list_assets_for_kind(db: AsyncSession, kind: str) -> list[FixedAsset]:
+async def list_assets_for_kind(
+    db: AsyncSession, kind: str, *, include_linked: bool = False
+) -> list[FixedAsset]:
     asset_types = (
         ("locomotive", "diesel") if kind == "locomotive" else ("wagon",)
     )
@@ -312,15 +314,60 @@ async def list_assets_for_kind(db: AsyncSession, kind: str) -> list[FixedAsset]:
         )
         .exists()
     )
+    query = select(FixedAsset).where(FixedAsset.asset_type.in_(asset_types))
+    if not include_linked:
+        query = query.where(~linked)
+    result = await db.execute(query.order_by(FixedAsset.id))
+    return list(result.scalars().all())
+
+
+async def list_gtk_linked_asset_ids(db: AsyncSession) -> set[UUID]:
+    result = await db.execute(
+        select(AssetSourceLink.asset_id).where(
+            AssetSourceLink.source == "gtk",
+            AssetSourceLink.status == "active",
+        )
+    )
+    return set(result.scalars().all())
+
+
+async def list_assets_by_inventory(
+    db: AsyncSession, kind: str, inventory_number: str
+) -> list[FixedAsset]:
+    asset_types = (
+        ("locomotive", "diesel") if kind == "locomotive" else ("wagon",)
+    )
     result = await db.execute(
         select(FixedAsset)
         .where(
             FixedAsset.asset_type.in_(asset_types),
-            ~linked,
+            FixedAsset.inv_number == inventory_number,
         )
         .order_by(FixedAsset.id)
+        .with_for_update()
     )
     return list(result.scalars().all())
+
+
+async def get_asset_for_update(
+    db: AsyncSession, asset_id: UUID
+) -> FixedAsset | None:
+    result = await db.execute(
+        select(FixedAsset)
+        .where(FixedAsset.id == asset_id)
+        .with_for_update()
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_gtk_object_for_update(
+    db: AsyncSession, kind: str, gtk_id: int
+) -> GtkLocomotive | GtkCarriage | None:
+    model = GtkLocomotive if kind == "locomotive" else GtkCarriage
+    result = await db.execute(
+        select(model).where(model.gtk_id == gtk_id).with_for_update()
+    )
+    return result.scalar_one_or_none()
 
 
 async def get_linked_assets(

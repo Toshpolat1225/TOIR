@@ -182,6 +182,7 @@ export type GtkLinkRequest = {
     asset_id: string;
     gtk_id: number;
     kind: "locomotive" | "carriage";
+    expected_inventory_number?: string;
   }>;
 };
 

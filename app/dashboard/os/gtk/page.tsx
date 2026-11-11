@@ -36,6 +36,7 @@ type PendingLink = {
   name: string
   assetId: string
   assetName: string
+  expectedInventoryNumber: string
 }
 
 const PAGE_SIZE = 50
@@ -300,13 +301,14 @@ export default function GtkPage() {
 
   const prepareLink = (row: GtkLocomotive | GtkCarriage, kind: PendingLink["kind"]) => {
     const candidate = row.suggestion.asset
-    if (!candidate || !canWrite) return
+    if (!candidate || !canWrite || !row.inventory_number?.trim()) return
     setPendingLink({
       gtkId: row.gtk_id,
       kind,
       name: row.name || `GTK ${row.gtk_id}`,
       assetId: candidate.id,
       assetName: `${candidate.name} · ${candidate.inv_number}`,
+      expectedInventoryNumber: row.inventory_number,
     })
   }
 
@@ -316,7 +318,12 @@ export default function GtkPage() {
     setError("")
     try {
       await api.gtk.link({
-        links: [{ asset_id: pendingLink.assetId, gtk_id: pendingLink.gtkId, kind: pendingLink.kind }],
+        links: [{
+          asset_id: pendingLink.assetId,
+          gtk_id: pendingLink.gtkId,
+          kind: pendingLink.kind,
+          expected_inventory_number: pendingLink.expectedInventoryNumber,
+        }],
       })
       setPendingLink(null)
       await loadTabData()
@@ -487,11 +494,14 @@ export default function GtkPage() {
                       <td className="px-3 py-3">
                         {row.linked_asset && canWrite ? (
                           <button type="button" onClick={() => void unlink(row.linked_asset!.id)} className="text-xs font-medium text-red-600 hover:underline">Отвязать</button>
-                        ) : row.suggestion.asset && (row.suggestion.level === "high" || row.suggestion.level === "ambiguous") ? (
+                        ) : row.suggestion.level === "ambiguous" ? (
                           <div>
-                            <span className={`text-xs font-medium ${row.suggestion.level === "high" ? "text-emerald-600" : "text-amber-600"}`}>
-                              {row.suggestion.level === "high" ? "Высокое совпадение" : "Неоднозначно"}
-                            </span>
+                            <span className="text-xs font-medium text-amber-600">Неоднозначно</span>
+                            <p className="max-w-48 truncate text-xs text-gray-500">Кандидатов ОС: {row.suggestion.candidate_count}</p>
+                          </div>
+                        ) : row.suggestion.level === "high" && row.suggestion.asset ? (
+                          <div>
+                            <span className="text-xs font-medium text-emerald-600">Совпадает инв. №</span>
                             <p className="max-w-48 truncate text-xs text-gray-500">{row.suggestion.asset.name}</p>
                             {canWrite && <button type="button" onClick={() => prepareLink(row, "locomotive")} className="mt-1 text-xs font-semibold text-blue-600 hover:underline">Привязать</button>}
                           </div>
@@ -504,7 +514,7 @@ export default function GtkPage() {
             ) : tab === "carriages" ? (
               <>
                 <thead className="border-b border-gray-200 text-xs uppercase text-gray-500 dark:border-gray-800">
-                  <tr>{["Название", "Номер вагона", "Модель / инв. №", "Статус", "Состав", "Связанное ОС"].map((label) => <th key={label} className="px-3 py-3 font-medium">{label}</th>)}</tr>
+                  <tr>{["Название", "Номер вагона", "Модель / инв. №", "Статус", "Состав", "Связанное ОС", "Предложение"].map((label) => <th key={label} className="px-3 py-3 font-medium">{label}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                   {visibleCarriages.map((row) => (
@@ -515,6 +525,22 @@ export default function GtkPage() {
                       <td className="px-3 py-3">{row.is_active ? "Активен" : <span className="text-red-600">Неактивен</span>}</td>
                       <td className="px-3 py-3">{row.in_train ? "В составе" : "—"}</td>
                       <td className="px-3 py-3">{row.linked_asset ? <>{row.linked_asset.name}<span className="block text-xs text-gray-500">{row.linked_asset.inv_number}</span>{canWrite && <button type="button" onClick={() => void unlink(row.linked_asset!.id)} className="mt-1 text-xs font-medium text-red-600 hover:underline">Отвязать</button>}</> : "—"}</td>
+                      <td className="px-3 py-3">
+                        {row.linked_asset ? (
+                          <span className="text-xs text-gray-400">Уже привязан</span>
+                        ) : row.suggestion.level === "ambiguous" ? (
+                          <div>
+                            <span className="text-xs font-medium text-amber-600">Неоднозначно</span>
+                            <p className="max-w-48 truncate text-xs text-gray-500">Кандидатов ОС: {row.suggestion.candidate_count}</p>
+                          </div>
+                        ) : row.suggestion.level === "high" && row.suggestion.asset ? (
+                          <div>
+                            <span className="text-xs font-medium text-emerald-600">Совпадает инв. №</span>
+                            <p className="max-w-48 truncate text-xs text-gray-500">{row.suggestion.asset.name}</p>
+                            {canWrite && <button type="button" onClick={() => prepareLink(row, "carriage")} className="mt-1 text-xs font-semibold text-blue-600 hover:underline">Привязать</button>}
+                          </div>
+                        ) : <span className="text-xs text-gray-400">Нет предложения</span>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -595,8 +621,8 @@ export default function GtkPage() {
 
       {pendingLink && (
         <ConfirmDialog title="Подтвердить привязку" busy={linkBusy} onCancel={() => setPendingLink(null)} onConfirm={() => void confirmLink()}>
-          <p>Привязать GTK объект <b>{pendingLink.name}</b> (ID {pendingLink.gtkId}) к ОС <b>{pendingLink.assetName}</b>?</p>
-          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Связь будет сохранена только после подтверждения.</p>
+          <p>Привязать GTK объект <b>{pendingLink.name}</b> (ID {pendingLink.gtkId}) к ОС <b>{pendingLink.assetName}</b> по инв. № <b>{pendingLink.expectedInventoryNumber}</b>?</p>
+          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Связь сохранится только после подтверждения и повторной проверки инвентарного номера.</p>
         </ConfirmDialog>
       )}
 

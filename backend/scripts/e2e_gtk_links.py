@@ -69,6 +69,33 @@ def main() -> int:
                 all("linked_asset" in item and "suggestion" in item for item in items),
                 "Each row includes link and suggestion fields",
             )
+            proposals_are_exact = True
+            ambiguous_proposals_are_unselected = True
+            for item in items:
+                suggestion = item.get("suggestion")
+                if not isinstance(suggestion, dict):
+                    proposals_are_exact = False
+                    ambiguous_proposals_are_unselected = False
+                    continue
+                if suggestion.get("level") == "high":
+                    candidate = suggestion.get("asset")
+                    proposals_are_exact = proposals_are_exact and (
+                        isinstance(item.get("inventory_number"), str)
+                        and bool(item["inventory_number"].strip())
+                        and isinstance(candidate, dict)
+                        and candidate.get("inv_number") == item["inventory_number"]
+                    )
+                if suggestion.get("level") == "ambiguous":
+                    ambiguous_proposals_are_unselected = (
+                        ambiguous_proposals_are_unselected
+                        and suggestion.get("asset") is None
+                    )
+            check_condition(
+                checks,
+                f"{label} exact inventory proposals",
+                proposals_are_exact and ambiguous_proposals_are_unselected,
+                "Only unique exact inventory matches select an asset",
+            )
 
         for kind in ("locomotive", "carriage"):
             json_report = request(
@@ -161,6 +188,25 @@ def main() -> int:
         if not isinstance(linked_asset_id, str):
             raise SmokeError("Temporary fixed asset response did not contain an ID")
         created_assets.append(linked_asset_id)
+
+        stale_proposal = request(
+            "POST",
+            "/api/v1/gtk/links",
+            bearer=token,
+            payload={
+                "links": [
+                    {
+                        "asset_id": linked_asset_id,
+                        "gtk_id": gtk_id,
+                        "kind": "carriage",
+                        "expected_inventory_number": f"STALE-{suffix}",
+                    }
+                ]
+            },
+        )
+        check_status(
+            checks, "Stale inventory proposal is rejected", stale_proposal, 409
+        )
 
         link_response = request(
             "POST",

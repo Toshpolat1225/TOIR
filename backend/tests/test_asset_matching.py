@@ -25,13 +25,13 @@ def _asset(name: str, *, asset_type: str = "locomotive", inv: str = "I-1"):
     )
 
 
-def test_common_matcher_keeps_gtk_locomotive_report_result():
+def test_gtk_proposal_uses_exact_inventory_while_generic_matcher_is_unchanged():
     gtk_row = SimpleNamespace(
         gtk_id=1,
         name="Locomotive",
         model_name="ПЭ-2М",
         garage_number="298",
-        inventory_number="GTK-1",
+        inventory_number="I-1",
     )
     assets = [_asset("ПЭ-2М 298")]
     gtk_result = gtk_matching.match_report("locomotive", [gtk_row], assets)
@@ -51,7 +51,8 @@ def test_common_matcher_keeps_gtk_locomotive_report_result():
     )
     assert gtk_result[0]["level"] == generic_result[0]["level"] == "high"
     assert gtk_result[0]["candidate_count"] == generic_result[0]["candidate_count"]
-    assert gtk_result[0]["signals"] == generic_result[0]["signals"]
+    assert gtk_result[0]["signals"] == ["inventory_number"]
+    assert "series" in generic_result[0]["signals"]
 
 
 def test_generic_matcher_returns_ambiguous_and_none_levels():

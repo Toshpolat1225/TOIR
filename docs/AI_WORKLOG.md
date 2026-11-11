@@ -269,3 +269,7 @@ Next: verify search, paging, binding, and placeholder controls in a browser with
 2026-11-10 | Copilot SDK | Implemented controlled P0.3 opening, GTK/Wialon inputs, calculation guards, and mileage-source separation | backend mileage/GTK/Wialon, assets UI, maintenance/work-orders/ML, E2E and seed scripts, HANDOFF | frontend build + tsc, Python syntax + diff check passed; earlier backend selection: 117 passed, 4 subtests, not rerun after final refinements
 NOT TESTED: PostgreSQL migration/integration, E2E, browser behavior, and production; ledger publish/projection remains unimplemented pending policy.
 Next: resolve UNKNOWN/PENDING mileage policies, then implement the idempotent ledger publisher and confirmed projection pipeline.
+2026-11-11 | Copilot SDK | Added exact-inventory GTK proposals for carriages and locomotives | GTK service/repository/schema, GTK page/API type, tests, e2e_gtk_links.py, HANDOFF | tsc, lint, build, Python syntax, diff check passed; two existing Hook warnings
+Both GTK kinds now require a unique exact inventory match; confirmation rechecks locked source/asset state and rejects stale or conflicting links without replacement.
+NOT TESTED: backend pytest, API E2E, PostgreSQL race behavior, browser, production, and deployment.
+Next: run the GTK link E2E only against a disposable test API/database, then verify both tabs in a browser.
