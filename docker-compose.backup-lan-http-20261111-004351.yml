@@ -1,0 +1,97 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "127.0.0.1:5432:5432"
+    mem_limit: 512m
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [internal]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    mem_limit: 512m
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS in .env}
+      API_DOCS_ENABLED: ${API_DOCS_ENABLED:-false}
+      WIALON_INGEST_TOKEN: ${WIALON_INGEST_TOKEN:-}
+      WIALON_HOST: ${WIALON_HOST:-}
+      WIALON_TOKEN: ${WIALON_TOKEN:-}
+      WIALON_SYNC_INTERVAL_MINUTES: ${WIALON_SYNC_INTERVAL_MINUTES:-2}
+      WIALON_SYNC_ENABLED: ${WIALON_SYNC_ENABLED:-false}
+      GTK_HOST: ${GTK_HOST:-}
+      GTK_USER: ${GTK_USER:-}
+      GTK_PASSWORD: ${GTK_PASSWORD:-}
+      GTK_PAGE_PATH: ${GTK_PAGE_PATH:-/railway/__railway_train/}
+      GTK_PAGE_QUERY: ${GTK_PAGE_QUERY:-EnterprisesControlRB=1}
+      GTK_SYNC_ENABLED: ${GTK_SYNC_ENABLED:-false}
+      GTK_SYNC_INTERVAL_MINUTES: ${GTK_SYNC_INTERVAL_MINUTES:-10}
+      DAILY_KM_ESTIMATE: ${DAILY_KM_ESTIMATE:-200}
+    networks: [internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://${DOMAIN:?Set DOMAIN}/api/v1
+    mem_limit: 512m
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    networks: [internal]
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  proxy:
+    image: caddy:2-alpine
+    mem_limit: 128m
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [internal]
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+
+networks:
+  internal:
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
