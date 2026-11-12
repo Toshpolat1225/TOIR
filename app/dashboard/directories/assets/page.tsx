@@ -24,6 +24,7 @@ import {
   type FixedAssetInventoryImportApplyRow,
   type FixedAssetsPassportImportPreview,
   type WagonMileageOpening,
+  type WagonMileageSummary,
 } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { useSections, type SectionData } from "@/lib/use-sections"
@@ -41,6 +42,94 @@ import { SourceAssetPickerDialog } from "@/components/fixed-assets/source-asset-
 ════════════════════════════════════════ */
 type AssetType = string
 type AssetStatus = string
+type WagonMileageLocale = "uz-Latn" | "uz-Cyrl" | "ru"
+
+const wagonMileageText: Record<WagonMileageLocale, Record<string, string>> = {
+  "uz-Latn": {
+    summary: "Vagon probegi",
+    opening: "Tasdiqlangan boshlang'ich probeg",
+    projected: "Joriy proyeksiya",
+    confirmed: "Tasdiqlangan",
+    estimated: "Hisoblangan",
+    held: "Kutilayotgan",
+    history: "Probeg tarixi",
+    request: "Boshlang'ich probeg so'rovi",
+    mileage: "Boshlang'ich probeg, km",
+    effective: "Amal qilish boshlanishi",
+    note: "Asos (ixtiyoriy)",
+    submit: "Tasdiqqa yuborish",
+    sending: "Yuborilmoqda...",
+    pending: "Tasdiq kutilmoqda",
+    approved: "Tasdiqlandi",
+    superseded: "Almashtirildi",
+    rejected: "Rad etildi",
+    approve: "Tasdiqlash",
+    otherAdmin: "Boshqa admin tasdiqlashi kerak.",
+    noOpening: "Tasdiqlangan boshlang'ich probeg yo'q.",
+    loadError: "Probeg tarixini yuklab bo'lmadi.",
+    enterValues: "Probeg va boshlanish sanasini kiriting.",
+    submitError: "Boshlang'ich probegni yuborib bo'lmadi.",
+    approveError: "Boshlang'ich probegni tasdiqlab bo'lmadi.",
+    submittedHistoryError: "So'rov yuborildi, ammo tarix yangilanmadi.",
+    approvedHistoryError: "Tasdiq saqlandi, ammo tarix yangilanmadi.",
+  },
+  "uz-Cyrl": {
+    summary: "Вагон пробеги",
+    opening: "Тасдиқланган бошланғич пробег",
+    projected: "Жорий проекция",
+    confirmed: "Тасдиқланган",
+    estimated: "Ҳисобланган",
+    held: "Кутилаётган",
+    history: "Пробег тарихи",
+    request: "Бошланғич пробег сўрови",
+    mileage: "Бошланғич пробег, км",
+    effective: "Амал қилиш бошланиши",
+    note: "Асос (ихтиёрий)",
+    submit: "Тасдиққа юбориш",
+    sending: "Юборилмоқда...",
+    pending: "Тасдиқ кутилмоқда",
+    approved: "Тасдиқланди",
+    superseded: "Алмаштирилди",
+    rejected: "Рад этилди",
+    approve: "Тасдиқлаш",
+    otherAdmin: "Бошқа админ тасдиқлаши керак.",
+    noOpening: "Тасдиқланган бошланғич пробег йўқ.",
+    loadError: "Пробег тарихини юклаб бўлмади.",
+    enterValues: "Пробег ва бошланиш санасини киритинг.",
+    submitError: "Бошланғич пробегни юбориб бўлмади.",
+    approveError: "Бошланғич пробегни тасдиқлаб бўлмади.",
+    submittedHistoryError: "Сўров юборилди, аммо тарих янгиланмади.",
+    approvedHistoryError: "Тасдиқ сақланди, аммо тарих янгиланмади.",
+  },
+  ru: {
+    summary: "Пробег вагона",
+    opening: "Подтверждённый начальный пробег",
+    projected: "Текущая проекция",
+    confirmed: "Подтверждённый",
+    estimated: "Расчётный",
+    held: "Ожидающий",
+    history: "История пробега",
+    request: "Запрос начального пробега",
+    mileage: "Начальный пробег, км",
+    effective: "Дата начала действия",
+    note: "Основание (необязательно)",
+    submit: "Отправить на подтверждение",
+    sending: "Отправка...",
+    pending: "Ожидает подтверждения",
+    approved: "Подтверждён",
+    superseded: "Заменён",
+    rejected: "Отклонён",
+    approve: "Подтвердить",
+    otherAdmin: "Нужно подтверждение другого администратора.",
+    noOpening: "Нет подтверждённого начального пробега.",
+    loadError: "Не удалось загрузить историю пробега.",
+    enterValues: "Укажите пробег и дату начала действия.",
+    submitError: "Не удалось отправить начальный пробег.",
+    approveError: "Не удалось подтвердить начальный пробег.",
+    submittedHistoryError: "Запрос отправлен, но историю не удалось обновить.",
+    approvedHistoryError: "Баланс подтверждён, но историю не удалось обновить.",
+  },
+}
 
 function russianApiError(error: unknown, fallback: string): string {
   if (!(error instanceof ApiHttpError)) return fallback
@@ -491,25 +580,36 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
   const [gtkDetail, setGtkDetail] = useState<GtkFixedAssetDetail | null>(null)
   const [gtkLoadState, setGtkLoadState] = useState<"loading" | "linked" | "unlinked" | "error">("loading")
   const [openingBalances, setOpeningBalances] = useState<WagonMileageOpening[]>([])
+  const [mileageSummary, setMileageSummary] = useState<WagonMileageSummary | null>(null)
+  const [mileageLocale, setMileageLocale] = useState<WagonMileageLocale>("ru")
   const [openingMileage, setOpeningMileage] = useState("")
   const [openingEffectiveAt, setOpeningEffectiveAt] = useState("")
   const [openingNote, setOpeningNote] = useState("")
   const [openingBusy, setOpeningBusy] = useState(false)
   const [openingError, setOpeningError] = useState("")
+  const mileageLabels = wagonMileageText[mileageLocale]
+  const mileageDateLocale = mileageLocale === "ru"
+    ? "ru-RU"
+    : mileageLocale === "uz-Cyrl"
+      ? "uz-Cyrl-UZ"
+      : "uz-Latn-UZ"
 
-  const refreshOpeningBalances = async () => {
-    const result = await api.wagonMileage.openings({ asset_id: asset.id, limit: 20 })
-    setOpeningBalances(result.items)
-  }
+  const refreshOpeningBalances = useCallback(async () => {
+    const [openings, summary] = await Promise.all([
+      api.wagonMileage.openings({ asset_id: asset.id, limit: 20 }),
+      api.wagonMileage.summary(asset.id, { limit: 20 }),
+    ])
+    setOpeningBalances(openings.items)
+    setMileageSummary(summary)
+  }, [asset.id])
 
   useEffect(() => {
     if (asset.assetType !== "wagon") return
     let active = true
-    api.wagonMileage.openings({ asset_id: asset.id, limit: 20 })
-      .then((result) => { if (active) setOpeningBalances(result.items) })
-      .catch(() => { if (active) setOpeningError("Не удалось загрузить историю начального пробега.") })
+    refreshOpeningBalances()
+      .catch(() => { if (active) setOpeningError(mileageLabels.loadError) })
     return () => { active = false }
-  }, [asset.assetType, asset.id])
+  }, [asset.assetType, asset.id, mileageLabels.loadError, refreshOpeningBalances])
 
   useEffect(() => {
     let active = true
@@ -602,7 +702,7 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
   const submitOpening = async () => {
     const mileageValue = Number(openingMileage)
     if (!Number.isFinite(mileageValue) || mileageValue < 0 || !openingEffectiveAt) {
-      setOpeningError("Укажите пробег и дату начала действия.")
+      setOpeningError(mileageLabels.enterValues)
       return
     }
     setOpeningBusy(true)
@@ -622,10 +722,10 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
       try {
         await refreshOpeningBalances()
       } catch {
-        setOpeningError("Запрос отправлен, но историю не удалось обновить.")
+        setOpeningError(mileageLabels.submittedHistoryError)
       }
     } catch (error) {
-      setOpeningError(russianApiError(error, "Не удалось отправить начальный пробег."))
+      setOpeningError(russianApiError(error, mileageLabels.submitError))
     } finally {
       setOpeningBusy(false)
     }
@@ -643,10 +743,10 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
       try {
         await refreshOpeningBalances()
       } catch {
-        setOpeningError("Баланс подтверждён, но историю не удалось обновить.")
+        setOpeningError(mileageLabels.approvedHistoryError)
       }
     } catch (error) {
-      setOpeningError(russianApiError(error, "Не удалось подтвердить начальный пробег."))
+      setOpeningError(russianApiError(error, mileageLabels.approveError))
     } finally {
       setOpeningBusy(false)
     }
@@ -865,12 +965,58 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
 
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                {asset.assetType === "wagon" ? "Подтверждённая проекция (км)" : "Пробег из источника ТОИР (км)"}
+                {asset.assetType === "wagon" ? mileageLabels.summary : "Пробег из источника ТОИР (км)"}
               </p>
-              <p className={fieldCls(false)}>—</p>
-              <p className="mt-1 text-[10px] text-gray-500">
-                Старое значение не показывается до подключения подтверждённого журнала пробега.
+              <p className={fieldCls(false)}>
+                {asset.assetType === "wagon"
+                  ? mileageSummary?.projected_km ?? mileageLabels.noOpening
+                  : "—"}
               </p>
+              {asset.assetType === "wagon" && mileageSummary && (
+                <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                  <p>{mileageLabels.confirmed}: {mileageSummary.confirmed_km} км</p>
+                  <p>{mileageLabels.estimated}: {mileageSummary.estimated_km} км</p>
+                  <p>{mileageLabels.held}: {mileageSummary.held_km} км</p>
+                </div>
+              )}
+              {asset.assetType === "wagon" && (
+                <div className="mt-3 space-y-2">
+                  <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                    <span>Til / Тил / Язык</span>
+                    <select
+                      value={mileageLocale}
+                      onChange={(event) => setMileageLocale(event.target.value as WagonMileageLocale)}
+                      className="rounded border border-gray-300 bg-white px-2 py-1 dark:border-gray-600 dark:bg-gray-800"
+                    >
+                      <option value="uz-Latn">O&apos;zbekcha</option>
+                      <option value="uz-Cyrl">Ўзбекча</option>
+                      <option value="ru">Русский</option>
+                    </select>
+                  </label>
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300">{mileageLabels.history}</p>
+                  {mileageSummary?.items.map((entry) => (
+                    <div key={entry.id} className="rounded-lg bg-gray-50 px-3 py-2 text-xs dark:bg-gray-800">
+                      <div className="flex flex-wrap justify-between gap-2">
+                        <span>{entry.classification} · {entry.distance_km} км</span>
+                        <span>
+                          {new Date(entry.period_from).toLocaleString(mileageDateLocale)} –{" "}
+                          {new Date(entry.period_to).toLocaleString(mileageDateLocale)}
+                        </span>
+                      </div>
+                      {entry.classification === "HELD" && (
+                        <p className="mt-1 text-amber-700 dark:text-amber-300">
+                          {String(entry.calculation_details.reason ?? "unknown")}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {asset.assetType !== "wagon" && (
+                <p className="mt-1 text-[10px] text-gray-500">
+                  Старое значение не показывается до подключения журнала пробега.
+                </p>
+              )}
               {(asset.assetType === "locomotive" || asset.assetType === "diesel") && asset.wialonOnline && asset.wialonLastSync && (
                 <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1">
                   <Radio className="w-3 h-3"/> Актуальные данные Wialon · обновлено {new Date(asset.wialonLastSync).toLocaleString("ru-RU")}
@@ -880,9 +1026,9 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
                 <div className="mt-3 space-y-3">
                   {canWrite && (
                     <div className="grid gap-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-                      <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Запрос начального пробега</p>
+                      <p className="text-xs font-medium text-gray-700 dark:text-gray-300">{mileageLabels.request}</p>
                       <input
-                        aria-label="Начальный пробег, км"
+                        aria-label={mileageLabels.mileage}
                         type="number"
                         min="0"
                         step="0.01"
@@ -891,22 +1037,22 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
                         className={fieldCls(true)}
                       />
                       <input
-                        aria-label="Дата начала действия"
+                        aria-label={mileageLabels.effective}
                         type="datetime-local"
                         value={openingEffectiveAt}
                         onChange={(event) => setOpeningEffectiveAt(event.target.value)}
                         className={fieldCls(true)}
                       />
                       <input
-                        aria-label="Основание"
+                        aria-label={mileageLabels.note}
                         value={openingNote}
                         onChange={(event) => setOpeningNote(event.target.value)}
                         maxLength={2000}
-                        placeholder="Основание (необязательно)"
+                        placeholder={mileageLabels.note}
                         className={fieldCls(true)}
                       />
                       <Button size="sm" onClick={() => void submitOpening()} disabled={openingBusy}>
-                        {openingBusy ? "Отправка..." : "Отправить на подтверждение"}
+                        {openingBusy ? mileageLabels.sending : mileageLabels.submit}
                       </Button>
                     </div>
                   )}
@@ -914,18 +1060,18 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
                     <div key={opening.id} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2 text-xs dark:bg-gray-800">
                       <span>
                         {opening.mileage_km} км · {new Date(opening.effective_at).toLocaleDateString("ru-RU")} · {
-                          opening.status === "pending" ? "Ожидает подтверждения" :
-                          opening.status === "approved" ? "Подтверждён" :
-                          opening.status === "superseded" ? "Заменён" : "Отклонён"
+                          opening.status === "pending" ? mileageLabels.pending :
+                          opening.status === "approved" ? mileageLabels.approved :
+                          opening.status === "superseded" ? mileageLabels.superseded : mileageLabels.rejected
                         }
                       </span>
                       {opening.status === "pending" && canApproveOpening && opening.created_by !== currentUserId && (
                         <Button size="sm" onClick={() => void approveOpening(opening.id)} disabled={openingBusy}>
-                          Подтвердить
+                          {mileageLabels.approve}
                         </Button>
                       )}
                       {opening.status === "pending" && canApproveOpening && opening.created_by === currentUserId && (
-                        <span className="text-[10px] text-gray-500">Нужно подтверждение другого администратора.</span>
+                        <span className="text-[10px] text-gray-500">{mileageLabels.otherAdmin}</span>
                       )}
                     </div>
                   ))}

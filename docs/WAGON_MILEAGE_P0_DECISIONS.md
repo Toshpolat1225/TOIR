@@ -58,8 +58,8 @@ Bu hujjat odometr tezligi, agreement tolerance, maksimal vaqt yoki idle davomiyl
 
 - `CONFIRMED` — Wialon uzilishida faqat aynan bir locomotive’ga tegishli oldingi va keyingi tasdiqlangan o‘lchovlar bracket bo‘lsa interpolation qilinadi. Bracket bo‘lmasa `HELD`; boshqa locomotive counter’i bilan gap to‘ldirilmaydi.
 - `CONFIRMED` — Interpolation natijasi `ESTIMATED`; tasdiqlangan masofa sifatida ko‘rsatilmaydi.
-- `PROPOSED` — Bracket’langan bitta source interval’ida vaqt ulushi bo‘yicha taqsimla; natija `ESTIMATED` bo‘lsin. To‘g‘ridan-to‘g‘ri o‘lchov ham manba va vaqt tekshiruvlaridan o‘tishi kerak.
-- `UNKNOWN` — Wialon bracket uchun maksimal vaqt oralig‘i, interpolation formulasi va GTK/Wialon timestamp field’larining effective ma’nosi tasdiqlanmagan. Bu bosqichda sonli limit belgilanmaydi.
+- `CONFIRMED` — Foydalanuvchi odatiy Wialon so‘rov oralig‘i 2 daqiqa ekanini va maksimal bracket oralig‘i 30 daqiqa bo‘lishini tasdiqladi (`WAGON_MILEAGE_MAX_BRACKET_GAP_MIN=30`). 2 daqiqadan uzun, 30 daqiqagacha bo‘lgan bracket ichida harakat bo‘lsa natija `ESTIMATED`; teng odometr to‘liq bracket uchun `0 km CONFIRMED`. 30 daqiqadan uzun va harakat bor interval `HELD`. Wagon membership namunalar orasida almashsa, tegishli vaqt ulushi `ESTIMATED`.
+- `UNKNOWN` — GTK/Wialon timestamp field’larining effective ma’nosi noma’lum; bracket bo‘yicha tasdiqlangan chegaradan oshgan harakat intervali `HELD`.
 
 ### D. Vagon tarkibga kirishi va chiqishi
 
@@ -81,7 +81,7 @@ Bu hujjat odometr tezligi, agreement tolerance, maksimal vaqt yoki idle davomiyl
 - `CONFIRMED` — Har bir hisob natijasining manbasi va calculation version’i saqlanadi; takror sync/replay mileage’ni ikki marta oshirmaydi.
 - `CONFIRMED` — `fixed_assets.mileage` faqat wagon probegi projection’i. Wagon Mileage Engine bu qiymatni faqat vagonlar uchun publish qiladi; locomotive probegi alohida counter/ledger’da yuritiladi va bu maydonga yozilmaydi.
 - `PROPOSED` — Ledger canonical calculation record bo‘lsin: run, policy version, source reading/snapshot, membership interval, locomotive, vaqt, km, status va idempotency key’ga bog‘lansin. Recalculation eski active qatorlarni `superseded` qilib, yangi ledger/cache/history’ni bitta transaction’da publish qilsin.
-- `UNKNOWN` — `ESTIMATED` ledger natijasi administrator ko‘rib chiqqandan keyin projection’ga qo‘shiladimi yoki alohida estimate bo‘lib qoladimi — tasdiqlanmagan. Tasdiqkacha uni confirmed mileage deb ko‘rsatma.
+- `CONFIRMED` — D9: `ESTIMATED` ledger natijasi tasdiqlangan opening balance mavjud bo‘lsa wagon projection’ga qo‘shiladi; tasnifi va manbasi saqlanadi, confirmed deb ko‘rsatilmaydi.
 - `UNKNOWN` — Eski mileage/history’ni opening balance’ga aylantirish va maintenance reconciliation’ning boshlang‘ich contract’i hal qilinmagan.
 
 ### G. Wialon Push/Pull
@@ -104,7 +104,7 @@ Bu hujjat odometr tezligi, agreement tolerance, maksimal vaqt yoki idle davomiyl
 |---|---|---|
 | GTK/Wialon selection’ning aniq ustuvorlik mezoni qanday? | Biznes egasi + GTK/Wialon data owner | Avtomatik tanlov yoki `HELD`. |
 | GTK handoff uchun qaysi field aniq effective time hisoblanadi? | GTK data owner | Effective timestamp topilmasa handoff `HELD`. |
-| Wialon bracket maximum interval va speed/agreement policy qancha? | Biznes/faoliyat egasi + telemetry owner | Policy config; raqam tasdiqlanmagan. |
+| Wialon bracket 30 daqiqadan uzun bo‘lsa nima bo‘ladi, tezlik va moslik mezoni qanday? | Biznes/faoliyat egasi + telemetry owner | 30 daqiqadan uzun harakat intervali `HELD`; tezlik va moslik chegaralari `UNKNOWN`. |
 | Idle minimal davomiyligi va manbalar ustuvorligi qanday? | Faoliyat egasi + telemetry owner | Idle status tasdig‘i; raqam tasdiqlanmagan. |
 | Bir xil unit va vaqtda turli probeg kelgandagi conflict’ni kim va qanday ko‘rib chiqadi? | Wialon owner + biznes egasi | Manual review roli, navbat va qayta hisoblash tartibi. |
 | Snapshotlar orasidagi vagon taqsimotining matematik formulasi qanday? | Biznes egasi + GTK data owner | Faqat `ESTIMATED`; formula tasdiqlanmagan. |
@@ -197,7 +197,7 @@ Quyidagi DB constraint va transaction tavsiyalari `PROPOSED`; migration va imple
 - Cross-train overlap’ni rad etish, duplicate snapshot replay’i va idempotency.
 - Opening pending/approved, alohida audit, bitta active balance va same-actor approval policy’si.
 - Idle GTK/Wialon agreement, conflict/insufficient evidence `HELD`, duration threshold tasdiqlangandan keyin.
-- `CONFIRMED`/`ESTIMATED`/`HELD`dan qaysi biri wagon projection’ga kirishi; hozircha `ESTIMATED` inclusion `UNKNOWN`.
+- `CONFIRMED`/`ESTIMATED` wagon projection’ga kiradi; `HELD` kirmaydi. `ESTIMATED` alohida tasnif va manbasi bilan ko‘rsatiladi.
 
 ### Integration — disposable PostgreSQL
 
@@ -241,3 +241,19 @@ Ketma-ketlik `PROPOSED`; P0.1 hujjati implementatsiyani boshlashga ruxsat bermay
 - `CONFIRMED`: bir fizik segment uchun bir odometer source; odometrlarni qo‘shmaslik/o‘rtachalaslik; `fixed_assets.mileage` faqat wagon projection, locomotive probegi alohida; Push/Pull umumiy validation/raw/idempotency/publish; bir vaqtdagi turli qiymatlar saqlanib conflict sifatida `HELD` qilinadi.
 - `UNKNOWN` / `PENDING APPROVAL`: selection priority; Wialon max bracket time; idle minimum duration; snapshot allocation formulasi; GTK/Wialon conflict manual-review tartibi; submitter=approver mumkinligi; `ESTIMATED` projection inclusion; schema parity va constraint implementation policy.
 - Ushbu qarorlar hujjatga kiritildi, implementatsiyaga ruxsat bermaydi. P0.1’da kod, test, migration, DB, Docker va `postgres/schema.sql` o‘zgartirilmadi yoki ishga tushirilmadi.
+
+## 10. P0.3 aniqlashtirishlari
+
+Quyidagi qoidalar P0.1’dagi ochiq holatlardan keyingi tasdiqlar bo‘lib, tegishli oldingi `UNKNOWN` yozuvlarini yangilaydi.
+
+- C2: maksimal Wialon bracket 30 daqiqa (`WAGON_MILEAGE_MAX_BRACKET_GAP_MIN=30`); 2 daqiqa odatiy so‘rov oralig‘i, chegara emas. 2 daqiqadan uzun va 30 daqiqagacha bo‘lgan harakat `ESTIMATED`; teng odometr `0 km CONFIRMED`; 45 daqiqalik harakat `HELD`.
+- C3: vaqt oralig‘i `[start,end)`; GTK snapshotlar orasidagi vagon almashinuvi doim `ESTIMATED`. D6 sinovidagi kutilgan natija 20 km.
+- D9: `ESTIMATED` eligible vagon ledger natijasi tasdiqlangan opening balance’dan keyin `fixed_assets.mileage` projection’ga kiradi. `accepted` va `calculation_eligible` mustaqil maydonlar; `HELD` projection’ga kirmaydi.
+- D10: Wialon yangi asset yaratishda `cnm` qiymatini faqat `suspect_absolute` bo‘lmasa boshlang‘ich mileage sifatida saqlaydi. `cnm > 1,000,000` yoki `cneh > 0` va `cnm/cneh > 100 km/soat` bo‘lsa unit import qilinmaydi.
+- F: 0027–0028 jadvallari rehearsal bazasidan `pg_dump --schema-only` bilan `postgres/schema.sql`ga qo‘shilgan; `test_schema_drift` o‘tishi shart. 0029 migration Alembic chain’da tekshiriladi; bu bosqichda undan yangi jadvallarni `schema.sql`ga dump qilish scope’ga kirmaydi.
+
+### Ochiq `PENDING APPROVAL` holatlar
+
+- Opening balance’ni kirituvchi va tasdiqlovchi bir shaxs bo‘lishi mumkinmi — hali qaror qilinmagan.
+- Idle’ni tasdiqlash uchun minimal davomiylik tasdiqlanmagan; koddagi sozlama biznes siyosati deb olinmaydi.
+- GTK va Wialon vaqt belgilarining manbaga xos aniq ma’nosi hamda dalil yetarli bo‘lmagan idle holatini ko‘rib chiqish tartibi tegishli egasi tomonidan tasdiqlanishi kerak.

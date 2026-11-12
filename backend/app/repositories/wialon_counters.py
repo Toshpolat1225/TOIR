@@ -31,7 +31,9 @@ async def get_state_row(
     db: AsyncSession, asset_id: UUID
 ) -> WialonCounterState | None:
     result = await db.execute(
-        select(WialonCounterState).where(WialonCounterState.asset_id == asset_id)
+        select(WialonCounterState)
+        .where(WialonCounterState.asset_id == asset_id)
+        .with_for_update()
     )
     return result.scalar_one_or_none()
 
@@ -130,6 +132,34 @@ async def rebaseline(
         stmt.on_conflict_do_update(
             index_elements=[WialonCounterState.asset_id],
             set_={k: v for k, v in values.items() if k != "asset_id"},
+        )
+    )
+    await db.flush()
+
+
+async def mark_conflict(
+    db: AsyncSession,
+    asset_id: UUID,
+    *,
+    reason: str,
+    at: datetime,
+) -> None:
+    """Block counter acceptance until an operator establishes a new baseline."""
+    values = dict(
+        asset_id=asset_id,
+        last_status=Verdict.REJECTED.value,
+        last_reason=reason,
+        updated_at=at,
+    )
+    stmt = insert(WialonCounterState).values(**values)
+    await db.execute(
+        stmt.on_conflict_do_update(
+            index_elements=[WialonCounterState.asset_id],
+            set_={
+                "last_status": values["last_status"],
+                "last_reason": values["last_reason"],
+                "updated_at": values["updated_at"],
+            },
         )
     )
     await db.flush()

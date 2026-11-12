@@ -267,7 +267,9 @@ def test_fixed_asset_api_methods_are_in_fixed_assets_client():
 
 
 def test_os_page_routes_all_api_calls_through_known_api_methods():
-    source = (ROOT / "app" / "dashboard" / "os" / "page.tsx").read_text(
+    source = (
+        ROOT / "app" / "dashboard" / "directories" / "assets" / "page.tsx"
+    ).read_text(
         encoding="utf-8"
     )
     assert "api.fixedAssets.previewInventoryImport" in source

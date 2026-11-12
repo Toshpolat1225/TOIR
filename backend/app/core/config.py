@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     gtk_page_query: str = "EnterprisesControlRB=1"
     gtk_sync_enabled: bool = False
     gtk_sync_interval_minutes: int = Field(default=10, ge=5, le=1440)
+    wagon_mileage_max_bracket_gap_min: int = Field(default=30, ge=1)
+    wagon_mileage_idle_min_minutes: int = Field(default=30, ge=1)
+    wagon_mileage_engine_enabled: bool = False
     daily_km_estimate: int = Field(default=200, gt=0)
 
     @field_validator("wialon_host", mode="before")

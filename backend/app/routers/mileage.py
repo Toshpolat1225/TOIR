@@ -11,6 +11,7 @@ from app.schemas.mileage import (
     MileageOpeningCreate,
     MileageOpeningList,
     MileageOpeningRead,
+    WagonMileageSummary,
 )
 from app.services import mileage_opening
 
@@ -88,3 +89,20 @@ async def approve_opening(
         db, opening_id, user=user
     )
     return MileageOpeningRead.model_validate(opening)
+
+
+@router.get("/assets/{asset_id}", response_model=WagonMileageSummary)
+async def get_wagon_mileage(
+    asset_id: UUID,
+    user: Annotated[User, Depends(require_permission("assets.view"))],
+    db: DatabaseSession,
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+) -> WagonMileageSummary:
+    return await mileage_opening.get_wagon_mileage_summary(
+        db,
+        asset_id,
+        master_section_id=_master_section(user),
+        limit=limit,
+        offset=offset,
+    )

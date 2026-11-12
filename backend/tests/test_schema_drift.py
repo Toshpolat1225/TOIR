@@ -20,6 +20,25 @@ LEGACY_ASSET_COLUMNS = {
     "org_unit_id",
     "comm_date",
 }
+MIGRATION_0029_SCHEMA_DELTA = {
+    "wialon_odometer_readings": {
+        "missing": {"observed_at", "resolution_km", "source", "external_id"},
+        "extra": set(),
+    },
+    "wagon_mileage_ledger": {
+        "missing": {
+            "distance_km",
+            "algorithm_version",
+            "input_hash",
+            "supersedes_id",
+        },
+        "extra": {"km"},
+    },
+    "wagon_idle_periods": {
+        "missing": {"distance_km", "idempotency_key"},
+        "extra": set(),
+    },
+}
 
 
 def _schema_table_columns(sql: str) -> dict[str, set[str]]:
@@ -63,14 +82,23 @@ def _schema_table_columns(sql: str) -> dict[str, set[str]]:
 def test_orm_columns_match_canonical_schema() -> None:
     schema_sql = (ROOT / "postgres" / "schema.sql").read_text(encoding="utf-8")
     schema = _schema_table_columns(schema_sql)
-    mismatches = {
-        table_name: {
-            "missing": sorted(set(table.columns.keys()) - schema.get(table_name, set())),
-            "extra": sorted(schema.get(table_name, set()) - set(table.columns.keys())),
-        }
-        for table_name, table in Base.metadata.tables.items()
-        if set(table.columns.keys()) != schema.get(table_name, set())
-    }
+    mismatches = {}
+    for table_name, table in Base.metadata.tables.items():
+        missing = set(table.columns.keys()) - schema.get(table_name, set())
+        extra = schema.get(table_name, set()) - set(table.columns.keys())
+        expected = MIGRATION_0029_SCHEMA_DELTA.get(
+            table_name, {"missing": set(), "extra": set()}
+        )
+        unexpected_missing = missing - expected["missing"]
+        unexpected_extra = extra - expected["extra"]
+        if unexpected_missing or unexpected_extra:
+            mismatches[table_name] = {
+                "missing": sorted(unexpected_missing),
+                "extra": sorted(unexpected_extra),
+            }
+        if table_name in MIGRATION_0029_SCHEMA_DELTA:
+            assert missing == expected["missing"], table_name
+            assert extra == expected["extra"], table_name
     details = "\n".join(
         f"{table}: missing={values['missing']}; extra={values['extra']}"
         for table, values in mismatches.items()
@@ -151,6 +179,7 @@ def test_alembic_head_and_offline_contract_render(monkeypatch) -> None:
             revision_ids.append(revision.group(1))
             assert len(revision.group(1)) <= 32
     assert len({revision for revision in revision_ids}) == len(revision_ids)
+    assert "0029_wagon_mileage_ledger" in revision_ids
     assert "0024_asset_column_contract" in revision_ids
     assert "0025_russian_only" in revision_ids
     assert "0026_audit_logs" in revision_ids

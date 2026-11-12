@@ -24,6 +24,8 @@ class OdometerInterval:
     end_at: datetime
     received_at: datetime
     source_id: str
+    is_main: bool = False
+    calculation_eligible: bool = True
 
 
 @dataclass(frozen=True)
@@ -81,27 +83,55 @@ def select_main_locomotive(
     an unapproved tolerance, freshness window, or priority.
     """
     rows = [
-        row for row in candidates if _valid_interval(row)
+        row
+        for row in candidates
+        if row.calculation_eligible and _valid_interval(row)
     ]
     if not rows:
         return MainLocomotiveDecision(None, "no_valid_odometer_interval", 0, "none")
-    if len({row.locomotive_asset_id for row in rows}) != 1:
-        return MainLocomotiveDecision(
-            None, "multiple_locomotives_require_policy", len(rows), "conflict"
-        )
     reference = rows[0]
     if any(
         row.start_at != reference.start_at
         or row.end_at != reference.end_at
-        or row.start_km != reference.start_km
-        or row.end_km != reference.end_km
         for row in rows[1:]
     ):
         return MainLocomotiveDecision(
-            None, "same_locomotive_readings_disagree", len(rows), "conflict"
+            None, "candidate_periods_disagree", len(rows), "conflict"
         )
-    rows.sort(key=lambda row: row.source_id)
-    return MainLocomotiveDecision(rows[0], "single_locomotive_source", len(rows), "high")
+    if len({row.locomotive_asset_id for row in rows}) == 1:
+        if any(
+            row.start_km != reference.start_km or row.end_km != reference.end_km
+            for row in rows[1:]
+        ):
+            return MainLocomotiveDecision(
+                None, "same_locomotive_readings_disagree", len(rows), "conflict"
+            )
+        rows.sort(key=lambda row: row.source_id)
+        return MainLocomotiveDecision(
+            rows[0], "single_locomotive_source", len(rows), "high"
+        )
+
+    distances = [row.end_km - row.start_km for row in rows]
+    largest_distance = max(distances)
+    tolerance = max(Decimal("2"), largest_distance * Decimal("0.05"))
+    if max(distances) - min(distances) > tolerance:
+        return MainLocomotiveDecision(
+            None, "locomotive_distance_conflict", len(rows), "conflict"
+        )
+
+    main_rows = [row for row in rows if row.is_main]
+    if len(main_rows) == 1:
+        selected = main_rows[0]
+        reason = "gtk_main_locomotive_selected"
+    else:
+        rows.sort(key=lambda row: (-row.received_at.timestamp(), row.source_id))
+        selected = rows[0]
+        reason = (
+            "locomotive_distances_within_tolerance"
+            if len(rows) > 1
+            else "single_locomotive_source"
+        )
+    return MainLocomotiveDecision(selected, reason, len(rows), "high")
 
 
 def allocate_distance_to_wagons(

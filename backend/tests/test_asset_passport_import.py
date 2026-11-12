@@ -17,6 +17,7 @@ from app.schemas.asset_data_import import (
 )
 from app.services import asset_passport_import as importer
 from app.services import asset_passport
+from source_check_utils import without_locale_block
 
 ROOT = Path(__file__).resolve().parents[2]
 LANGUAGE_FILES = (
@@ -24,7 +25,7 @@ LANGUAGE_FILES = (
     ROOT / "backend" / "app" / "services" / "asset_passport_import.py",
     ROOT / "backend" / "app" / "routers" / "assets.py",
     Path(__file__),
-    ROOT / "app" / "dashboard" / "os" / "page.tsx",
+    ROOT / "app" / "dashboard" / "directories" / "assets" / "page.tsx",
     ROOT / "lib" / "api.ts",
 )
 
@@ -425,4 +426,6 @@ def test_new_import_ui_uses_russian_text_only():
     )
     for path in LANGUAGE_FILES:
         content = path.read_text(encoding="utf-8").lower()
+        if path.name == "page.tsx" and path.parent.name == "assets":
+            content = without_locale_block(content, "uz-Cyrl")
         assert not any(character in content for character in forbidden), str(path)

@@ -1112,3 +1112,42 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### NOT TESTED
 
 - Backend pytest, API E2E, PostgreSQL transaction/race behavior, browser interaction, production, and deployment.
+
+## P0.3 A bosqichi va migratsiya mashqi (2026-11-11)
+
+### Tasdiqlangan
+
+- 0027–0028 Alembic migrationlari vaqtinchalik `rehearse` bazasida `upgrade head`, `downgrade -1`, `upgrade head` tartibida bajarildi. Ishlab chiqarish bazasiga ulanilmadi; `pg_rehearse` to‘xtatildi.
+- 0027–0028 jadvallari bazadan `pg_dump --schema-only` bilan chiqarilib `postgres/schema.sql`ga qo‘shildi. `test_schema_drift` va tuzatilgan to‘rtta frontend-yo‘l testi bilan 40 test o‘tdi.
+- Wialon `suspect_absolute` birliklari yangi aktiv importidan sabab ko‘rsatib chiqarib tashlanadi; odatiy import xulqi saqlangan. Push `/wialon/input` uchun 1,000,000,000 km yuborilganda aktiv probegi o‘zgarmasligi tekshirildi.
+- `0028_mileage_approval_inputs` yagona Alembic head.
+- C1–C3 va Wialon testlari: 64 passed, 4 subtests passed. Python syntax va `git diff --check` chiqish kodi 0.
+- C1’da Push/Pull canonical ingestionga ulanadi; Push timestamp mapping tasdiqlanmagani uchun `calculation_eligible=false` bo‘lib qoladi. Ayni unit/time farqli qiymatlar `HELD`, counter holati esa qayta baseline bo‘lmaguncha bloklanadi.
+- C2’da `WAGON_MILEAGE_MAX_BRACKET_GAP_MIN` qiymati 30; 4 daqiqalik harakat `ESTIMATED`, teng odometr `0 km CONFIRMED`, 45 daqiqalik harakat `HELD`. C3 pure helper 2 daqiqalik odatiy namuna delta’larini membership davriga taqsimlaydi, chegaradagi qismni `ESTIMATED` qiladi va membership overlap’ni `HELD` qiladi.
+
+### Keyingi qadam
+
+- C3 namuna yig‘ish/membership helper hozircha DBga ulanmagan sof kod va testlardan iborat; GTK/Wialon DB input, calculation run, ledger va projection bilan ulanmagan.
+- C4–C11 va D/F tafsilotlari `COPILOT_P0_3_FINISH.md` fayli topilmagani sabab aniq emas. Ochiq biznes qarorlarini `UNKNOWN/HELD` saqlash.
+- API E2E, PostgreSQL parallel transaction, browser, frontend `tsc/build`, production/deploy bajarilmadi.
+
+## P0.3 yakuniy tekshiruv (2026-11-12)
+
+### Tasdiqlangan
+
+- 0029 migration vaqtinchalik `pg_rehearse` bazasida `upgrade head → downgrade -1 → upgrade head` tartibida bajarildi. `pg_isready` tayyorlikni tasdiqladi.
+- C1–C11 hisoblash, ledger, tasdiqlangan opening balance, qayta hisoblash, vagon-only projection, API va UI o‘zgarishlari kiritildi. 0027–0028 sxema jadvallari oldingi rehearsal dump’i bilan `postgres/schema.sql`da; 0029 Alembic revision sifatida qoldi.
+- `@pytest.mark.pg` parallel ledger sinovi 20 km natijani, 1 ta faol ledger qatorini va vagon mileage projection’ini tekshirdi: 1 passed.
+- To‘liq backend suite `pg_rehearse` bilan: **317 passed, 28 subtests passed**. To‘rtta avvalgi yo‘l testi repo root’ini `__file__` orqali topadi; test tekshiruvlari saqlanib, faqat aniq `uz-Cyrl` tarjima va uning selector yozuvi istisno qilindi.
+- `npx.cmd tsc --noEmit` va `npm.cmd run build` muvaffaqiyatli bajarildi. `npm.cmd run lint` exit 0; lint/build’da ish-order sahifalaridagi ikki mavjud React Hook ogohlantirishi qoldi.
+- Push `10^9` km qiymati `fixed_assets.mileage`ga yozilmaydi. `suspect_absolute` Wialon birliklari sabab bilan importdan chiqariladi. `accepted` va `calculation_eligible` alohida saqlanadi; `ESTIMATED` projection’da tasdiqlangan opening balance talab qiladi.
+- `docs/` ichida foydalanuvchi belgilagan belgilar to‘plami bo‘yicha qidiruv natijasi 0.
+
+### Keyingi qadam
+
+- PENDING: bir kishi opening balance’ni kiritib, o‘zi tasdiqlashi mumkinligi; idle minimal davomiyligi; GTK/Wialon vaqt belgilarining manbaga xos ma’nosi va dalil kam idle holatini ko‘rib chiqish tartibi.
+- `COPILOT_P0_3_FINISH.md` repozitoriyda topilmadi; asl A–F matni bilan bandma-band diff qilish imkoni bo‘lmadi. E bosqichi bajarilmadi.
+
+### NOT TESTED
+
+- Ishlab chiqarish bazasi/server, deploy, API E2E, browser, GTK/Wialon jonli tarmoq va tarixiy ma’lumotlarni ko‘chirish.

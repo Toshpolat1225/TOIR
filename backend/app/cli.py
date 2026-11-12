@@ -25,6 +25,7 @@ from app.models.maintenance import MaintenanceInterval, WorkType
 from app.models.organization import Department, Section
 from app.services.auth import create_initial_admin
 from app.services import maintenance as maintenance_service
+from app.services.wagon_mileage_run import run_wagon_mileage
 
 logger = logging.getLogger(__name__)
 
@@ -294,6 +295,19 @@ async def _recalculate_plans() -> int:
     return 1 if errors else 0
 
 
+async def _wagon_mileage_run(*, dry_run: bool) -> int:
+    try:
+        async with SessionFactory() as db:
+            report = await run_wagon_mileage(db, dry_run=dry_run)
+    except SQLAlchemyError as exc:
+        logger.error("Wagon mileage calculation failed (%s)", type(exc).__name__)
+        return 2
+    finally:
+        await engine.dispose()
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _probe_unit(item: dict[str, object]) -> dict[str, object]:
     item_copy = dict(item)
     item_copy.setdefault("id", "__probe__")
@@ -399,6 +413,11 @@ def main() -> int:
         help="Idempotently recalculate plans for operational locomotive and diesel assets",
     )
     subparsers.add_parser("wialon-probe", help="Read safe Wialon unit diagnostics")
+    mileage_parser = subparsers.add_parser(
+        "wagon-mileage-run",
+        help="Calculate and report wagon mileage",
+    )
+    mileage_parser.add_argument("--dry-run", action="store_true")
     arguments = parser.parse_args()
     if arguments.command == "create-admin":
         return asyncio.run(_create_admin())
@@ -410,6 +429,8 @@ def main() -> int:
         return asyncio.run(_recalculate_plans())
     if arguments.command == "wialon-probe":
         return asyncio.run(_wialon_probe())
+    if arguments.command == "wagon-mileage-run":
+        return asyncio.run(_wagon_mileage_run(dry_run=arguments.dry_run))
     parser.error("Unsupported command")
     return 2
 

@@ -403,19 +403,19 @@ class WialonClientTests(unittest.IsolatedAsyncioTestCase):
                 "app.services.wialon.ingest_wialon_reading",
                 new=AsyncMock(
                     side_effect=[
-                        SimpleNamespace(accepted=True, asset_id="asset-1"),
-                        SimpleNamespace(accepted=True, asset_id=None),
+                        SimpleNamespace(
+                            accepted=True,
+                            asset_id="asset-1",
+                            mileage_verdict="baseline",
+                        ),
+                        SimpleNamespace(
+                            accepted=True,
+                            asset_id=None,
+                            mileage_verdict=None,
+                        ),
                     ]
                 ),
             ) as ingest_reading,
-            patch(
-                "app.services.wialon.counters_repo.get_state_row",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
-                "app.services.wialon.counters_repo.save_decision",
-                new=AsyncMock(),
-            ),
             patch(
                 "app.services.wialon.repository.save_sync_status",
                 new=AsyncMock(),
@@ -440,7 +440,8 @@ class WialonClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(update_asset.await_args_list[1].kwargs["online"])
         self.assertIsNone(update_asset.await_args_list[0].kwargs["mileage"])
         self.assertEqual(ingest_reading.await_count, 2)
-        self.assertFalse(ingest_reading.await_args_list[0].kwargs["source_time_verified"])
+        self.assertTrue(ingest_reading.await_args_list[0].kwargs["source_time_verified"])
+        self.assertFalse(ingest_reading.await_args_list[1].kwargs["source_time_verified"])
         self.assertNotIn("test-token", save_status.await_args.kwargs["status"])
         upsert_units.assert_awaited_once_with(db, units, synced_at=unittest.mock.ANY)
         self.assertEqual(db.commit.await_count, 2)

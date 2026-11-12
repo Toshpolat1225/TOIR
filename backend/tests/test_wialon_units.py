@@ -136,17 +136,68 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(raised.exception.status_code, 403)
 
-    async def test_create_asset_uses_zero_mileage_for_suspect_unit(self):
+    async def test_create_asset_rejects_suspect_absolute_odometer(self):
         now = datetime.now(timezone.utc)
         unit = SimpleNamespace(
             unit_id="unit-1",
-            name="HILUX 366",
-            cnm=Decimal("1007343489"),
+            name="Unit with absolute odometer",
+            cnm=Decimal("1000001"),
             cneh=Decimal("0"),
             speed=Decimal("0"),
             last_message_at=now,
             last_synced_at=now,
             suspect_absolute=True,
+        )
+        db = SimpleNamespace(
+            add=Mock(),
+            flush=AsyncMock(),
+            commit=AsyncMock(),
+            rollback=AsyncMock(),
+            refresh=AsyncMock(),
+        )
+        with (
+            patch.object(
+                wialon_units.repository,
+                "get_unit_record",
+                new=AsyncMock(return_value=unit),
+            ),
+            patch.object(
+                wialon_units.repository,
+                "get_linked_asset",
+                new=AsyncMock(return_value=None),
+            ),
+            patch.object(
+                wialon_units.assets_repository,
+                "add_asset",
+                new=AsyncMock(),
+            ) as add_asset,
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await wialon_units.create_asset_from_wialon_unit(
+                    db,
+                    "unit-1",
+                    WialonCreateAssetRequest(
+                        inv_number="W-1",
+                        asset_type="diesel",
+                    ),
+                )
+
+        self.assertEqual(raised.exception.status_code, 422)
+        self.assertIn("asset creation skipped", raised.exception.detail)
+        add_asset.assert_not_awaited()
+        db.commit.assert_not_awaited()
+
+    async def test_create_asset_keeps_normal_unit_odometer(self):
+        now = datetime.now(timezone.utc)
+        unit = SimpleNamespace(
+            unit_id="unit-1",
+            name="ТЭМ18 ДМ 3183",
+            cnm=Decimal("1500"),
+            cneh=Decimal("50"),
+            speed=Decimal("0"),
+            last_message_at=now,
+            last_synced_at=now,
+            suspect_absolute=False,
         )
         db = SimpleNamespace(
             add=Mock(),
@@ -181,11 +232,11 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
                 "prepare_new_asset",
                 new=AsyncMock(
                     return_value={
-                        "name": "HILUX 366",
+                        "name": "ТЭМ18 ДМ 3183",
                         "model_id": uuid4(),
-                        "series": "HILUX",
-                        "number": "366",
-                        "number_normalized": "366",
+                        "series": "ТЭМ18 ДМ",
+                        "number": "3183",
+                        "number_normalized": "3183",
                     }
                 ),
             ),
@@ -193,36 +244,20 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
                 wialon_units.asset_links_service,
                 "link",
                 new=AsyncMock(),
-            ) as save_link,
-            patch.object(
-                wialon_units.counters_repository,
-                "save_decision",
-                new=AsyncMock(),
-            ) as save_decision,
-            patch.object(
-                wialon_units.assets_repository,
-                "add_mileage_history",
-                new=AsyncMock(),
-            ) as add_history,
+            ),
+            patch.object(wialon_units.counters_repository, "save_decision", new=AsyncMock()),
+            patch.object(wialon_units.assets_repository, "add_mileage_history", new=AsyncMock()),
             patch.object(wialon_units, "asset_read", return_value=_fixed_asset_read()),
         ):
             result = await wialon_units.create_asset_from_wialon_unit(
                 db,
                 "unit-1",
-                WialonCreateAssetRequest(
-                    inv_number="W-1",
-                    asset_type="diesel",
-                ),
+                WialonCreateAssetRequest(inv_number="W-1", asset_type="diesel"),
             )
 
         created_asset = add_asset.await_args.args[1]
-        self.assertEqual(created_asset.mileage, Decimal("0"))
-        self.assertEqual(created_asset.wialon_id, "unit-1")
-        save_link.assert_awaited_once()
-        self.assertIn("manual correction", result.warning)
-        save_decision.assert_awaited_once()
-        self.assertEqual(save_decision.await_args.args[3].mileage.verdict.value, "baseline")
-        add_history.assert_awaited_once_with(db, created_asset.id, Decimal("0"), "wialon")
+        self.assertEqual(created_asset.mileage, Decimal("1500"))
+        self.assertIsNone(result.warning)
         db.commit.assert_awaited_once()
 
     async def test_invalid_asset_type_is_rejected_by_request_schema(self):
@@ -233,7 +268,7 @@ class WialonUnitServiceTests(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_create_asset_rejects_duplicate_wialon_id(self):
-        unit = SimpleNamespace(unit_id="unit-1")
+        unit = SimpleNamespace(unit_id="unit-1", suspect_absolute=False)
         db = SimpleNamespace(commit=AsyncMock())
         with (
             patch.object(

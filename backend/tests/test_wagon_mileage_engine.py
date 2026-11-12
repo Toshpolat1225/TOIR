@@ -20,7 +20,15 @@ class WagonMileageEngineTests(unittest.TestCase):
         self.wagon_a = uuid4()
         self.wagon_b = uuid4()
 
-    def interval(self, loco=None, start_km="100", end_km="140", source="a", received=None):
+    def interval(
+        self,
+        loco=None,
+        start_km="100",
+        end_km="140",
+        source="a",
+        received=None,
+        is_main=False,
+    ):
         return OdometerInterval(
             locomotive_asset_id=loco or self.loco_a,
             start_km=Decimal(start_km),
@@ -29,6 +37,7 @@ class WagonMileageEngineTests(unittest.TestCase):
             end_at=self.end,
             received_at=received or self.received,
             source_id=source,
+            is_main=is_main,
         )
 
     def test_single_valid_locomotive_is_selected(self):
@@ -36,11 +45,39 @@ class WagonMileageEngineTests(unittest.TestCase):
         self.assertEqual(decision.selected.source_id, "a")
         self.assertEqual(decision.confidence, "high")
 
-    def test_multiple_locomotives_are_held_until_selection_policy_is_approved(self):
-        second = self.interval(loco=uuid4(), start_km="500", end_km="540", source="b")
-        decision = select_main_locomotive([self.interval(), second])
+    def test_within_tolerance_selects_one_locomotive_without_summing(self):
+        primary = self.interval(start_km="100", end_km="140", source="a")
+        second = self.interval(
+            loco=uuid4(), start_km="500", end_km="541", source="b"
+        )
+        decision = select_main_locomotive([primary, second])
+
+        self.assertIsNotNone(decision.selected)
+        self.assertEqual(decision.selected.source_id, "a")
+        self.assertEqual(decision.reason, "locomotive_distances_within_tolerance")
+
+    def test_ten_percent_locomotive_disagreement_is_held(self):
+        first = self.interval(start_km="100", end_km="140", source="a")
+        second = self.interval(
+            loco=uuid4(), start_km="500", end_km="544", source="b"
+        )
+        decision = select_main_locomotive([first, second])
+
         self.assertIsNone(decision.selected)
+        self.assertEqual(decision.reason, "locomotive_distance_conflict")
         self.assertEqual(decision.confidence, "conflict")
+
+    def test_single_gtk_main_locomotive_has_selection_priority(self):
+        primary = self.interval(
+            loco=uuid4(), start_km="100", end_km="140", source="main", is_main=True
+        )
+        newer = self.interval(
+            loco=uuid4(), start_km="500", end_km="141", source="newer"
+        )
+        decision = select_main_locomotive([newer, primary])
+
+        self.assertIsNotNone(decision.selected)
+        self.assertEqual(decision.selected.source_id, "main")
 
     def test_disagreeing_locomotives_are_held(self):
         second = self.interval(loco=uuid4(), start_km="500", end_km="560", source="b")

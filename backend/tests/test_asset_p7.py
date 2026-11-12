@@ -17,6 +17,7 @@ from app.schemas.assets import (
 )
 from app.services import asset_inventory_import
 from app.services import unified_assets
+from source_check_utils import without_locale_block
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,7 +33,7 @@ LANGUAGE_FILES = (
     ROOT / "backend" / "app" / "routers" / "assets.py",
     ROOT / "backend" / "scripts" / "e2e_asset_inventory_import.py",
     Path(__file__),
-    ROOT / "app" / "dashboard" / "os" / "page.tsx",
+    ROOT / "app" / "dashboard" / "directories" / "assets" / "page.tsx",
     ROOT / "lib" / "api.ts",
 )
 
@@ -396,6 +397,8 @@ def test_p7_ui_and_api_files_do_not_contain_foreign_alphabet_characters():
     forbidden = set(map(chr, (0x04AF, 0x04E9, 0x04AE, 0x04E8, 0x049B, 0x0493, 0x04B3, 0x045E)))
     for path in LANGUAGE_FILES:
         text = path.read_text(encoding="utf-8")
+        if path.name == "page.tsx" and path.parent.name == "assets":
+            text = without_locale_block(text, "uz-Cyrl")
         assert not forbidden.intersection(text), str(path.relative_to(ROOT))
 
 

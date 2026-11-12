@@ -206,6 +206,15 @@ async def create_asset_from_wialon_unit(
     unit = await repository.get_unit_record(db, unit_id)
     if unit is None:
         raise _not_found()
+    if unit.suspect_absolute:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Wialon unit has a suspect absolute odometer "
+                "(cnm > 1,000,000 km or cnm/cneh > 100 km/h); "
+                "asset creation skipped"
+            ),
+        )
     if await repository.get_linked_asset(db, unit_id) is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -228,7 +237,7 @@ async def create_asset_from_wialon_unit(
         )
 
     now = datetime.now(timezone.utc)
-    mileage = Decimal("0") if unit.suspect_absolute else (unit.cnm or Decimal("0"))
+    mileage = unit.cnm or Decimal("0")
     passport_fields = await asset_passport.prepare_new_asset(
         db,
         asset_type=payload.asset_type,
@@ -301,10 +310,5 @@ async def create_asset_from_wialon_unit(
 
     return WialonCreateAssetResponse(
         asset=asset_read(asset),
-        warning=(
-            "Wialon mileage is suspicious; fixed-asset mileage was set to 0 "
-            "and needs manual correction."
-            if unit.suspect_absolute
-            else None
-        ),
+        warning=None,
     )

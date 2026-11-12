@@ -232,6 +232,12 @@ async def _handle_input(request: Request, db: AsyncSession) -> dict[str, Any]:
         reading_at=reading_at,
         speed=speed,
         transport="push",
+        external_id=(
+            str(external_id).strip()
+            if (external_id := _first_value(payload, ("message_id", "msg_id", "event_id")))
+            is not None
+            else None
+        ),
         source_time_raw=(
             raw_reading_at if isinstance(raw_reading_at, str) else None
         ),

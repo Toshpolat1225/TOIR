@@ -41,3 +41,37 @@ class MileageOpeningList(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class MileageLedgerRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    run_id: UUID
+    wagon_asset_id: UUID
+    locomotive_asset_id: UUID | None
+    train_gtk_id: int | None
+    period_from: datetime
+    period_to: datetime
+    distance_km: Decimal
+    estimated: bool
+    classification: Literal["CONFIRMED", "ESTIMATED", "HELD"]
+    calculation_eligible: bool
+    status: Literal["active", "superseded", "rejected"]
+    supersedes_id: UUID | None
+    calculation_details: dict
+    created_at: datetime
+
+
+class WagonMileageSummary(BaseModel):
+    asset_id: UUID
+    opening_balance_km: Decimal | None
+    projected_km: Decimal | None
+    confirmed_km: Decimal
+    estimated_km: Decimal
+    held_km: Decimal
+    held_reasons: dict[str, int]
+    items: list[MileageLedgerRead]
+    total: int
+    limit: int
+    offset: int

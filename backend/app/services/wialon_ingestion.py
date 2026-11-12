@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.mileage import WialonOdometerReading, WialonRawReceipt
 from app.repositories import wialon_counters as counters_repository
+from app.services.wialon_quality import Reading, Verdict, evaluate
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,7 @@ class WialonIngestionResult:
     calculation_eligible: bool
     classification: str
     reason: str | None
+    mileage_verdict: str | None
 
 
 def _safe_payload(
@@ -75,10 +77,9 @@ async def ingest_wialon_reading(
     transport: Literal["push", "pull"],
     received_at: datetime | None = None,
     source_time_raw: str | None = None,
+    external_id: str | None = None,
     source_time_verified: bool = False,
 ) -> WialonIngestionResult:
-    if source_time_verified:
-        raise ValueError("Wialon source-time policy is still pending")
     received_at = received_at or datetime.now(timezone.utc)
     if reading_at is not None:
         if reading_at.tzinfo is None or reading_at.utcoffset() is None:
@@ -119,6 +120,7 @@ async def ingest_wialon_reading(
     reading_id = None
     calculation_eligible = False
     classification = "HELD"
+    mileage_verdict = None
     conflict = False
     if unit_id and valid_odometer:
         measurement_key = _measurement_key(
@@ -128,7 +130,7 @@ async def ingest_wialon_reading(
             payload_hash=payload_hash,
         )
         if reading_at is not None:
-            lock_key = f"wialon:{unit_id}:{reading_at.isoformat()}"
+            lock_key = f"wialon-unit:{unit_id}"
             await db.execute(
                 select(
                     func.pg_advisory_xact_lock(
@@ -136,7 +138,12 @@ async def ingest_wialon_reading(
                     )
                 )
             )
-        calculation_eligible = False
+        reason = "unmapped_unit" if asset is None else None
+        if asset is not None and reading_at is None:
+            reason = "source_reading_time_missing_or_invalid"
+        elif asset is not None and not source_time_verified:
+            reason = "source_message_time_unverified"
+
         statement = (
             pg_insert(WialonOdometerReading)
             .values(
@@ -144,12 +151,14 @@ async def ingest_wialon_reading(
                 source_unit_id=unit_id,
                 odometer_km=odometer_km,
                 reading_at=reading_at,
+                observed_at=reading_at,
+                resolution_km=Decimal("1"),
+                source=transport,
+                external_id=external_id,
                 received_at=received_at,
                 accepted=accepted,
                 calculation_eligible=calculation_eligible,
-                classification=(
-                    "CONFIRMED" if calculation_eligible else "HELD"
-                ),
+                classification="CONFIRMED" if calculation_eligible else "HELD",
                 rejection_reason=reason,
                 payload_hash=payload_hash,
                 measurement_key=measurement_key,
@@ -186,12 +195,68 @@ async def ingest_wialon_reading(
                     row.calculation_eligible = False
                     row.classification = "HELD"
                     row.rejection_reason = reason
+                if asset is not None:
+                    await counters_repository.mark_conflict(
+                        db,
+                        asset.id,
+                        reason=reason,
+                        at=received_at,
+                    )
+                    state_row = await counters_repository.get_state_row(
+                        db, asset.id
+                    )
+                    if state_row is not None:
+                        state_row.last_status = Verdict.REJECTED.value
+                        state_row.last_reason = reason
 
         if conflict:
             calculation_eligible = False
+            mileage_verdict = Verdict.REJECTED.value
+            if reading is not None:
+                reading.calculation_eligible = False
+                reading.classification = "HELD"
+                reading.rejection_reason = "same_time_different_odometer"
+        elif (
+            asset is not None
+            and reading_at is not None
+            and source_time_verified
+        ):
+            state_row = await counters_repository.get_state_row(db, asset.id)
+            gate_reading = Reading(odometer_km, engine_hours, reading_at)
+            if (
+                state_row is not None
+                and getattr(state_row, "last_reason", None)
+                == "same_time_different_odometer"
+            ):
+                reason = "counter_state_blocked_by_unresolved_conflict"
+                mileage_verdict = Verdict.REJECTED.value
+            else:
+                gate = evaluate(
+                    counters_repository.to_state(state_row),
+                    gate_reading,
+                    now=received_at,
+                )
+                mileage_verdict = gate.mileage.verdict.value
+                calculation_eligible = gate.mileage.verdict in {
+                    Verdict.BASELINE,
+                    Verdict.ACCEPTED,
+                    Verdict.UNCHANGED,
+                }
+                if not calculation_eligible:
+                    reason = gate.mileage.reason or gate.mileage.verdict.value
+                await counters_repository.save_decision(
+                    db,
+                    asset.id,
+                    state_row,
+                    gate,
+                    gate_reading,
+                    now=received_at,
+                )
+
         classification = "CONFIRMED" if calculation_eligible else "HELD"
-        if reading is not None and not source_time_verified:
-            reason = reason or "source_time_policy_pending"
+        if reading is not None:
+            reading.calculation_eligible = calculation_eligible
+            reading.classification = classification
             reading.rejection_reason = reason
 
     db.add(
@@ -212,5 +277,11 @@ async def ingest_wialon_reading(
         accepted,
         calculation_eligible,
         classification,
-        reason or ("source_time_policy_pending" if reading_id is not None else None),
+        reason
+        or (
+            "source_message_time_unverified"
+            if reading_id is not None and not source_time_verified
+            else None
+        ),
+        mileage_verdict,
     )

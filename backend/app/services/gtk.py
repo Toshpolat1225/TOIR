@@ -36,6 +36,7 @@ from app.services import asset_field_changes as field_changes_service
 from app.services.audit_log import set_audit_system_context
 from app.services import gtk_matching
 from app.services.gtk_membership import snapshot_transition_evidence
+from app.services.wagon_mileage_run import run_wagon_mileage
 
 logger = logging.getLogger(__name__)
 _sync_lock = asyncio.Lock()
@@ -977,6 +978,8 @@ async def run_periodic_gtk_sync() -> None:
             try:
                 async with SessionFactory() as db:
                     await sync_gtk(db)
+                    if settings.wagon_mileage_engine_enabled:
+                        await run_wagon_mileage(db)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:

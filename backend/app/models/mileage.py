@@ -55,7 +55,12 @@ class WialonOdometerReading(Base):
             "classification IN ('CONFIRMED','ESTIMATED','HELD')",
             name="ck_wialon_odometer_classification",
         ),
+        CheckConstraint(
+            "source IN ('push','pull')",
+            name="ck_wialon_odometer_source",
+        ),
         Index("ix_wialon_odometer_asset_time", "asset_id", "reading_at"),
+        Index("ix_wialon_odometer_observed_at", "observed_at"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -65,6 +70,14 @@ class WialonOdometerReading(Base):
     source_unit_id: Mapped[str] = mapped_column(Text, nullable=False)
     odometer_km: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
     reading_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolution_km: Mapped[Decimal] = mapped_column(
+        Numeric(8, 3), nullable=False, server_default=text("1")
+    )
+    source: Mapped[str] = mapped_column(
+        String(8), nullable=False, server_default=text("'pull'")
+    )
+    external_id: Mapped[str | None] = mapped_column(String(128))
     received_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
@@ -187,8 +200,11 @@ class WagonMileageLedger(Base):
     __tablename__ = "wagon_mileage_ledger"
     __table_args__ = (
         UniqueConstraint("idempotency_key", name="uq_wagon_mileage_ledger_idempotency"),
-        CheckConstraint("km >= 0", name="ck_wagon_mileage_ledger_nonnegative"),
-        CheckConstraint("period_to >= period_from", name="ck_wagon_mileage_ledger_period"),
+        CheckConstraint(
+            "distance_km >= 0",
+            name="ck_wagon_mileage_ledger_distance_nonnegative",
+        ),
+        CheckConstraint("period_to > period_from", name="ck_wagon_mileage_ledger_period"),
         CheckConstraint(
             "status IN ('active','superseded','rejected')",
             name="ck_wagon_mileage_ledger_status",
@@ -213,10 +229,12 @@ class WagonMileageLedger(Base):
     locomotive_asset_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("fixed_assets.id", ondelete="RESTRICT")
     )
-    train_gtk_id: Mapped[int | None] = mapped_column(Integer)
+    train_gtk_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("gtk_trains.gtk_id", ondelete="RESTRICT")
+    )
     period_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     period_to: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    km: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    distance_km: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     estimated: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     classification: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default=text("'HELD'")
@@ -226,6 +244,16 @@ class WagonMileageLedger(Base):
     )
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    algorithm_version: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=text("'wagon-mileage-v1'")
+    )
+    input_hash: Mapped[str] = mapped_column(
+        String(64), nullable=False, server_default=text("'legacy'")
+    )
+    supersedes_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("wagon_mileage_ledger.id", ondelete="RESTRICT"),
+    )
     calculation_details: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
@@ -296,12 +324,17 @@ class MileageCalculationInput(Base):
 class WagonIdlePeriod(Base):
     __tablename__ = "wagon_idle_periods"
     __table_args__ = (
-        CheckConstraint("period_to >= period_from", name="ck_wagon_idle_period"),
+        CheckConstraint("period_to > period_from", name="ck_wagon_idle_period"),
+        CheckConstraint(
+            "distance_km = 0",
+            name="ck_wagon_idle_distance_zero",
+        ),
         CheckConstraint(
             "status IN ('confirmed','unknown_activity','estimated')",
             name="ck_wagon_idle_status",
         ),
         Index("ix_wagon_idle_asset_period", "wagon_asset_id", "period_from"),
+        UniqueConstraint("idempotency_key", name="uq_wagon_idle_period_idempotency"),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -314,6 +347,10 @@ class WagonIdlePeriod(Base):
     period_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     period_to: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
+    distance_km: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default=text("0")
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     evidence: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")

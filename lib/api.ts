@@ -1119,6 +1119,38 @@ export type WagonMileageOpening = {
   created_at: string;
 };
 
+export type WagonMileageLedgerEntry = {
+  id: string;
+  run_id: string;
+  wagon_asset_id: string;
+  locomotive_asset_id: string | null;
+  train_gtk_id: number | null;
+  period_from: string;
+  period_to: string;
+  distance_km: number | string;
+  estimated: boolean;
+  classification: "CONFIRMED" | "ESTIMATED" | "HELD";
+  calculation_eligible: boolean;
+  status: "active" | "superseded" | "rejected";
+  supersedes_id: string | null;
+  calculation_details: Record<string, unknown>;
+  created_at: string;
+};
+
+export type WagonMileageSummary = {
+  asset_id: string;
+  opening_balance_km: number | string | null;
+  projected_km: number | string | null;
+  confirmed_km: number | string;
+  estimated_km: number | string;
+  held_km: number | string;
+  held_reasons: Record<string, number>;
+  items: WagonMileageLedgerEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 export type FixedAssetPassportReport = {
   depot_matches: Array<{
     asset_id: string;
@@ -1245,6 +1277,16 @@ const fixedAssets = {
 };
 
 const wagonMileage = {
+  async summary(
+    assetId: string,
+    params: { limit?: number; offset?: number } = {},
+  ): Promise<WagonMileageSummary> {
+    return request({
+      method: "GET",
+      path: `/wagon-mileage/assets/${assetId}`,
+      params,
+    });
+  },
   async openings(params: { asset_id?: string; status?: WagonMileageOpening["status"]; limit?: number; offset?: number } = {}): Promise<{
     items: WagonMileageOpening[];
     total: number;

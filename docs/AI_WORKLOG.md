@@ -273,3 +273,11 @@ Next: resolve UNKNOWN/PENDING mileage policies, then implement the idempotent le
 Both GTK kinds now require a unique exact inventory match; confirmation rechecks locked source/asset state and rejects stale or conflicting links without replacement.
 NOT TESTED: backend pytest, API E2E, PostgreSQL race behavior, browser, production, and deployment.
 Next: run the GTK link E2E only against a disposable test API/database, then verify both tabs in a browser.
+2026-11-11 | Copilot SDK | P0.3 C1–C3 davomiyligi: Push/Pull quality gate, 2 daqiqalik sample delta va GTK membership helper | Wialon ingestion/repository/router/services, mileage service/tests, P0 qarorlari, HANDOFF | pytest (5 fayl) -> 64 passed, 4 subtests; py_compile va git diff --check -> exit 0 | C3 DB/ledger integratsiyasini va qolgan bosqichlar scope’ini aniqlash
+Migration: `rehearse` DB’da upgrade/downgrade/upgrade muvaffaqiyatli; 0027–0028 pg_dump parity `postgres/schema.sql`da, schema drift + 4 eski yo‘l testi -> 40 passed.
+D10 import filtrlash va 10^9 km Push regression avvalgi backend suite tekshiruviga kiritilgan; C1 conflict raw yozuvlarni saqlaydi va yangi baseline’gacha counter’ni HELD qiladi.
+NOT TESTED: browser, API E2E, frontend build/typecheck, concurrency/PostgreSQL publish integration, production/deploy. `COPILOT_P0_3_FINISH.md` repozitoriyda topilmadi; C4–C11/D/F tafsilotlarini tasdiqlab bo‘lmadi.
+2026-11-12 | Copilot SDK | P0.3 C1–C11, D va F yakuniy davomiyligi | mileage backend, 0029 migration, assets UI, testlar va docs | pytest -> 317 passed, 28 subtests; PostgreSQL parallel testi -> 1 passed
+0029 upgrade/downgrade/upgrade rehearsal va 0027–0028 schema parity qayd etildi; D9 projection qarori va ochiq PENDING holatlar hujjatlandi.
+`npx.cmd tsc --noEmit`, lint va production build muvaffaqiyatli; lint/build’da ish-order sahifalarida 2 avvalgi React Hook ogohlantirishi qoldi.
+Keyingi: PENDING siyosatlarni tasdiqlash; API E2E, browser, jonli integratsiya va ishlab chiqarish tekshiruvlari bajarilmagan.

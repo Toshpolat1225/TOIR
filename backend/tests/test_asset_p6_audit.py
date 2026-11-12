@@ -20,6 +20,7 @@ from app.models.assets import FixedAsset
 from app.routers import assets as assets_router
 from app.schemas.assets import FixedAssetBulkOrgUnitUpdate
 from app.services import asset_links, assets as assets_service
+from source_check_utils import without_locale_block
 
 ROOT = Path(__file__).resolve().parents[2]
 MIGRATIONS = ROOT / "backend" / "alembic" / "versions"
@@ -83,7 +84,7 @@ def test_p6_migration_chain_is_linear_from_0012_to_head():
             parents.add(down_revision)
         elif isinstance(down_revision, (tuple, list)):
             parents.update(down_revision)
-    assert all_revisions - parents == {"0028_mileage_approval_inputs"}
+    assert all_revisions - parents == {"0029_wagon_mileage_ledger"}
     assert all(len(revision) <= 32 for revision in all_revisions)
 
     p6_revisions = [
@@ -116,6 +117,7 @@ def test_wagon_mileage_migration_chain_is_linear_and_bounded():
     }
     assert revision_map["0027_wagon_mileage_engine"] == "0026_audit_logs"
     assert revision_map["0028_mileage_approval_inputs"] == "0027_wagon_mileage_engine"
+    assert revision_map["0029_wagon_mileage_ledger"] == "0028_mileage_approval_inputs"
     assert all(len(revision) <= 32 for revision in revision_map)
 
     migration = (MIGRATIONS / "0028_wagon_mileage_approval_and_inputs.py").read_text(
@@ -125,6 +127,13 @@ def test_wagon_mileage_migration_chain_is_linear_and_bounded():
     assert "uq_wagon_mileage_opening_active_approved" in migration
     assert "mileage_calculation_inputs" in migration
     assert "def downgrade()" in migration
+    ledger_migration = (MIGRATIONS / "0029_wagon_mileage_ledger.py").read_text(
+        encoding="utf-8"
+    )
+    assert "wagon_mileage_ledger" in ledger_migration
+    assert "fk_wagon_mileage_ledger_train" in ledger_migration
+    assert 'new_column_name="distance_km"' in ledger_migration
+    assert "def downgrade()" in ledger_migration
 
 
 def test_p6_0017_to_0019_migration_operations_have_matching_downgrades():
@@ -473,6 +482,8 @@ def test_p6_ui_uses_russian_text_and_has_no_forbidden_alphabet_or_non_english_co
     cyrillic = re.compile(r"[А-Яа-яЁё]")
     for path in FRONTEND_FILES:
         text = path.read_text(encoding="utf-8")
+        if path.name == "page.tsx" and path.parent.name == "assets":
+            text = without_locale_block(text, "uz-Cyrl")
         assert forbidden_alphabet.search(text) is None, path.name
         in_block_comment = False
         for line in text.splitlines():

@@ -67,7 +67,7 @@ def test_gtk_related_sources_have_no_foreign_alphabet_characters():
     files = [
         *sorted((ROOT / "app" / "dashboard" / "os" / "gtk").rglob("*.tsx")),
         ROOT / "lib" / "api.ts",
-        ROOT / "app" / "dashboard" / "os" / "page.tsx",
+        ROOT / "app" / "dashboard" / "os" / "gtk" / "page.tsx",
         *sorted((ROOT / "backend" / "app" / "routers").glob("gtk*.py")),
         *sorted((ROOT / "backend" / "app" / "services").glob("gtk*.py")),
         ROOT / "backend" / "app" / "services" / "mileage_attribution.py",

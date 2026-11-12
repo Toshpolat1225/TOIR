@@ -1121,3 +1121,247 @@ FROM maintenance_plan mp
 JOIN fixed_assets fa ON fa.id = mp.asset_id
 JOIN maintenance_intervals mi ON mi.id = mp.interval_id
 WHERE mi.is_active;
+
+-- =====================================================================
+-- Wagon mileage tables (schema exported from Alembic 0028 rehearsal DB)
+-- =====================================================================
+CREATE TABLE gtk_membership_observations (
+    id bigserial PRIMARY KEY,
+    membership_id bigint NOT NULL,
+    snapshot_id uuid NOT NULL,
+    observed_at timestamptz NOT NULL,
+    change_type text NOT NULL,
+    CONSTRAINT ck_gtk_membership_observations_change_type
+        CHECK (change_type IN ('opened', 'closed')),
+    CONSTRAINT uq_gtk_membership_observation
+        UNIQUE (membership_id, snapshot_id, change_type)
+);
+
+CREATE TABLE gtk_raw_snapshots (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    sync_run_id bigint,
+    effective_at timestamptz,
+    received_at timestamptz NOT NULL DEFAULT now(),
+    payload_hash varchar(64) NOT NULL,
+    is_complete boolean NOT NULL,
+    payload jsonb NOT NULL,
+    observed_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE mileage_calculation_inputs (
+    id bigserial PRIMARY KEY,
+    run_id uuid NOT NULL,
+    gtk_snapshot_id uuid,
+    wialon_reading_id bigint,
+    opening_balance_id uuid,
+    gtk_membership_id bigint,
+    CONSTRAINT ck_mileage_calculation_inputs_one_source
+        CHECK (
+            (gtk_snapshot_id IS NOT NULL)::int
+            + (wialon_reading_id IS NOT NULL)::int
+            + (opening_balance_id IS NOT NULL)::int
+            + (gtk_membership_id IS NOT NULL)::int = 1
+        )
+);
+
+CREATE TABLE mileage_calculation_runs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    snapshot_id uuid,
+    algorithm_version varchar(32) NOT NULL,
+    status text NOT NULL DEFAULT 'running',
+    input_watermark jsonb NOT NULL DEFAULT '{}'::jsonb,
+    started_at timestamptz NOT NULL DEFAULT now(),
+    completed_at timestamptz,
+    summary jsonb NOT NULL DEFAULT '{}'::jsonb,
+    error text,
+    CONSTRAINT ck_mileage_calculation_runs_status
+        CHECK (status IN ('running', 'completed', 'partial', 'failed'))
+);
+
+CREATE TABLE wagon_idle_periods (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    wagon_asset_id uuid NOT NULL,
+    aggregate_gtk_id bigint,
+    period_from timestamptz NOT NULL,
+    period_to timestamptz NOT NULL,
+    status text NOT NULL,
+    evidence jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_wagon_idle_period CHECK (period_to >= period_from),
+    CONSTRAINT ck_wagon_idle_status
+        CHECK (status IN ('confirmed', 'unknown_activity', 'estimated'))
+);
+
+CREATE TABLE wagon_mileage_ledger (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id uuid NOT NULL,
+    wagon_asset_id uuid NOT NULL,
+    locomotive_asset_id uuid,
+    train_gtk_id integer,
+    period_from timestamptz NOT NULL,
+    period_to timestamptz NOT NULL,
+    km numeric(12, 2) NOT NULL,
+    estimated boolean NOT NULL DEFAULT false,
+    status text NOT NULL DEFAULT 'active',
+    idempotency_key varchar(128) NOT NULL,
+    calculation_details jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    classification varchar(16) NOT NULL DEFAULT 'HELD',
+    calculation_eligible boolean NOT NULL DEFAULT false,
+    CONSTRAINT ck_wagon_mileage_ledger_classification
+        CHECK (classification IN ('CONFIRMED', 'ESTIMATED', 'HELD')),
+    CONSTRAINT ck_wagon_mileage_ledger_nonnegative CHECK (km >= 0),
+    CONSTRAINT ck_wagon_mileage_ledger_period CHECK (period_to >= period_from),
+    CONSTRAINT ck_wagon_mileage_ledger_status
+        CHECK (status IN ('active', 'superseded', 'rejected')),
+    CONSTRAINT uq_wagon_mileage_ledger_idempotency UNIQUE (idempotency_key)
+);
+
+CREATE TABLE wagon_mileage_opening_balances (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    asset_id uuid NOT NULL,
+    mileage_km numeric(12, 2) NOT NULL,
+    effective_at timestamptz NOT NULL,
+    created_by uuid,
+    note text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    approved_by uuid,
+    supersedes_id uuid,
+    status varchar(16) NOT NULL DEFAULT 'pending',
+    approved_at timestamptz,
+    CONSTRAINT ck_wagon_mileage_opening_approval_audit
+        CHECK (status <> 'approved' OR (approved_by IS NOT NULL AND approved_at IS NOT NULL)),
+    CONSTRAINT ck_wagon_mileage_opening_nonnegative CHECK (mileage_km >= 0),
+    CONSTRAINT ck_wagon_mileage_opening_status
+        CHECK (status IN ('pending', 'approved', 'rejected', 'superseded'))
+);
+
+CREATE TABLE wialon_odometer_readings (
+    id bigserial PRIMARY KEY,
+    asset_id uuid,
+    source_unit_id text NOT NULL,
+    odometer_km numeric(16, 2) NOT NULL,
+    reading_at timestamptz,
+    received_at timestamptz NOT NULL DEFAULT now(),
+    accepted boolean NOT NULL,
+    rejection_reason text,
+    payload_hash varchar(64) NOT NULL,
+    payload jsonb NOT NULL,
+    calculation_eligible boolean NOT NULL DEFAULT false,
+    classification varchar(16) NOT NULL DEFAULT 'HELD',
+    measurement_key varchar(64),
+    CONSTRAINT ck_wialon_odometer_classification
+        CHECK (classification IN ('CONFIRMED', 'ESTIMATED', 'HELD')),
+    CONSTRAINT ck_wialon_odometer_readings_nonnegative CHECK (odometer_km >= 0),
+    CONSTRAINT uq_wialon_odometer_measurement_key UNIQUE (measurement_key),
+    CONSTRAINT uq_wialon_odometer_readings_payload_hash UNIQUE (payload_hash)
+);
+
+CREATE TABLE wialon_raw_receipts (
+    id bigserial PRIMARY KEY,
+    source_unit_id text,
+    asset_id uuid,
+    reading_id bigint,
+    transport varchar(8) NOT NULL,
+    received_at timestamptz NOT NULL DEFAULT now(),
+    payload_hash varchar(64) NOT NULL,
+    payload jsonb NOT NULL,
+    CONSTRAINT ck_wialon_raw_receipts_transport CHECK (transport IN ('push', 'pull'))
+);
+
+CREATE INDEX ix_gtk_raw_snapshots_effective_received
+    ON gtk_raw_snapshots (effective_at, received_at);
+CREATE INDEX ix_gtk_raw_snapshots_payload_hash
+    ON gtk_raw_snapshots (payload_hash);
+CREATE INDEX ix_mileage_calculation_runs_started
+    ON mileage_calculation_runs (started_at);
+CREATE INDEX ix_wagon_idle_asset_period
+    ON wagon_idle_periods (wagon_asset_id, period_from);
+CREATE INDEX ix_wagon_mileage_ledger_asset_period
+    ON wagon_mileage_ledger (wagon_asset_id, period_from, period_to);
+CREATE INDEX ix_wagon_mileage_ledger_run
+    ON wagon_mileage_ledger (run_id);
+CREATE INDEX ix_wagon_mileage_opening_asset_effective
+    ON wagon_mileage_opening_balances (asset_id, effective_at);
+CREATE INDEX ix_wialon_odometer_asset_time
+    ON wialon_odometer_readings (asset_id, reading_at);
+CREATE INDEX ix_wialon_raw_receipts_received
+    ON wialon_raw_receipts (received_at);
+CREATE INDEX ix_wialon_raw_receipts_unit_received
+    ON wialon_raw_receipts (source_unit_id, received_at);
+CREATE UNIQUE INDEX uq_mileage_run_input_gtk_membership
+    ON mileage_calculation_inputs (run_id, gtk_membership_id)
+    WHERE gtk_membership_id IS NOT NULL;
+CREATE UNIQUE INDEX uq_mileage_run_input_gtk_snapshot
+    ON mileage_calculation_inputs (run_id, gtk_snapshot_id)
+    WHERE gtk_snapshot_id IS NOT NULL;
+CREATE UNIQUE INDEX uq_mileage_run_input_opening_balance
+    ON mileage_calculation_inputs (run_id, opening_balance_id)
+    WHERE opening_balance_id IS NOT NULL;
+CREATE UNIQUE INDEX uq_mileage_run_input_wialon_reading
+    ON mileage_calculation_inputs (run_id, wialon_reading_id)
+    WHERE wialon_reading_id IS NOT NULL;
+CREATE UNIQUE INDEX uq_wagon_mileage_opening_active_approved
+    ON wagon_mileage_opening_balances (asset_id)
+    WHERE status = 'approved';
+
+ALTER TABLE gtk_membership_observations
+    ADD CONSTRAINT gtk_membership_observations_membership_id_fkey
+    FOREIGN KEY (membership_id) REFERENCES gtk_train_members(id) ON DELETE CASCADE;
+ALTER TABLE gtk_membership_observations
+    ADD CONSTRAINT gtk_membership_observations_snapshot_id_fkey
+    FOREIGN KEY (snapshot_id) REFERENCES gtk_raw_snapshots(id) ON DELETE RESTRICT;
+ALTER TABLE gtk_raw_snapshots
+    ADD CONSTRAINT gtk_raw_snapshots_sync_run_id_fkey
+    FOREIGN KEY (sync_run_id) REFERENCES gtk_sync_runs(id) ON DELETE SET NULL;
+ALTER TABLE mileage_calculation_inputs
+    ADD CONSTRAINT mileage_calculation_inputs_gtk_membership_id_fkey
+    FOREIGN KEY (gtk_membership_id) REFERENCES gtk_train_members(id) ON DELETE RESTRICT;
+ALTER TABLE mileage_calculation_inputs
+    ADD CONSTRAINT mileage_calculation_inputs_gtk_snapshot_id_fkey
+    FOREIGN KEY (gtk_snapshot_id) REFERENCES gtk_raw_snapshots(id) ON DELETE RESTRICT;
+ALTER TABLE mileage_calculation_inputs
+    ADD CONSTRAINT mileage_calculation_inputs_opening_balance_id_fkey
+    FOREIGN KEY (opening_balance_id) REFERENCES wagon_mileage_opening_balances(id) ON DELETE RESTRICT;
+ALTER TABLE mileage_calculation_inputs
+    ADD CONSTRAINT mileage_calculation_inputs_run_id_fkey
+    FOREIGN KEY (run_id) REFERENCES mileage_calculation_runs(id) ON DELETE RESTRICT;
+ALTER TABLE mileage_calculation_inputs
+    ADD CONSTRAINT mileage_calculation_inputs_wialon_reading_id_fkey
+    FOREIGN KEY (wialon_reading_id) REFERENCES wialon_odometer_readings(id) ON DELETE RESTRICT;
+ALTER TABLE mileage_calculation_runs
+    ADD CONSTRAINT mileage_calculation_runs_snapshot_id_fkey
+    FOREIGN KEY (snapshot_id) REFERENCES gtk_raw_snapshots(id) ON DELETE SET NULL;
+ALTER TABLE wagon_idle_periods
+    ADD CONSTRAINT wagon_idle_periods_wagon_asset_id_fkey
+    FOREIGN KEY (wagon_asset_id) REFERENCES fixed_assets(id) ON DELETE RESTRICT;
+ALTER TABLE wagon_mileage_ledger
+    ADD CONSTRAINT wagon_mileage_ledger_locomotive_asset_id_fkey
+    FOREIGN KEY (locomotive_asset_id) REFERENCES fixed_assets(id) ON DELETE RESTRICT;
+ALTER TABLE wagon_mileage_ledger
+    ADD CONSTRAINT wagon_mileage_ledger_run_id_fkey
+    FOREIGN KEY (run_id) REFERENCES mileage_calculation_runs(id) ON DELETE RESTRICT;
+ALTER TABLE wagon_mileage_ledger
+    ADD CONSTRAINT wagon_mileage_ledger_wagon_asset_id_fkey
+    FOREIGN KEY (wagon_asset_id) REFERENCES fixed_assets(id) ON DELETE RESTRICT;
+ALTER TABLE wagon_mileage_opening_balances
+    ADD CONSTRAINT wagon_mileage_opening_balances_approved_by_fkey
+    FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE wagon_mileage_opening_balances
+    ADD CONSTRAINT wagon_mileage_opening_balances_asset_id_fkey
+    FOREIGN KEY (asset_id) REFERENCES fixed_assets(id) ON DELETE RESTRICT;
+ALTER TABLE wagon_mileage_opening_balances
+    ADD CONSTRAINT wagon_mileage_opening_balances_created_by_fkey
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE wagon_mileage_opening_balances
+    ADD CONSTRAINT wagon_mileage_opening_balances_supersedes_id_fkey
+    FOREIGN KEY (supersedes_id) REFERENCES wagon_mileage_opening_balances(id) ON DELETE RESTRICT;
+ALTER TABLE wialon_odometer_readings
+    ADD CONSTRAINT wialon_odometer_readings_asset_id_fkey
+    FOREIGN KEY (asset_id) REFERENCES fixed_assets(id) ON DELETE RESTRICT;
+ALTER TABLE wialon_raw_receipts
+    ADD CONSTRAINT wialon_raw_receipts_asset_id_fkey
+    FOREIGN KEY (asset_id) REFERENCES fixed_assets(id) ON DELETE SET NULL;
+ALTER TABLE wialon_raw_receipts
+    ADD CONSTRAINT wialon_raw_receipts_reading_id_fkey
+    FOREIGN KEY (reading_id) REFERENCES wialon_odometer_readings(id) ON DELETE SET NULL;

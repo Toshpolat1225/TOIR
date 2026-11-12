@@ -280,3 +280,54 @@ async def test_work_order_uses_only_confirmed_wagon_projection():
     ):
         mileage = await work_orders_repository.get_known_asset_mileage(db, asset)
     assert mileage is None
+
+
+@pytest.mark.asyncio
+async def test_mileage_summary_separates_confirmed_estimated_and_held_totals():
+    asset_id = uuid4()
+    section_id = uuid4()
+    opening = SimpleNamespace(
+        mileage_km=Decimal("1000"),
+        effective_at=datetime(2026, 11, 1, tzinfo=timezone.utc),
+    )
+    db = _db()
+    with (
+        patch.object(
+            mileage_opening.repository,
+            "get_asset_for_opening",
+            new=AsyncMock(return_value=SimpleNamespace(asset_type="wagon")),
+        ) as get_asset,
+        patch.object(
+            mileage_opening.repository,
+            "get_approved_opening",
+            new=AsyncMock(return_value=opening),
+        ),
+        patch.object(
+            mileage_opening.repository,
+            "summarize_active_ledger",
+            new=AsyncMock(
+                return_value=(
+                    {
+                        "CONFIRMED": Decimal("12"),
+                        "ESTIMATED": Decimal("3"),
+                        "HELD": Decimal("0"),
+                    },
+                    {"missing_odometer_bracket": 1},
+                )
+            ),
+        ),
+        patch.object(
+            mileage_opening.repository,
+            "list_ledger_entries",
+            new=AsyncMock(return_value=([], 0)),
+        ),
+    ):
+        result = await mileage_opening.get_wagon_mileage_summary(
+            db, asset_id, master_section_id=section_id
+        )
+
+    assert result.confirmed_km == Decimal("12")
+    assert result.estimated_km == Decimal("3")
+    assert result.held_km == Decimal("0")
+    assert result.projected_km == Decimal("1015")
+    get_asset.assert_awaited_once_with(db, asset_id, section_id=section_id)

@@ -12,14 +12,11 @@ from app.core.config import settings
 from app.core.database import SessionFactory
 from app.integrations.wialon_client import WialonClient, WialonClientError
 from app.repositories import wialon as repository
-from app.repositories import wialon_counters as counters_repo
 from app.repositories import wialon_units as units_repo
 from app.schemas.wialon import WialonSyncResult, WialonSyncStatus
 from app.services import assets as assets_service
 from app.services.audit_log import set_audit_system_context
 from app.services.wialon_ingestion import ingest_wialon_reading
-from app.services.wialon_quality import Reading, Verdict, evaluate
-
 logger = logging.getLogger(__name__)
 _sync_lock = asyncio.Lock()
 ONLINE_WINDOW = timedelta(minutes=15)
@@ -93,19 +90,12 @@ async def _gated_mileage(db, unit, *, now: datetime, stats: Counter) -> Decimal 
         speed=unit.speed,
         transport="pull",
         received_at=now,
-        source_time_verified=False,
+        source_time_verified=unit.last_message_at is not None,
     )
     if result.asset_id is None:
         stats["unmapped"] += 1
         return None
-    row = await counters_repo.get_state_row(db, result.asset_id)
-    reading = Reading(unit.mileage, unit.engine_hours, unit.last_message_at)
-    gate = evaluate(counters_repo.to_state(row), reading, now=now)
-    await counters_repo.save_decision(
-        db, result.asset_id, row, gate, reading, now=now
-    )
-    stats[f"mileage_{gate.mileage.verdict.value}"] += 1
-    stats[f"hours_{gate.hours.verdict.value}"] += 1
+    stats[f"mileage_{getattr(result, 'mileage_verdict', None) or 'no_data'}"] += 1
     if not result.accepted:
         stats["raw_rejected"] += 1
     return None

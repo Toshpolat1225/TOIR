@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -9,7 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.identity import User
 from app.models.mileage import WagonMileageOpeningBalance
 from app.repositories import mileage as repository
-from app.schemas.mileage import MileageOpeningCreate
+from app.schemas.mileage import (
+    MileageLedgerRead,
+    MileageOpeningCreate,
+    WagonMileageSummary,
+)
 from app.services.audit_log import set_audit_actor
 
 logger = logging.getLogger(__name__)
@@ -143,6 +148,52 @@ async def list_opening_balances(
         asset_id=asset_id,
         section_id=master_section_id,
         status=opening_status,
+        limit=limit,
+        offset=offset,
+    )
+
+
+async def get_wagon_mileage_summary(
+    db: AsyncSession,
+    asset_id: UUID,
+    *,
+    master_section_id: UUID | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> WagonMileageSummary:
+    asset = await repository.get_asset_for_opening(
+        db, asset_id, section_id=master_section_id
+    )
+    if asset is None or asset.asset_type != "wagon":
+        raise _not_found()
+
+    opening = await repository.get_approved_opening(db, asset_id)
+    totals, held_reasons = await repository.summarize_active_ledger(
+        db,
+        asset_id,
+        effective_at=opening.effective_at if opening is not None else None,
+    )
+    entries, total = await repository.list_ledger_entries(
+        db, asset_id, limit=limit, offset=offset
+    )
+    zero = Decimal("0")
+    confirmed = totals.get("CONFIRMED", zero)
+    estimated = totals.get("ESTIMATED", zero)
+    held = totals.get("HELD", zero)
+    return WagonMileageSummary(
+        asset_id=asset_id,
+        opening_balance_km=opening.mileage_km if opening is not None else None,
+        projected_km=(
+            opening.mileage_km + confirmed + estimated
+            if opening is not None
+            else None
+        ),
+        confirmed_km=confirmed,
+        estimated_km=estimated,
+        held_km=held,
+        held_reasons=held_reasons,
+        items=[MileageLedgerRead.model_validate(row) for row in entries],
+        total=total,
         limit=limit,
         offset=offset,
     )
