@@ -1151,3 +1151,20 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### NOT TESTED
 
 - Ishlab chiqarish bazasi/server, deploy, API E2E, browser, GTK/Wialon jonli tarmoq va tarixiy ma’lumotlarni ko‘chirish.
+
+## Repository cleanup (2026-11-13)
+
+### Verified
+
+- Deleted obsolete files by explicit path: root diagnostic scripts (`gtk_client.py`, `gtk_extract.py`, `wialon_tool.py`, `wialon_hilux_probe.py`, `wialon_probe_test.py`), `TOIR.zip`, `assets_list.json`, `assets.csv`, `docker-compose.local.yml`, `Caddyfile.backup-*`, `docker-compose.backup-*.yml`, `docs/AGENTS.md`, `app/input/route.ts`, `.env.backup-*`, schema/GTK snapshot files, old `*.dump` files, `local-backups/`, and all `__pycache__`/`.pytest_cache` folders. `toir-local-root.crt` kept. No tests or e2e scripts were deleted.
+- `git status` shows 36 deletions (tracked files only; untracked ones were removed from disk).
+- After deleting stale `.next` cache: `npx tsc --noEmit` exit 0 and `npm run build` exit 0.
+- Current verified backup of the DB: `C:\toir-backups\toir_pre0029.dump` (outside the repo); restore into `toir_rehearse` checked (1075 assets, 1 alembic row).
+
+### Next task
+
+- User commits the cleanup. Then build the backend image and apply 0029 only to `toir_rehearse` (production DB untouched).
+
+### NOT TESTED
+
+- Backend tests, docker image build, 0029 on the rehearsal DB, browser.

@@ -281,3 +281,9 @@ NOT TESTED: browser, API E2E, frontend build/typecheck, concurrency/PostgreSQL p
 0029 upgrade/downgrade/upgrade rehearsal va 0027–0028 schema parity qayd etildi; D9 projection qarori va ochiq PENDING holatlar hujjatlandi.
 `npx.cmd tsc --noEmit`, lint va production build muvaffaqiyatli; lint/build’da ish-order sahifalarida 2 avvalgi React Hook ogohlantirishi qoldi.
 Keyingi: PENDING siyosatlarni tasdiqlash; API E2E, browser, jonli integratsiya va ishlab chiqarish tekshiruvlari bajarilmagan.
+
+## 2026-11-13 — Repository cleanup
+Task: remove dead/duplicate/backup files from the project folder (user approved the list; `toir-local-root.crt` kept).
+Changed: 36 tracked deletions + untracked junk removed (see HANDOFF). No code, schema or migration edited.
+Tested: `npx tsc --noEmit` exit 0, `npm run build` exit 0. Backend tests not run.
+Next: user commits; then rehearse migration 0029 on `toir_rehearse`.
