@@ -3,6 +3,9 @@
 > Bu fayl `TOIR-main.zip` ichidagi haqiqiy kodni o'qib tuzildi (backend ~25 800 qator Python, frontend ~16 900 qator TS/TSX, 29 ta migratsiya, 60 ta jadval).
 > Oldingi qoralama (migratsiya 0009 gacha, "TMC backend yo'q", "Supabase izlari bor" deb yozilgan) **eskirgan**. Shu fayl uning o'rnini bosadi.
 
+> **Yangilanish 2026-11-16:** pastdagi 12 va 15-bo'limlar yangilandi (jonli E2E, «Tirik reja» ТО modeli, HTTPS, avtomatik zaxira, AD kirish).
+> 2-11 va 13-bo'limlardagi ba'zi tafsilotlar 2026-11-13 holatida qolgan; aniq hozirgi holat — `docs/HANDOFF.md` (oxirgi bo'lim) va `docs/E2E_REPORT_2026-11-16.md` (5a).
+
 ## Holat belgilari
 
 | Belgi | Ma'no |
@@ -176,71 +179,33 @@ To'liq ro'yxat: `docs/DECISIONS.md` (34 ta). Eng muhimlari:
 | ТМЦ backend yo'q | Qisman: faqat `GET`. Yaratish/tahrirlash yo'q (qaror: hozircha kerak emas) |
 | Supabase kalit/URL kodda | ✅ Kodda **yo'q**. Git tarixi tekshirilmadi (`.git` zipda yo'q) ❓ |
 
-**Hozir ochiq:**
-1. 🔴 **Hech bir yangi modul serverda/brauzerda sinalmagan.** Hujjatlarda "NOT TESTED" ko'p. Eng katta xavf: sinalmagan 0006–0029 migratsiyalar productionga tushishi.
-2. 🔴 **Migratsiya avtomatik qo'llanadi** (`entrypoint.sh`). Konteynerni qayta ishga tushirishdan oldin bazadan zaxira oling.
-3. 🟠 **CI va testlar mos emas:** 12 ta test fayl `pytest` ishlatadi, lekin `requirements.txt` da `pytest`/`pytest-asyncio` yo'q va CI `unittest discover` ishlatadi. CI'dagi haqiqiy natija ❓ (GitHub Actions ko'rilmadi).
-4. 🟠 **`docker-compose.yml` va server sozlamasi farqi** (4-bo'lim) — fuel portlari bilan to'qnashuv xavfi ❓.
-5. 🟠 **`Caddyfile` faqat HTTP** (`http://{$DOMAIN}`), `docker-compose.yml` frontendga `http://` beradi, README esa HTTPS/Let's Encrypt deydi. TLS qarori qabul qilinmagan; parol HTTP orqali ketmasligi kerak.
-6. 🟠 **`server/deploy.sh` repoda yo'q** (DECISIONS #7 unga tayanadi). Fuel'ni himoya qilish tekshirib bo'lmaydi ❓.
-7. 🟡 `docker-compose.local.yml` eskirgan: mavjud bo'lmagan `./frontend` papkasiga ishora qiladi va dev parolni ochiq yozgan. Ishlatmang yoki o'chiring.
-8. 🟡 `.gitignore`da `backups/` yo'q (backup skripti shu papkaga yozadi). `Caddyfile.backup-*`, `docker-compose.backup-*.yml`, `toir-local-root.crt`, `assets_list.json` (380 KB), bo'sh `assets.csv` repoda turibdi.
-9. 🟡 `postgres/schema.sql` ga 0029 jadvallari kirgan, lekin sxema barcha migratsiyalar bilan 1:1 mosligi to'liq tekshirilmagan (`test_schema_drift` bor, ishga tushirilmagan).
-10. 🟡 Dependency: `next 15.5.28` (PostCSS advisory), `xlsx ^0.18.5` (tuzatma yo'q) — oldingi `npm audit` bo'yicha. Qayta tekshirilmagan. `@vercel/analytics` paketda qolgan (layout'dan olib tashlangan).
-11. 🟡 Dashboard har safar katta hajmdagi aktiv/buyurtmani LIMIT'siz yuklaydi (eski audit), ILIKE qidiruvlarga indeks yo'q.
-12. 🟡 `daily_readiness_snapshots` ni yozadigan faol kod yo'q (`save_daily_readiness_snapshots` hech qayerga ulanmagan), `monthly_readiness` esa uni o'qiydi.
-13. 🟡 Qoldiqlar: `app/input/route.ts` (eski Wialon eslatma), `/translations` router va `e2e_localization.py` (til olib tashlangan), ildizdagi `wialon_*probe*.py`, `gtk_*.py` skriptlari, `docs/AGENTS.md` (ildizdagi nusxa).
-14. ❓ **Korxona standarti (`codex-standard`):** tizimda o'z login/parol bor, standart AD orqali kirishni talab qilishi mumkin. Alohida qaror kerak. Xodim shaxsiy ma'lumotini tashqi servis/AI'ga yubormang (lokal Ollama mos).
+**Hozir ochiq (2026-11-16 holati; 2026-11-13 ro'yxatidan qolganlari va yangilari):**
+1. 🟠 **Mijoz kompyuterlarda ildiz sertifikati o'rnatilmagan:** HTTPS (443) yoqilgan, HTTP ham ishlaydi (qaror №40). `toir-local-root.crt` ni «Trusted Root Certification Authorities» ga o'rnatmaguncha brauzer ogohlantiradi. Keyin HTTP'ni o'chirish va HSTS alohida qaror.
+2. 🟠 **Biznes qarorlar (vagon probegi PENDING):** opening balance'ni kiritgan odam o'zi tasdiqlay oladimi; idle uchun minimal davomiylik; GTK/Wialon vaqt belgilarining aniq ma'nosi (`docs/WAGON_MILEAGE_P0_DECISIONS.md`).
+3. 🟠 **Wialon tomonida:** 22 dizelning dvigatel-soat (`cneh`) hisoblagichi «real vaqtdan katta» deb rad etiladi; 92 Wialon birligi aktivga bog'lanmagan (`python -m app.cli wialon-health-report`).
+4. 🟠 **Vagonlar uchun haqiqiy ТО intervallari (me'yorlar) va «oxirgi ТО» sanalari (baseline) kiritilmagan.** Vagon uchun yagona interval `test` edi, u faolsizlantirildi.
+5. 🟠 **Haqiqiy AD parol bilan kirish sinalmagan** (faqat noto'g'ri parol va yaratish validatsiyasi).
+6. 🟡 **Avtomatik zaxira ishlaydi** (`backup` xizmati, 14 kun); eng yangi dumpdan tiklash sinalgan (`pg_rehearse`: 73 jadval, `0032_tirik_reja`, qator soni jonli bilan mos). Zaxira papkasi bir xil kompyuterda — tashqi nusxa (boshqa disk/server) yo'q.
+7. 🟡 **Dependency:** `npm audit` — `next 15.5.28` ichidagi `postcss` (build vaqtidagi CSS, foydalanuvchi kiritmaydi; tuzatish `next@16` — katta o'zgarish), `zod 3.25.76` (kodda import qilinmagan, faqat paketda), `xlsx` tuzatmasi yo'q. Alohida yangilash vazifasi.
+8. 🟡 **CI:** `requirements-dev.txt` va `.github/workflows/ci.yml` bor (pytest `-m "not pg"`, tsc, lint, unit, build, docker build). GitHub Actions'dagi haqiqiy natija ko'rilmagan.
+9. 🟡 Eski `e2e_*.py` skriptlar qayta ishga tushirilmadi (o'rniga jonli E2E: `backend/scripts/e2e_live/`). `ТМЦ` hujjatlari faqat o'qish; yaratish/tahrirlash talab bo'lmaguncha yo'q.
+10. 🟡 Docker build keshi ~21,8 GB (ixtiyoriy tozalash); `backups/` da qo'lda dumplar (~650 MB).
 
-## 13. Tekshiruv va ishga tushirish buyruqlari
-
-**Frontend (PC, PowerShell):**
-```powershell
-npx tsc --noEmit
-npm run lint
-npm run build      # dev server o'chiq bo'lsin
-```
-
-**Backend testlari:** Python 3.12 va `backend/.venv` da, `pytest` bilan (`pg` markerli test uchun alohida `pg_rehearse` bazasi kerak). E2E skriptlar (`backend/scripts/e2e_*.py`) faqat foydalanuvchi tomonidan test API'ga qarshi ishga tushiriladi.
-
-**Server (faqat o'qish, xavfsiz):**
-```bash
-docker compose -p toir ps
-docker compose -p toir run --rm --no-deps --entrypoint alembic backend current
-curl -s http://127.0.0.1:8010/health
-```
-
-**Birinchi o'rnatish:** `docs/DEPLOY.md`. Zaxira: `scripts/backup_postgres.sh`. Wialon prod tartibi: `docs/PROD_RUNBOOK.md`.
-
-## 14. Ishlash qoidalari (AI uchun) — `AGENTS.md` bilan bir xil
-
-- Foydalanuvchi boshlang'ich: **o'zbek tilida, sodda, qisqa**. Buyruqlar kichik nusxa-ko'chirish bloklarida, har biri **[PC]** yoki **[SERVER]** deb belgilanadi.
-- Avval `AGENTS.md`, keyin `docs/HANDOFF.md` oxirgi bo'limlari, kerak bo'lsa `PROJECT.md` va `docs/DECISIONS.md`. Butun repoyni o'qima.
-- Buyruq natijasini ko'rmasdan "ishladi/tuzatildi" dema. Aks holda **NOT TESTED** yoz. Oxirida tekshirilmaganlar ro'yxatini ber.
-- Maxfiy qiymat (parol, token, kalit, DB URL) chiqarma. `.env`, `.env.local`ni ochma.
-- Taqiq: `git reset --hard`, `git clean`, `git push --force`, `git checkout .`, `rm -rf`, `docker system prune`, `docker volume prune`, `docker compose down -v`. Ommaviy o'chirish/nomlash yo'q.
-- `git pull/commit/push` ni foydalanuvchi qiladi. Sxema/migratsiyani rejasiz va tasdiqsiz o'zgartirma.
-- `fuel` tizimi, uning konteynerlari, portlari, nginx'iga tegma. Serverga ulanma, deploy/docker/e2e'ni foydalanuvchi ishga tushiradi.
-- Eng kichik to'g'ri o'zgarish. Bir vaqtda bitta vazifa. Katta/xavfli ishda avval reja, tasdiqni kut.
-- Rol: master faqat o'z uchastkasi, serverda, so'rov ichida, **404** qaytar, status tekshiruvidan oldin.
-- Frontend: faqat `api.*()`. UI matni rus tilida.
-- Vazifadan keyin: `docs/HANDOFF.md` ("Verified" va "Next task"), `docs/AI_WORKLOG.md` (3–5 qator), yangi qaror bo'lsa `docs/DECISIONS.md`.
+**2026-11-13 ro'yxatidan yopilganlari:** HTTPS (5), `.gitignore` `backups/` (8), eski/keraksiz fayllar o'chirilgan (7, 8, 13), `schema.sql` ↔ migratsiyalar (`test_schema_drift` 5/5 o'tdi) (9), readiness yozuvchisi `services/analytics.py` dan chaqiriladi (12; ishlashi tekshirilmagan), CI pytest bog'liqliklari (3), migratsiyalar toza bazada `0032` gacha ishladi (1, 2).
 
 ## 15. Hozirgi bosqich va keyingi vazifalar
 
-**Bosqich:** kod yozish bosqichi katta qismi tugagan (modullar mavjud), **tekshirish va production'ga xavfsiz chiqarish bosqichi** boshlanmagan. Oxirgi ish: vagon probegi P0.3 (2026-11-10…12), unda 317 test o'tgani va 0029 migratsiya vaqtinchalik bazada up/down/up bajarilgani xabar qilingan 🟢.
+**Bosqich:** jonli tizim mahalliy Docker'da ishlaydi (backend, frontend, postgres, proxy, backup — hammasi `healthy`), to'liq jonli E2E o'tkazilgan va ochiq nuqsonlar tuzatilgan (`docs/E2E_REPORT_2026-11-16.md`). Qolgani — biznes ma'lumot kiritish va qarorlar, mijoz sozlamalari.
 
 **Tavsiya etilgan tartib:**
-1. **Hozirgi holatni aniqlash (faqat o'qish):** serverdagi alembic revision, ishlayotgan compose, konteynerlar, `git log -5`. Bu 4-bo'lim va 12-bo'limdagi ❓ larni yopadi.
-2. **Zaxira** (`backup_postgres.sh`) va uni tiklab ko'rish.
-3. **Migratsiyalarni bir nusxa bazada sinash** (0006–0029), keyin `schema.sql` bilan solishtirish.
-4. **CI'ni tuzatish:** `pytest`, `pytest-asyncio` ni requirements'ga qo'shish yoki CI'ni pytest'ga o'tkazish; GitHub Actions natijasini ko'rish.
-5. **E2E skriptlarni test API'da ishga tushirish** (`e2e_refs`, `e2e_assets`, `e2e_workorders`, `e2e_permissions`, `e2e_user_status`, `e2e_dashboard`, `e2e_gtk*`, `e2e_wialon_units`, `e2e_audit_logs`).
-6. **Brauzerda qo'lda tekshirish:** login, ОС ro'yxati/pasport, work-orders, ТО jadvali, ruxsatlar, master doirasi.
-7. **Xavfsizlik:** TLS qarori (HTTPS), `.gitignore` tuzatish (`backups/`), keraksiz fayllarni olib tashlash, `npm audit`.
-8. **Wialon/GTK:** jonli ulanishni bosqichma-bosqich yoqish (`PROD_RUNBOOK.md`), dastlab bitta sinxronlash.
-9. **Biznes qarorlar** (vagon probegi PENDING ro'yxati) — egasi bilan kelishish.
-10. **Keyin:** ТМЦ hujjatlari CRUD (agar kerak bo'lsa, avval talab va ombor harakati qoidalari), `daily_readiness_snapshots` yozuvchisi, `xlsx`/Next yangilash.
+1. Ildiz sertifikatini mijoz kompyuterlarga o'rnatish (1-band), so'ng https orqali ishlash.
+2. Biznes qarorlarni olish (2-band).
+3. Vagon va lokomotivlar uchun haqiqiy ТО intervallari + «oxirgi ТО» sanalarini kiritish (4-band; `maintenance-baseline-import` CSV buyrug'i bor, dry-run bilan).
+4. Wialon sozlamalarini tuzatish (3-band).
+5. Haqiqiy AD parol bilan kirishni sinash (5-band).
+6. Zaxiraning tashqi nusxasi (boshqa disk/server) va oyda bir tiklash sinovi.
+7. Dependency yangilash (7-band), CI natijasini ko'rish (8-band).
+8. Keyin: ТМЦ hujjatlari CRUD (avval talab va ombor harakati qoidalari).
 
 ## 16. Qayerdan nimani topish
 

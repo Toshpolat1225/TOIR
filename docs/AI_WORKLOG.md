@@ -362,3 +362,10 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 - O'zgargan: backend (`auth`, `audit_log`, `references`, `maintenance*`, `schemas`, `cli`, `wialon_health`), frontend (`api-base`, `api`, `use-realtime`, jadval sahifasi, users), `docker-compose.yml`, `Caddyfile`, `.gitattributes`, `scripts/backup_loop.sh`, testlar (`test_fixall_units.py`, `test_fixall_pg.py`, `api-base.test.ts`), `e2e_live/t10_fixall_verify.py`.
 - Tested: backend 553, tsc/eslint/62 unit, jonli 32/32 + Edge 14/14, ZZTEST qoldig'i 0. NOT tested: mijoz PC'larida sertifikat, Windows `curl` HTTPS, avtomatik dumpdan tiklash.
 - Keyingi qadam: sertifikatni mijozlarga o'rnatish, commit, Wialon `cneh`.
+
+## 2026-11-16: PROJECT.md yangilandi, tiklash va auditlar
+- Task: foydalanuvchi to'liq ruxsat berdi; PROJECT.md ning 12 va 15-bo'limlari hozirgi holatga keltirildi.
+- Tekshirildi: `auto-*.dump` ni `pg_rehearse` ga tiklash (73 jadval, `0032_tirik_reja`, fixed_assets 1075 = jonli, users 18 = jonli); `test_schema_drift` 5/5; `npm audit --omit=dev` (3 ta: next/postcss, zod, xlsx — tuzatish katta o'zgarish, bajarilmadi).
+- NOT tested: GitHub Actions natijasi, haqiqiy AD paroli, mijoz PC'larida sertifikat.
+- Keyingi qadam: biznes qarorlar va vagon intervallari/baseline ma'lumotlari (foydalanuvchidan).
+
