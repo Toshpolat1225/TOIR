@@ -29,7 +29,7 @@ from app.models.maintenance import (
 )
 from app.models.wialon_units import WialonUnitRecord
 from app.models.localization import FixedAssetStatus
-from app.models.mileage import WagonMileageLedger, WagonMileageOpeningBalance
+from app.models.mileage import WagonMileageLedger, WagonMileageOpeningBalance, WialonRawReceipt
 from app.models.work_orders import WorkOrder
 from app.repositories import maintenance as repository
 from app.repositories import mileage as mileage_repository
@@ -138,14 +138,15 @@ async def _build_pace_book(db: AsyncSession, today: date) -> PaceBook:
         if hours is not None:
             hours_series.setdefault(asset_id, []).append((day, Decimal(hours)))
 
+    unobserved = await _unobserved_days(db, anchor_day, last_day)
     km_deltas = {
-        asset_id: daily_deltas(series, first_day=anchor_day, last_day=last_day)
+        asset_id: daily_deltas(series, first_day=anchor_day, last_day=last_day, unobserved_days=unobserved)
         for asset_id, series in km_series.items()
     }
     # Wagon mileage is a ledger projection, not a counter that is sampled: pace comes from the ledger.
     km_deltas.update(await _wagon_ledger_rates(db, start_dt))
     hours_deltas = {
-        asset_id: daily_deltas(series, first_day=anchor_day, last_day=last_day)
+        asset_id: daily_deltas(series, first_day=anchor_day, last_day=last_day, unobserved_days=unobserved)
         for asset_id, series in hours_series.items()
     }
     ids = set(km_deltas) | set(hours_deltas)
@@ -173,6 +174,37 @@ async def _build_pace_book(db: AsyncSession, today: date) -> PaceBook:
         day=today, built_at=time.monotonic(), km_deltas=km_deltas, hours_deltas=hours_deltas,
         group_km=groups(km_deltas, _GROUP_MIN_DAYS), group_hours=groups(hours_deltas),
     )
+
+
+_MIN_COLLECTOR_HOURS = 12  # a day with Wialon data in fewer hours than this was not really observed
+
+
+async def _unobserved_days(db: AsyncSession, first_day: date, last_day: date) -> frozenset[date]:
+    """Days between the first one we ever received Wialon data and `last_day` on which the collector ran in
+    fewer than _MIN_COLLECTOR_HOURS distinct hours (host switched off, network down...). Empty when there is
+    no receipt history at all, so a fresh install or a push-only setup is judged as before."""
+    start_dt = datetime.combine(first_day, datetime.min.time(), tzinfo=timezone.utc)
+    rows = (
+        await db.execute(
+            select(
+                func.date(WialonRawReceipt.received_at),
+                func.count(func.distinct(func.date_trunc("hour", WialonRawReceipt.received_at))),
+            )
+            .where(WialonRawReceipt.received_at >= start_dt)
+            .group_by(func.date(WialonRawReceipt.received_at))
+        )
+    ).all()
+    if not rows:
+        return frozenset()
+    hours_by_day = {day: int(hours) for day, hours in rows}
+    first_seen = min(hours_by_day)
+    result: set[date] = set()
+    day = max(first_day, first_seen)
+    while day <= last_day:
+        if hours_by_day.get(day, 0) < _MIN_COLLECTOR_HOURS:
+            result.add(day)
+        day += timedelta(days=1)
+    return frozenset(result)
 
 
 async def _wagon_ledger_rates(db: AsyncSession, start_dt: datetime) -> dict[UUID, list[Decimal]]:

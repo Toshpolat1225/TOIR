@@ -208,6 +208,22 @@ async def get_section_translations(
     return translations
 
 
+async def department_name_taken(db: AsyncSession, name: str, *, exclude_id: UUID | None = None) -> bool:
+    """A department name is unique ignoring case and surrounding spaces."""
+    statement = select(func.count()).select_from(Department).where(func.lower(func.trim(Department.name)) == name.strip().lower())
+    if exclude_id is not None:
+        statement = statement.where(Department.id != exclude_id)
+    return bool((await db.execute(statement)).scalar_one())
+
+
+async def count_section_assignments(db: AsyncSession, section_id: UUID) -> dict[str, int]:
+    """What would be left without a section if it were archived: active users, assets and active employees."""
+    users = await db.scalar(select(func.count()).select_from(User).where(User.section_id == section_id, User.is_active.is_(True)))
+    assets = await db.scalar(select(func.count()).select_from(FixedAsset).where(FixedAsset.section_id == section_id))
+    employees = await db.scalar(select(func.count()).select_from(Employee).where(Employee.section_id == section_id, Employee.is_active.is_(True)))
+    return {"users": users or 0, "assets": assets or 0, "employees": employees or 0}
+
+
 async def has_active_children(db: AsyncSession, section_id: UUID) -> bool:
     result = await db.execute(
         select(func.count())

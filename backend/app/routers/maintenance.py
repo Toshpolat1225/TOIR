@@ -50,9 +50,10 @@ async def read_maintenance_settings(
 @router.patch("/maintenance-settings", response_model=MaintenanceSettingsRead)
 async def patch_maintenance_settings(
     payload: MaintenanceSettingsUpdate,
-    _: MaintenanceSettingsEditor,
+    current_user: MaintenanceSettingsEditor,
     db: DatabaseSession,
 ) -> MaintenanceSettingsRead:
+    _require_planner(current_user)  # the permission alone also let the read-mostly `management` role change it
     return await service.update_settings(db, payload)
 
 

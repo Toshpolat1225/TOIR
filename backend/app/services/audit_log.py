@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import SessionFactory
 from app.models.audit_log import AuditLog
 
@@ -346,8 +347,67 @@ def normalize_audit_datetime(value: datetime) -> datetime:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 
+def _telemetry_predicate() -> str:
+    """SQL condition for audit rows that only mirror automatic feeds (the tables themselves are the record).
+
+    Built from module constants only (no user input). A row is telemetry when the system wrote it and it is either
+    a copy of an append-only feed table, a Wialon-settings counter update, or a fixed-asset update that touched
+    nothing but the live-sync columns / the mileage delta (that delta is already kept in `mileage_history`).
+    """
+    feeds = ", ".join(f"'{name}'" for name in sorted(_OPERATIONAL_TABLES - {"audit_logs"}))
+    sync_columns = ", ".join(f"'{name}'" for name in sorted(_SYNC_ONLY_COLUMNS["fixed_assets"] | {"mileage"}))
+    return (
+        "actor_type = 'system' AND ("
+        f"object_type IN ({feeds}) "
+        "OR (object_type = 'wialon_settings' AND action = 'update') "
+        "OR (object_type = 'fixed_assets' AND action = 'update' AND new_values IS NOT NULL "
+        "AND jsonb_typeof(new_values) = 'object' "
+        f"AND NOT EXISTS (SELECT 1 FROM jsonb_object_keys(new_values) AS k WHERE k NOT IN ({sync_columns}))))"
+    )
+
+
+async def purge_audit_telemetry(*, apply: bool, batch_size: int = 50_000) -> dict[str, Any]:
+    """Remove the telemetry audit rows written before the noise filters existed. Dry-run unless `apply`."""
+    from sqlalchemy import text
+
+    predicate = _telemetry_predicate()
+    async with SessionFactory() as session:
+        rows = (
+            await session.execute(
+                text(f"SELECT module, object_type, count(*) FROM audit_logs WHERE {predicate} GROUP BY 1, 2 ORDER BY 3 DESC")
+            )
+        ).all()
+        total = (await session.execute(text("SELECT count(*) FROM audit_logs"))).scalar_one()
+    report: dict[str, Any] = {
+        "audit_rows_total": total,
+        "telemetry_rows": sum(row[2] for row in rows),
+        "by_type": [{"module": row[0], "object_type": row[1], "rows": row[2]} for row in rows],
+        "applied": apply,
+        "deleted": 0,
+    }
+    if not apply:
+        return report
+    deleted = 0
+    while True:
+        async with SessionFactory() as session:
+            result = await session.execute(
+                text(
+                    "DELETE FROM audit_logs WHERE id IN "
+                    f"(SELECT id FROM audit_logs WHERE {predicate} LIMIT :batch)"
+                ),
+                {"batch": batch_size},
+            )
+            await session.commit()
+        removed = result.rowcount or 0
+        deleted += removed
+        if removed < batch_size:
+            break
+    report["deleted"] = deleted
+    return report
+
+
 async def delete_expired_audit_logs() -> int:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=365)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.audit_retention_days)
     async with SessionFactory() as session:
         result = await session.execute(
             delete(AuditLog).where(AuditLog.created_at < cutoff)

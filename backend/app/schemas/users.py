@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 UserRole = Literal["admin", "operator", "master", "management"]
 
@@ -29,10 +29,17 @@ class UserRead(BaseModel):
     is_active: bool
     auth_source: Literal["local", "ad"] = "local"
     ad_username: str | None = None
-    ad_object_guid: UUID | None = None
+    # read from the model but never sent: an internal directory identifier is not the client's business
+    ad_object_guid: UUID | None = Field(default=None, exclude=True)
     last_login_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def ad_confirmed(self) -> bool:
+        """The directory account was seen at a first successful login (its GUID is bound)."""
+        return self.ad_object_guid is not None
 
 
 AD_LOGIN_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,64}")

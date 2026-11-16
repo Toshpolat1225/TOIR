@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react"
 import { api } from "@/lib/api"
+import { apiBaseUrl, realtimeSocketUrl } from "@/lib/api-base"
 
 export type RealtimeEvent = {
   resource: "work_orders" | "fixed_assets" | "users"
@@ -51,12 +52,7 @@ async function connect() {
     const accessToken = await api.auth.getAccessToken()
     if (generation !== connectGeneration || listeners.size === 0) return
 
-    const apiUrl = new URL(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8010/api/v1")
-    const protocol = apiUrl.protocol === "https:" ? "wss:" : "ws:"
-    const wsUrl = new URL("/ws", apiUrl)
-    wsUrl.protocol = protocol
-
-    const connection = new WebSocket(wsUrl.toString())
+    const connection = new WebSocket(realtimeSocketUrl(apiBaseUrl()))
     socket = connection
     connection.onopen = () => {
       connection.send(JSON.stringify({

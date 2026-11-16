@@ -4,6 +4,7 @@ import { Fragment, useState, useEffect, useCallback, useRef } from "react"
 import {
   api, type Employee, type MaintenanceBlockReason, type MaintenanceDecision, type MaintenanceDisruption,
   type MaintenanceDisruptionCreate, type MaintenanceKpis, type MaintenancePlan, type MaintenanceScheduleItem,
+  type MaintenanceUnforecasted,
   type MileageHistory, type Section, type WorkType,
 } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
@@ -34,6 +35,13 @@ import {
 ═══════════════════════════════════════ */
 type Status = "upcoming" | "in_progress" | "completed" | "overdue" | "blocked"
 type ScheduleItem = MaintenanceScheduleItem
+
+const UNFORECASTED_REASON: Record<string, string> = {
+  no_movement: "не движется (пробег не растёт)",
+  no_mileage_baseline: "вагон без утверждённого начального пробега",
+  no_mileage: "нет показаний пробега",
+  no_data: "нет исходных данных (часы/календарь)",
+}
 
 type ToastNotification = {
   id: string
@@ -1409,6 +1417,7 @@ export default function MaintenancePage() {
   const [kpis, setKpis] = useState<MaintenanceKpis | null>(null)
   const [disruptions, setDisruptions] = useState<MaintenanceDisruption[]>([])
   const [serverPace, setServerPace] = useState<number | null>(null)
+  const [unforecasted, setUnforecasted] = useState<{ total: number; counts: Record<string, number>; items: MaintenanceUnforecasted[] }>({ total: 0, counts: {}, items: [] })
   const [decisions, setDecisions] = useState<MaintenanceDecision[] | null>(null)
   const [decisionsError, setDecisionsError] = useState(false)
   type LiveDialog =
@@ -1518,6 +1527,11 @@ export default function MaintenancePage() {
       if (requestId !== scheduleRequestIdRef.current) return
       setSchedule(response.schedule)
       setServerPace(toNum(response.daily_average_km))
+      setUnforecasted({
+        total: response.unforecasted_total ?? 0,
+        counts: response.unforecasted_counts ?? {},
+        items: response.unforecasted ?? [],
+      })
       setScheduleError(null)
     } catch (e) {
       if (requestId !== scheduleRequestIdRef.current) return
@@ -1651,8 +1665,8 @@ export default function MaintenancePage() {
 
   const saveDailyAverageKm = async () => {
     const value = Number(dailyAverageKm)
-    if (!Number.isFinite(value) || value <= 0) {
-      setSettingsError("Введите положительный средний пробег в км за день")
+    if (!Number.isFinite(value) || value < 5 || value > 1000) {
+      setSettingsError("Средний пробег должен быть от 5 до 1000 км в день")
       return
     }
     setSettingsSaving(true)
@@ -2179,7 +2193,8 @@ export default function MaintenancePage() {
                 {"км в день"}
                 <input
                   type="number"
-                  min="0.01"
+                  min="5"
+                  max="1000"
                   step="0.01"
                   value={dailyAverageKm}
                   onChange={(event) => setDailyAverageKm(event.target.value)}
@@ -2214,6 +2229,25 @@ export default function MaintenancePage() {
         <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
           {"Не удалось загрузить график:"} {scheduleError}
         </p>
+      )}
+      {unforecasted.total > 0 && (
+        <details className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          <summary className="cursor-pointer font-medium">
+            {`Без прогноза: ${unforecasted.total} ед.`}
+            <span className="ml-2 font-normal">
+              {Object.entries(unforecasted.counts).map(([reason, count]) => `${UNFORECASTED_REASON[reason] ?? reason}: ${count}`).join(" · ")}
+            </span>
+          </summary>
+          <p className="mt-2 text-xs">{"Этих единиц нет на графике: для них нельзя назвать дату ТО. Причина указана рядом с каждой."}</p>
+          <ul className="mt-2 max-h-64 space-y-0.5 overflow-y-auto text-xs">
+            {unforecasted.items.map((item) => (
+              <li key={item.asset_id}>{`${item.unit} — ${UNFORECASTED_REASON[item.reason] ?? item.reason}`}</li>
+            ))}
+          </ul>
+          {unforecasted.total > unforecasted.items.length && (
+            <p className="mt-1 text-xs">{`Показаны первые ${unforecasted.items.length} из ${unforecasted.total}.`}</p>
+          )}
+        </details>
       )}
       {plansError && (
         <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">

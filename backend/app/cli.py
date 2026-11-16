@@ -600,6 +600,37 @@ async def _maintenance_baseline_import(path: str, apply: bool) -> int:
     return 0 if not report["errors"] else 1
 
 
+async def _audit_purge_telemetry(apply: bool, batch_size: int) -> int:
+    from app.services import audit_log
+
+    try:
+        report = await audit_log.purge_audit_telemetry(apply=apply, batch_size=batch_size)
+    except SQLAlchemyError:
+        logger.exception("Could not purge audit telemetry")
+        return 2
+    finally:
+        await engine.dispose()
+    print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
+    if not apply:
+        print("DRY-RUN: hech narsa o'chirilmadi. O'chirish uchun --apply qo'shing.", file=sys.stderr)
+    return 0
+
+
+async def _wialon_health_report(silent_hours: int, reject_days: int) -> int:
+    from app.services import wialon_health
+
+    try:
+        async with SessionFactory() as db:
+            report = await wialon_health.build_report(db, silent_hours=silent_hours, reject_days=reject_days)
+    except SQLAlchemyError:
+        logger.exception("Could not build the Wialon health report")
+        return 2
+    finally:
+        await engine.dispose()
+    print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
+    return 0
+
+
 async def _wialon_probe() -> int:
     if settings.wialon_host is None or settings.wialon_token is None:
         print("Wialon sozlanmagan: WIALON_HOST yoki WIALON_TOKEN yo‘q.", file=sys.stderr)
@@ -642,6 +673,18 @@ def main() -> int:
         "maintenance-shadow-report",
         help="Read-only: what the living-plan engine sees (states, confidence, pace, what it would plan)",
     )
+    wialon_health_parser = subparsers.add_parser(
+        "wialon-health-report",
+        help="Read-only: silent units, unlinked units, suspect counters and repeatedly rejected readings",
+    )
+    wialon_health_parser.add_argument("--silent-hours", type=int, default=24)
+    wialon_health_parser.add_argument("--reject-days", type=int, default=7)
+    purge_parser = subparsers.add_parser(
+        "audit-purge-telemetry",
+        help="Delete audit rows that only mirror automatic Wialon/GTK feeds (dry-run by default; take a dump first)",
+    )
+    purge_parser.add_argument("--apply", action="store_true")
+    purge_parser.add_argument("--batch-size", type=int, default=50_000)
     health_parser = subparsers.add_parser(
         "maintenance-health", help="Check the plan invariants (--fix repairs the safe ones)"
     )
@@ -696,6 +739,10 @@ def main() -> int:
                 help="Limit to this locomotive inventory number (repeatable); use it for a first trial",
             )
     arguments = parser.parse_args()
+    if arguments.command == "wialon-health-report":
+        return asyncio.run(_wialon_health_report(arguments.silent_hours, arguments.reject_days))
+    if arguments.command == "audit-purge-telemetry":
+        return asyncio.run(_audit_purge_telemetry(arguments.apply, max(1_000, arguments.batch_size)))
     if arguments.command == "maintenance-shadow-report":
         return asyncio.run(_maintenance_shadow_report())
     if arguments.command == "maintenance-health":

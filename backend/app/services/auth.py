@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -34,6 +34,7 @@ AD_LOGIN_FAILURE_LIMIT = 3
 AD_IP_FAILURE_LIMIT = 20
 LOGIN_FAILURE_WINDOW = timedelta(minutes=15)
 MAX_LOCAL_PASSWORD_BYTES = 72
+REFRESH_REUSE_GRACE = timedelta(seconds=30)
 
 
 def ad_login_name(identifier: str) -> str | None:
@@ -273,6 +274,31 @@ async def rotate_refresh_token(
     )
     stored_token = result.scalar_one_or_none()
     now = datetime.now(timezone.utc)
+    if (
+        stored_token is not None
+        and stored_token.revoked_at is not None
+        and stored_token.expires_at > now
+        and now - stored_token.revoked_at > REFRESH_REUSE_GRACE
+    ):
+        # A token that was already rotated or revoked comes back long after the fact: it was copied. Cut every
+        # session of that user (they sign in again) and leave a trace. Two tabs refreshing at the same moment
+        # present the same token within seconds: that is the grace period and is only refused.
+        await db.execute(
+            update(RefreshToken)
+            .where(RefreshToken.user_id == stored_token.user_id, RefreshToken.revoked_at.is_(None))
+            .values(revoked_at=now)
+        )
+        add_auth_audit_event(
+            db,
+            action="other",
+            actor_id=stored_token.user_id,
+            actor_name=None,
+            route="/api/v1/auth/refresh",
+            status_code=401,
+            extra={"event": "refresh_token_reuse"},
+        )
+        await db.commit()
+        raise unauthorized_exception()
     if (
         stored_token is None
         or stored_token.revoked_at is not None

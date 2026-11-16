@@ -9,7 +9,7 @@ import math
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
-from typing import Iterable, Mapping, Sequence
+from typing import Collection, Iterable, Mapping, Sequence
 
 ZERO = Decimal("0")
 HUNDRED = Decimal("100")
@@ -49,12 +49,21 @@ def quantile(values: Sequence[Decimal], q: float) -> Decimal:
 
 
 def daily_deltas(
-    readings: Iterable[tuple[date, Decimal]], *, first_day: date, last_day: date
+    readings: Iterable[tuple[date, Decimal]],
+    *,
+    first_day: date,
+    last_day: date,
+    unobserved_days: Collection[date] = (),
 ) -> list[Decimal]:
     """Per-day growth of a cumulative meter over the calendar days first_day+1 .. last_day.
 
     A day without a reading keeps the last known value, so idle days count as 0 (a typical day
     of an asset that sits still is part of its real pace). Meter corrections never go negative.
+
+    `unobserved_days` are days our collector was (mostly) down: a missing reading there is not "the unit sat
+    still", it is "we did not look". The km that show up in the first reading afterwards are spread evenly over
+    the unobserved run and that day (one 600 km "day" after three silent days is really ~150 km a day), and an
+    unobserved run with no later reading is dropped (unknown, not idle).
     """
     by_day: dict[date, Decimal] = {}
     for day, value in readings:
@@ -65,6 +74,7 @@ def daily_deltas(
     known = sorted(by_day.items())
     # End-of-day value for every calendar day (a day without a reading keeps the last known value).
     values: list[Decimal] = []
+    days: list[date] = []
     index = 0
     last_value: Decimal | None = None
     day = first_day
@@ -74,8 +84,24 @@ def daily_deltas(
             index += 1
         if last_value is not None:
             values.append(last_value)
+            days.append(day)
         day += timedelta(days=1)
-    return [max(ZERO, values[i] - values[i - 1]) for i in range(1, len(values))]
+    deltas = [(days[i], max(ZERO, values[i] - values[i - 1])) for i in range(1, len(values))]
+    if not unobserved_days:
+        return [delta for _, delta in deltas]
+    spread: list[Decimal] = []
+    run: list[Decimal] = []  # deltas of the unobserved days waiting for the next observed day
+    for delta_day, delta in deltas:
+        if delta_day in unobserved_days:
+            run.append(delta)
+            continue
+        if run:
+            share = (sum(run, ZERO) + delta) / (len(run) + 1)
+            spread.extend([share] * (len(run) + 1))
+            run = []
+        else:
+            spread.append(delta)
+    return spread  # a run still open here has no later observation: dropped
 
 
 def partial_day_rates(

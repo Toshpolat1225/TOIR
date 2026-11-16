@@ -1,4 +1,11 @@
-http://{$DOMAIN} {
+{
+    # Browsers do not send SNI when the address is an IP, and inside Docker Caddy cannot match the connection's
+    # local address to the site: without this the TLS handshake fails for every client that opens https://<ip>.
+    default_sni {$DOMAIN}
+}
+
+# Shared by the plain-HTTP and the HTTPS site below, so both behave exactly the same.
+(toir) {
     encode zstd gzip
 
     header {
@@ -19,4 +26,16 @@ http://{$DOMAIN} {
     reverse_proxy @backend backend:8000
 
     reverse_proxy frontend:3000
+}
+
+# Plain HTTP stays available (no redirect, no HSTS): clients that have not installed the root certificate yet.
+http://{$DOMAIN} {
+    import toir
+}
+
+# HTTPS with Caddy's own local CA (`tls internal`). Its root certificate is /data/caddy/pki/authorities/local/root.crt
+# in the caddy_data volume (copy in the repo: toir-local-root.crt); install it on the client PCs once.
+https://{$DOMAIN} {
+    tls internal
+    import toir
 }

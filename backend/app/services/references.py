@@ -120,6 +120,8 @@ async def get_department(db: AsyncSession, department_id: UUID) -> Department:
 
 
 async def create_department(db: AsyncSession, payload: DepartmentCreate) -> Department:
+    if await repository.department_name_taken(db, payload.name):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Department name already exists")
     department = Department(**payload.model_dump())
     db.add(department)
     await _commit_or_conflict(db, "Department name already exists or the request conflicts with related data")
@@ -131,7 +133,10 @@ async def update_department(
     db: AsyncSession, department_id: UUID, payload: DepartmentUpdate
 ) -> Department:
     department = await get_department(db, department_id)
-    for field_name, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    if "name" in changes and await repository.department_name_taken(db, changes["name"], exclude_id=department.id):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Department name already exists")
+    for field_name, value in changes.items():
         setattr(department, field_name, value)
     await _commit_or_conflict(db, "Department name already exists or the request conflicts with related data")
     await db.refresh(department)
@@ -493,6 +498,15 @@ async def delete_section(db: AsyncSession, section_id: UUID) -> None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Move or archive child units before archiving this unit",
+        )
+    assigned = await repository.count_section_assignments(db, section.id)
+    if any(assigned.values()):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Cannot archive this unit: {assigned['users']} active users, {assigned['assets']} assets and "
+                f"{assigned['employees']} active employees are still assigned to it. Move them to another unit first."
+            ),
         )
     section.is_archived = True
     await _commit_or_conflict(db, "Section could not be archived")

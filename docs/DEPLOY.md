@@ -68,3 +68,10 @@ docker compose exec postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB
 docker compose cp postgres:/tmp/schema_fresh.sql .\schema_fresh.sql
 Compare-Object (Get-Content .\schema_actual.sql) (Get-Content .\schema_fresh.sql)
 ```
+
+## 4. HTTPS va avtomatik zaxira
+
+- `proxy` 80 (HTTP) va 443 (HTTPS, Caddy ichki CA) portlarini tinglaydi; ikkalasi bir xil ishlaydi. Ildiz sertifikati nusxasi: `toir-local-root.crt`. Mijoz PC'da uni «Ishonchli ildiz sertifikatlari»ga o'rnating (Windows: faylga ikki marta bosing → «Install Certificate» → «Local Machine» → «Trusted Root Certification Authorities»). Sertifikat Caddy hajmi `caddy_data` da saqlanadi — shu hajmni o'chirmang, aks holda yangi ildiz yaratiladi va mijozlarga qayta o'rnatish kerak bo'ladi.
+- `NEXT_PUBLIC_API_URL` nisbiy (`/api/v1`): manzil yoki protokol o'zgarsa frontendni qayta qurish shart emas.
+- `backup` xizmati har kecha 21:00 UTC (`BACKUP_HOUR_UTC`) `backups/auto-*.dump` yaratadi va `BACKUP_RETENTION_DAYS` (standart 14) dan eskisini o'chiradi. Holat: `docker compose logs backup`.
+- Bitta xizmatni qayta joylash: `docker compose up -d --no-deps <xizmat>` (aks holda bog'liq xizmatlar ham qayta ishga tushadi).

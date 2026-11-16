@@ -177,6 +177,9 @@ class SectionHierarchyTests(unittest.IsolatedAsyncioTestCase):
         ), patch(
             "app.services.references.repository.has_active_children",
             new=AsyncMock(return_value=False),
+        ), patch(
+            "app.services.references.repository.count_section_assignments",
+            new=AsyncMock(return_value={"users": 0, "assets": 0, "employees": 0}),
         ):
             await references.delete_section(db, section.id)
 

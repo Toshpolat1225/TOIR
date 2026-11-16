@@ -1220,7 +1220,21 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 - Test ma'lumotlari o'chirildi: `ZZTEST` qoldig'i 0; 13 statik jadvalning mazmun xeshi tekshiruvdan oldingi bilan bir xil.
 
 ### Next task
-- P0 (hisobotning 5-bo'limi): HTTPS (O1), avtomatik zaxira (O3), audit tarixini tozalash (O2, tasdiq kerak). Keyin: healthcheck (O4), Wialon `cneh`/jim birliklar (O5), demo ma'lumotlarni arxivlash (O8), `test` intervali va rejalarini tozalash (O10), vagon me'yorlari.
+- (Eskirgan — pastdagi «Hamma ochiq masalalarni bartaraf etish» bo'limiga qarang.)
 
 ### NOT TESTED
 - Haqiqiy AD/Wialon/GTK, WebSocket, chaos testlari, boshqa brauzerlar. O'zgarishlar git'ga commit qilinmagan (foydalanuvchi qiladi).
+
+## Hamma ochiq masalalarni bartaraf etish (2026-11-16 kechqurun)
+
+### Verified (buyruq natijasi ko'rilgan)
+- O1–O17 holati: `docs/E2E_REPORT_2026-11-16.md` 5a. Kod: HTTPS (Caddy 443, `default_sni`, nisbiy `NEXT_PUBLIC_API_URL=/api/v1`, `lib/api-base.ts`), `backup` xizmati (`scripts/backup_loop.sh`), healthcheck'lar, refresh-token qayta ishlatilishi, `AUDIT_RETENTION_DAYS` + `audit-purge-telemetry`, `wialon-health-report`, sozlama oralig'i/ruxsat, departament rangi/takrori, bo'lim arxivlash qo'riqchisi, `ad_confirmed`, jadvalda `unforecasted*`, temp hisobida kuzatilmagan kunlar.
+- Testlar: backend 553 (pg bilan) o'tdi; frontend `tsc` 0, `eslint` 0 xato, 62 unit; jonli `t10_fixall_verify.py` 32/32; Edge `b04_https.mjs` 14/14 (https va http).
+- Jonli ma'lumot: audit 957 821 → 10 062 qator, baza 1183 → 601 MB; `test` interval faolsiz, 0 reja; 6 demo xodim arxivda; birinchi avtomatik dump yaratilgan (135 MB). ZZTEST qoldig'i 0, baza surati bir xil.
+
+### Next task
+- Foydalanuvchi: (1) `toir-local-root.crt` ni mijoz PC'larga «Ishonchli ildiz sertifikatlari» ga o'rnatish; (2) o'zgarishlarni commit qilish; (3) Windows xavfsizlik devorida 443 kiruvchi ruxsat (LAN'dan https ochilmasa).
+- Keyin: Wialon'da 22 dizelning `cneh` hisoblagichini tekshirish (`wialon-health-report`), 92 bog'lanmagan birlikni bog'lash, vagon ТО me'yorlarini (interval) kiritish, avtomatik dumpdan tiklashni bir marta sinash (`pg_rehearse`).
+
+### NOT TESTED
+- Mijoz PC'larida sertifikat o'rnatilgandan keyingi brauzerlar; Windows `curl` (Schannel) bilan HTTPS (SNI'siz ulanishda xato bergan edi, `default_sni` dan keyin qayta sinalmadi); avtomatik dumpdan tiklash; ikki tab poygasi brauzerda (faqat API darajasida); haqiqiy AD/Wialon/GTK. O'zgarishlar git'ga commit qilinmagan.

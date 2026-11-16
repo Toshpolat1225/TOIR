@@ -292,7 +292,7 @@ function EditUserModal({ profile, isMe, onClose, onSaved, sections }: {
             Вход: <b>{isAd ? "через домен (AD)" : "локальный пароль"}</b>
             {isAd && (
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Логин: {profile.ad_username}. {profile.ad_object_guid ? "Учётная запись подтверждена в домене." : "Ещё не входил: подтверждение в домене произойдёт при первом входе."}
+                Логин: {profile.ad_username}. {profile.ad_confirmed ? "Учётная запись подтверждена в домене." : "Ещё не входил: подтверждение в домене произойдёт при первом входе."}
               </p>
             )}
           </div>

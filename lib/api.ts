@@ -9,7 +9,7 @@
  * - Centralized error handling.
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8010/api/v1";
+import { apiBaseUrl } from "./api-base";
 
 let inMemoryAccessToken: string | null = null;
 let accessTokenExpiresAt = 0;
@@ -271,7 +271,7 @@ function formatErrorDetail(detail: unknown, status: number): string {
 async function request<T>(options: ApiRequestOptions): Promise<T> {
   const { method, path, body, params, isPublic = false, responseType = "json", suppress404Log = false, suppressNetworkLog = false } = options;
 
-  const url = new URL(`${API_BASE_URL}${path}`);
+  const url = new URL(`${apiBaseUrl()}${path}`);
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
@@ -367,7 +367,7 @@ export type CurrentUser = {
   section?: string | null;
   auth_source?: "local" | "ad";
   ad_username?: string | null;
-  ad_object_guid?: string | null;
+  ad_confirmed?: boolean;
 };
 
 const auth = {
@@ -1707,9 +1707,23 @@ export type MaintenanceBlockReason =
   | "parts" | "no_bay" | "no_crew" | "unit_unavailable" | "accident" | "unplanned_repair"
   | "sensor_failure" | "weather" | "other";
 
+export type MaintenanceUnforecastedReason = "no_movement" | "no_mileage_baseline" | "no_mileage" | "no_data";
+
+export type MaintenanceUnforecasted = {
+  asset_id: string;
+  unit: string;
+  asset_type: string;
+  reason: MaintenanceUnforecastedReason;
+  intervals: number;
+};
+
 export type MaintenanceScheduleResponse = {
   schedule: MaintenanceScheduleItem[];
   daily_average_km: number | string | null;
+  /** Units that owe maintenance but cannot be placed on the calendar (capped list; see unforecasted_total). */
+  unforecasted?: MaintenanceUnforecasted[];
+  unforecasted_total?: number;
+  unforecasted_counts?: Record<string, number>;
 };
 
 export type MaintenanceSettings = {

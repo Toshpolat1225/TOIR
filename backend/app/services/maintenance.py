@@ -26,6 +26,7 @@ from app.schemas.maintenance import (
     MaintenanceScheduleRead,
     MaintenanceSettingsRead,
     MaintenanceSettingsUpdate,
+    MaintenanceUnforecasted,
 )
 from app.services import maintenance_lifecycle as lifecycle
 from app.services import maintenance_obligations as obligations
@@ -601,6 +602,72 @@ def _model_fields(ob: "obligations.Obligation | None") -> dict[str, Any]:
     }
 
 
+_UNFORECASTED_CAP = 300
+
+
+def _unforecasted_units(
+    assets: list[FixedAsset],
+    intervals_by_type: dict[str, list[MaintenanceInterval]],
+    by_key: dict[tuple[UUID, UUID], obligations.Obligation],
+    ctx: obligations.Context,
+    today: date,
+) -> list[MaintenanceUnforecasted]:
+    """Units whose maintenance cannot be dated, with the reason, so an empty chart is never a silent gap.
+
+    * no_movement: the obligation exists but the unit does not move, so no date can be forecast.
+    * no_mileage_baseline: a wagon without an approved opening balance (its km are not trusted yet).
+    * no_mileage: no odometer value at all.
+    * no_data: the intervals need a baseline (hours / calendar) nobody has entered.
+    """
+    dated: set[UUID] = set()
+    undated: dict[UUID, int] = {}
+    for ob in by_key.values():
+        visible = (
+            ob.plan is not None
+            or ob.markers.state in {"over_limit", "over_tolerance"}
+            or ob.planned_date is not None
+        )
+        if visible:
+            dated.add(ob.asset.id)
+        else:
+            undated[ob.asset.id] = undated.get(ob.asset.id, 0) + 1
+    with_obligations = dated | set(undated)
+    result: list[MaintenanceUnforecasted] = []
+    for asset in assets:
+        if ctx.behavior(asset) in obligations.WITHDRAWN_BEHAVIORS or asset.decommissioned_at is not None:
+            continue
+        applicable = [
+            interval
+            for interval in intervals_by_type.get(asset.asset_type, [])
+            if interval.is_active and asset.asset_type in interval.asset_types
+        ]
+        if not applicable:
+            continue
+        if asset.id in undated:
+            reason, count = "no_movement", undated[asset.id]
+        elif asset.id not in with_obligations:
+            if asset.asset_type == "wagon" and asset.id not in ctx.trusted_wagons:
+                reason = "no_mileage_baseline"
+            elif asset.mileage is None:
+                reason = "no_mileage"
+            else:
+                reason = "no_data"
+            count = len(applicable)
+        else:
+            continue
+        result.append(
+            MaintenanceUnforecasted(
+                asset_id=asset.id,
+                unit=f"{asset.name} · {asset.inv_number}",
+                asset_type=asset.asset_type,
+                reason=reason,
+                intervals=count,
+            )
+        )
+    result.sort(key=lambda item: (item.reason, item.unit))
+    return result
+
+
 async def get_schedule(
     db: AsyncSession, user: User, month: str
 ) -> MaintenanceScheduleRead:
@@ -770,6 +837,14 @@ async def get_schedule(
     )
     schedule = [_with_asset_display(item, asset_info.get(item.asset_id)) for item in schedule]
     schedule.sort(key=lambda item: (item.startDate, item.unit, item.type))
+    unforecasted = _unforecasted_units(assets, intervals_by_type, by_key, ctx, today)
+    counts: dict[str, int] = {}
+    for item in unforecasted:
+        counts[item.reason] = counts.get(item.reason, 0) + 1
     return MaintenanceScheduleRead(
-        schedule=schedule, daily_average_km=ctx.default_pace
+        schedule=schedule,
+        daily_average_km=ctx.default_pace,
+        unforecasted=unforecasted[:_UNFORECASTED_CAP],
+        unforecasted_total=len(unforecasted),
+        unforecasted_counts=counts,
     )

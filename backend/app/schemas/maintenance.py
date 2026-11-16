@@ -28,7 +28,9 @@ class MaintenanceSettingsRead(BaseModel):
 
 
 class MaintenanceSettingsUpdate(BaseModel):
-    daily_average_km: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+    # The default pace of a unit that has no history of its own: 1 km/day (accepted before) made every forecast
+    # absurd, so the value must be realistic.
+    daily_average_km: Decimal = Field(ge=5, le=1000, max_digits=10, decimal_places=2)
 
 
 class MaintenancePlanUpdate(BaseModel):
@@ -160,9 +162,25 @@ class MaintenanceScheduleItem(BaseModel):
     mileageEstimated: bool = False  # wagon km that include ESTIMATED km: the forecast is approximate
 
 
+UnforecastedReason = Literal["no_movement", "no_mileage_baseline", "no_mileage", "no_data"]
+
+
+class MaintenanceUnforecasted(BaseModel):
+    """A unit that owes maintenance but cannot be placed on the calendar, and why (explains the gap on the chart)."""
+
+    asset_id: UUID
+    unit: str
+    asset_type: str
+    reason: UnforecastedReason
+    intervals: int
+
+
 class MaintenanceScheduleRead(BaseModel):
     schedule: list[MaintenanceScheduleItem]
     daily_average_km: Decimal | None
+    unforecasted: list[MaintenanceUnforecasted] = Field(default_factory=list)  # capped list
+    unforecasted_total: int = 0
+    unforecasted_counts: dict[str, int] = Field(default_factory=dict)  # by reason, over the whole set
 
 
 # ── baselines, disruptions, decisions, KPIs ───────────────────────────────────

@@ -27,6 +27,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
       POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
@@ -54,13 +55,20 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s  # migrations run first
 
   frontend:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: http://${DOMAIN:?Set DOMAIN}/api/v1
+        # relative: resolved against the address the page was opened from, so http:// and https:// both work
+        NEXT_PUBLIC_API_URL: /api/v1
     mem_limit: 512m
     environment:
       NODE_ENV: production
@@ -70,6 +78,12 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/auth/login"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   proxy:
     image: caddy:2-alpine
@@ -78,6 +92,7 @@ services:
       DOMAIN: ${DOMAIN:?Set DOMAIN}
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -86,6 +101,32 @@ services:
     depends_on:
       - frontend
       - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Nightly verified database dumps into ./backups (auto-*.dump); see scripts/backup_loop.sh.
+  backup:
+    image: postgres:16-alpine
+    mem_limit: 128m
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      PGDATABASE: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_HOUR_UTC: ${BACKUP_HOUR_UTC:-21}
+    entrypoint: ["sh", "/usr/local/bin/backup_loop.sh"]
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup_loop.sh:/usr/local/bin/backup_loop.sh:ro
+    networks: [internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
 networks:

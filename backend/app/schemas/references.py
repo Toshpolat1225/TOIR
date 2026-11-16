@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from decimal import Decimal
 from typing import Literal
@@ -39,6 +40,15 @@ class DepartmentRead(BaseModel):
     updated_at: datetime
 
 
+_HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
+
+
+def _check_department_color(value: str) -> str:
+    if _HEX_COLOR.fullmatch(value) is None:
+        raise ValueError("Department color must look like #RRGGBB")
+    return value
+
+
 class DepartmentCreate(BaseModel):
     name: str = Field(min_length=1)
     color: str = "#3b82f6"
@@ -49,6 +59,7 @@ class DepartmentCreate(BaseModel):
         self.color = self.color.strip()
         if not self.name or not self.color:
             raise ValueError("Department name and color must not be empty")
+        _check_department_color(self.color)
         return self
 
 
@@ -64,6 +75,8 @@ class DepartmentUpdate(PatchModel):
                 if value is None or not value.strip():
                     raise ValueError(f"{field_name} must not be empty")
                 setattr(self, field_name, value.strip())
+        if "color" in self.model_fields_set and self.color is not None:
+            _check_department_color(self.color)
         return self
 
 

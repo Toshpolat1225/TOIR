@@ -356,3 +356,9 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 - Fayl: `docs/AI_ASSISTANT_TZ.md` (yangi, faqat hujjat; TOIR kodi, DB, migratsiya o'zgarmadi).
 - Tested: kod emas, shuning uchun test yo'q; § havolalari qo'lda to'liq tekshirilmagan.
 - Keyingi qadam: `docs/HANDOFF.md` dagi TOIR vazifasiga qaytish.
+
+## 2026-11-16: barcha ochiq masalalarni bartaraf etish (O1–O17)
+- Task: foydalanuvchi buyrug'i «barcha aniqlangan kamchilik, mantiq xatolari va noqulayliklarni bartaraf et»; tasdiqlar: audit telemetriyasini o'chirish, `test` interval/demo xodimlarni tozalash, HTTPS (HTTP ham qolsin).
+- O'zgargan: backend (`auth`, `audit_log`, `references`, `maintenance*`, `schemas`, `cli`, `wialon_health`), frontend (`api-base`, `api`, `use-realtime`, jadval sahifasi, users), `docker-compose.yml`, `Caddyfile`, `.gitattributes`, `scripts/backup_loop.sh`, testlar (`test_fixall_units.py`, `test_fixall_pg.py`, `api-base.test.ts`), `e2e_live/t10_fixall_verify.py`.
+- Tested: backend 553, tsc/eslint/62 unit, jonli 32/32 + Edge 14/14, ZZTEST qoldig'i 0. NOT tested: mijoz PC'larida sertifikat, Windows `curl` HTTPS, avtomatik dumpdan tiklash.
+- Keyingi qadam: sertifikatni mijozlarga o'rnatish, commit, Wialon `cneh`.

@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     )
 
     environment: str = "development"
+    audit_retention_days: int = Field(default=365, ge=30, le=3650)
     postgres_db: str
     postgres_user: str
     postgres_password: SecretStr
