@@ -2701,7 +2701,7 @@ export default function MaintenancePage() {
               </button>
             </div>
           </div>
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
           <table className="w-full min-w-[1250px]">
             <thead>
               <tr className="border-b border-gray-200 dark:border-gray-800">

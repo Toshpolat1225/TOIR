@@ -116,6 +116,9 @@ async def approve_opening_balance(
     if previous is not None:
         previous.status = "superseded"
         opening.supersedes_id = previous.id
+        # The unique index allows ONE approved balance per wagon and is checked statement by statement:
+        # the old one must leave "approved" before the new one enters it, whatever the flush order would be.
+        await db.flush()
 
     set_audit_actor(
         db,
@@ -137,7 +140,7 @@ async def approve_opening_balance(
         logger.exception("Could not approve wagon mileage opening balance")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Another opening balance was approved concurrently",
+            detail="The opening balance could not be approved (another approval for this wagon ran at the same time)",
         ) from exc
     return opening
 

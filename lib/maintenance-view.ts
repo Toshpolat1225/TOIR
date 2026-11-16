@@ -386,8 +386,15 @@ export function rescheduleImpact(
   const overrunKm = forgiven ? 0 : rawOverrunKm
   const toleranceKm = item.limiting === "km" || !item.limiting ? toNum(item.tolerance) : null
   const deferring = diffDaysIso(fromIso, toIso) > 0
+  // The server judges a deferral at the cautious (fast) pace, so the hint must too: a slow typical pace must not
+  // promise that an operator may push the date far out.
+  const fastKm = toNum(item.paceFastKmPerDay) ?? paceKm
+  const fastOverrunKm =
+    remaining !== null && fastKm !== null && fastKm > 0 ? Math.max(0, fastKm * daysFromToday - remaining) : overrunKm
   const needsApproval =
-    deferring && ((toleranceKm !== null && overrunKm > toleranceKm) || (item.deferralCount ?? 0) >= DEFERRALS_BEFORE_APPROVAL)
+    deferring &&
+    ((toleranceKm !== null && Math.max(overrunKm, fastOverrunKm) > toleranceKm) ||
+      (item.deferralCount ?? 0) >= DEFERRALS_BEFORE_APPROVAL)
   return {
     paceKm,
     needsApproval,

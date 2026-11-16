@@ -163,6 +163,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (!loading && !user) router.replace("/auth/login")
   }, [loading, user, router])
 
+  // Typing the address of a section the role has no permission for must not open it (the API refuses anyway):
+  // the page is not even rendered (so it fires no requests that answer 403) and the user is sent home.
+  const forbidden =
+    !loading &&
+    !!user &&
+    ALL_NAV.some(
+      (item) =>
+        item.href !== "/dashboard" &&
+        (pathname === item.href || pathname.startsWith(`${item.href}/`)) &&
+        !hasPermission(item.permission),
+    )
+  useEffect(() => {
+    if (forbidden) router.replace("/dashboard")
+  }, [forbidden, router])
+
   if (loading || !user) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-950">
@@ -257,7 +272,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <ThemeSwitcher />
             </div>
           </header>
-          <main className="min-w-0" key={pathname}>{children}</main>
+          <main className="min-w-0" key={pathname}>{forbidden ? null : children}</main>
         </div>
       </div>
     </SectionViewProvider>

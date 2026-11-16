@@ -85,6 +85,22 @@ class ConvertToAd(BaseModel):
         return validate_ad_username(value)
 
 
+MIN_PASSWORD_LENGTH = 10
+
+
+def validate_password_policy(value: str, *, email: str | None = None) -> str:
+    """Local accounts only (directory accounts have no TOIR password). Applies when a password is SET."""
+    if len(value) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters long")
+    if value.isdigit() or len(set(value)) < 4:
+        raise ValueError("Password is too simple: use letters, digits and different characters")
+    if email:
+        local_part = email.split("@", 1)[0].strip().casefold()
+        if len(local_part) >= 4 and local_part in value.casefold():
+            raise ValueError("Password must not contain the login")
+    return value
+
+
 class UserCreate(BaseModel):
     email: str = Field(min_length=3, max_length=320)
     full_name: str = Field(min_length=1, max_length=300)
@@ -117,6 +133,7 @@ class UserCreate(BaseModel):
     def require_master_section(self) -> "UserCreate":
         if self.role == "master" and self.section_id is None:
             raise ValueError("Master users must be assigned to a section")
+        validate_password_policy(self.password, email=self.email)
         return self
 
 
@@ -154,4 +171,4 @@ class PasswordReset(BaseModel):
     def validate_password_length(cls, value: str) -> str:
         if len(value.encode("utf-8")) > 72:
             raise ValueError("Password must not exceed 72 UTF-8 bytes")
-        return value
+        return validate_password_policy(value)

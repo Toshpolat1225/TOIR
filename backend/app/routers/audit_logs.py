@@ -2,7 +2,7 @@ import csv
 import io
 import json
 from collections.abc import AsyncIterator
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
 
@@ -109,6 +109,12 @@ async def get_audit_log_filters(
     return AuditLogFilters(users=users, modules=list(module_rows.all()))
 
 
+# An unfiltered export used to sort and stream the whole table (~1M rows): a request that never answered and
+# kept the database busy after the browser gave up. Without a date_from the last 30 days are exported, at most 100k rows.
+EXPORT_DEFAULT_DAYS = 30
+EXPORT_MAX_ROWS = 100_000
+
+
 @router.get("/export.csv")
 async def export_audit_logs(
     _: AdminUser,
@@ -120,7 +126,9 @@ async def export_audit_logs(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
 ) -> Response:
-    statement = _filters(action, actor_id, module, object_q, q, date_from, date_to)
+    if date_from is None:
+        date_from = datetime.now(timezone.utc) - timedelta(days=EXPORT_DEFAULT_DAYS)
+    statement = _filters(action, actor_id, module, object_q, q, date_from, date_to).limit(EXPORT_MAX_ROWS)
 
     async def csv_rows() -> AsyncIterator[str]:
         output = io.StringIO()

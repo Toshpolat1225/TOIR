@@ -302,7 +302,7 @@ async def _analyze_asset(
             event_dates.append(asset_maintenance)
     has_wagon_projection = (
         asset.asset_type == "wagon"
-        and await mileage_repository.has_confirmed_projection(db, asset.id)
+        and await mileage_repository.has_approved_projection(db, asset.id)
     )
     mileage_samples = (
         await repository.list_mileage_samples(db, asset.id)

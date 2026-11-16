@@ -333,3 +333,26 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 - Tested: backend 481 test (pg_rehearse), migratsiya up/down/up + schema.sql parity (yangi jadvallar), jonli baza nusxasida (213 MB zaxira) ikki marta soatlik sikl: farqsiz. Frontend tsc/eslint 0, 57 unit test, haqiqiy Edge'da stub API bilan 18/18 (admin va operator).
 - Jonli: migratsiya 0032 qo'llandi (zaxira `backups/pre0032_20261116_181356.dump`), 87 aktiv / 775 majburiyat, hammasining hisob boshi taxminiy; hujjat: docs/MAINTENANCE_LIVE_PLAN.md.
 - Next: foydalanuvchi oxirgi ТО sanalari/probegini CSV bilan beradi; kaskad xaritasi va допуск qiymatlarini tasdiqlaydi; audit_logs va `wialon_counter_states` imlo xatosi (kechiktirilgan).
+
+## 2026-11-16: Vagon probegi ishonchi D9 ga moslandi
+- Topilma: reja vagon km'ini faqat kamida bitta `CONFIRMED` ledger qatori bo'lsa ishonchli deb olardi (qoida 10.11, `p02`); D9 (12.11) esa `ESTIMATED` ni ham proyeksiyaga kiritadi. 835 vagondan 589 tasida tasdiqlangan boshlang'ich, 481 tasida probeg bor, filtrdan 1 tasi o'tardi.
+- Kod: `mileage_repository.has_approved_projection` (+ batch `approved_projection_asset_ids`, `estimated_projection_asset_ids`) `has_confirmed_projection` o'rniga; reja, naryad (`get_known_asset_mileage`) va ML shundan foydalanadi. `ESTIMATED` km li vagon `mileageEstimated` + ishonch `low` bilan chiqadi.
+- Tested: backend 485 test (3 yangi pg + 2 yangi unit), frontend tsc/eslint 0, 57 unit test.
+- Hali yo'q: vagon tempi (ledger'dan) — sanasiz vagon Gantda chiqmaydi; vagon uchun haqiqiy intervallar (me'yorlar) berilmagan.
+
+## 2026-11-16: Vagon tempi wagon ledger'dan
+- Sabab: vagonlarda `mileage_history`/snapshot yo'q edi, temp 0 bo'lib sana chiqmasdi (Gantda vagonlar ko'rinmasdi).
+- Kod: `maintenance_engine.partial_day_rates` (qisman kuzatilgan kunlar shkalalanadi), `maintenance_obligations._wagon_ledger_rates` (ledger qoplagan oyna, faqat eligible CONFIRMED/ESTIMATED, faqat tasdiqlangan boshlang'ichli vagonlar), vagonlar guruhi 1 kundan tuziladi.
+- Tested: backend 489 test (pg bilan); jonli nusxada (zaxiradan) vagonlar sanaga ega bo'ldi.
+
+## 2026-11-16: jonli tizimning to'liq end-to-end tekshiruvi
+- Task: jonli tizimni (foydalanuvchi ruxsati bilan) rollar, API, brauzer, ma'lumot sifati va infratuzilma bo'yicha tekshirish, nuqsonlarni tuzatish, test ma'lumotlarni tozalash, hisobot.
+- Natija: 257 tekshiruv; 14 nuqson tuzatilib jonli tekshirildi (`/fixed-assets` qidiruvi 500, parol siyosati, tasdiqlash temp'i, opening supersede, audit hajmi va eksport, NUL belgi, `/asset-links/unmatched` 500, eskirgan rejalar, soatlik qayta yozish, mobil siljish, rol qo'riqchisi, interval formasi, CSP/no-store). 17 ochiq masala (P0: HTTPS, avtomatik zaxira, audit tarixini tozalash).
+- Tekshirilgan: backend 516 test (pg_rehearse), frontend `tsc` 0 / 57 unit, jonli ТО oqimi 91/91, haqiqiy Edge'da 15/15 regressiya. Tozalash: ZZTEST qoldig'i 0, statik jadvallar xeshi bir xil.
+- Hisobot: `docs/E2E_REPORT_2026-11-16.md`; skriptlar: `backend/scripts/e2e_live/`. Tekshirilmagan: haqiqiy AD/Wialon/GTK, WebSocket, chaos.
+
+## 2026-11-16: AI yordamchi tizimi uchun TZ (TOIR'ga aloqasiz)
+- Task: foydalanuvchi yuborgan `message.txt` bo'yicha AI yordamchi tizimi to'liq texnik topshirig'ini yozish.
+- Fayl: `docs/AI_ASSISTANT_TZ.md` (yangi, faqat hujjat; TOIR kodi, DB, migratsiya o'zgarmadi).
+- Tested: kod emas, shuning uchun test yo'q; § havolalari qo'lda to'liq tekshirilmagan.
+- Keyingi qadam: `docs/HANDOFF.md` dagi TOIR vazifasiga qaytish.

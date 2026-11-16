@@ -1682,6 +1682,7 @@ export type MaintenanceScheduleItem = {
   dateTypical?: string | null;
   dateLate?: string | null; // slow pace
   paceKmPerDay?: number | string | null;
+  paceFastKmPerDay?: number | string | null; // the cautious (p75) pace: an approval is judged by it
   paceSource?: string | null;
   paceDays?: number | null;
   confidence?: MaintenanceConfidence | null;
@@ -1695,6 +1696,7 @@ export type MaintenanceScheduleItem = {
   mergedInto?: string | null;
   opportunistic?: boolean;
   paused?: boolean;
+  mileageEstimated?: boolean;
 };
 
 export type MaintenancePlanStatus =

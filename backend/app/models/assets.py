@@ -244,6 +244,9 @@ def fixed_asset_name_expression():
             FixedAssetTypeTranslation.locale == "ru",
         )
         .limit(1)
+        # correlate ONLY to fixed_assets: list queries also join the translation table in their own FROM,
+        # and auto-correlation then removed it from the subquery ("returned no FROM clauses" -> HTTP 500)
+        .correlate(FixedAsset)
         .scalar_subquery()
     )
     return func.concat(

@@ -269,8 +269,8 @@ def match_source_objects(
 def _to_source_object(source: str, record: Any) -> SourceObject:
     if source == "gtk":
         if isinstance(record, GtkLocomotive):
-            from app.services.wialon_asset_import import classify_asset_type
-
+            # (a local `import classify_asset_type` used to sit here: it made the name local to the whole function and
+            # the Wialon branch below raised UnboundLocalError, i.e. HTTP 500 on /asset-links/unmatched?source=wialon)
             return SourceObject(
                 source="gtk",
                 external_id=str(record.gtk_id),

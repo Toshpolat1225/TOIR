@@ -2104,7 +2104,7 @@ export default function OsPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Справочник основных средств</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Реестр подвижного состава — локомотивы и вагоны</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {profile?.role !== "master" && <Link href="/dashboard/os/wialon" className="rounded-lg border border-blue-200 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:text-blue-300 dark:hover:bg-blue-950/40">Данные Wialon</Link>}
           {canWrite && <Button variant="outline" onClick={() => {
             setShowPassportImport(true)

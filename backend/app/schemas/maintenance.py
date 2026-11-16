@@ -143,6 +143,7 @@ class MaintenanceScheduleItem(BaseModel):
     dateTypical: date | None = None
     dateLate: date | None = None  # slow pace
     paceKmPerDay: Decimal | None = None
+    paceFastKmPerDay: Decimal | None = None  # the cautious (p75) pace: what an approval is judged by
     paceSource: str | None = None
     paceDays: int | None = None
     confidence: MaintenanceConfidence | None = None
@@ -156,6 +157,7 @@ class MaintenanceScheduleItem(BaseModel):
     mergedInto: UUID | None = None
     opportunistic: bool = False
     paused: bool = False
+    mileageEstimated: bool = False  # wagon km that include ESTIMATED km: the forecast is approximate
 
 
 class MaintenanceScheduleRead(BaseModel):

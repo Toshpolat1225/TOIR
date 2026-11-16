@@ -1,12 +1,12 @@
 """The pure planning engine of the 'Tirik reja' model."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal as D
 
 import pytest
 
 from app.services.maintenance_engine import (
     CalendarInput, MeterInput, ObligationDraft, Pace, compute_markers, confidence, covered_interval_ids,
-    daily_deltas, estimate_pace, group_pace, merge_visits, priority_score, project_date, quantile,
+    daily_deltas, estimate_pace, group_pace, merge_visits, partial_day_rates, priority_score, project_date, quantile,
 )
 
 TODAY = date(2026, 11, 16)
@@ -41,6 +41,30 @@ def test_daily_deltas_without_data_or_before_the_first_reading():
     d0 = date(2026, 11, 10)
     # window starts 5 days before the first reading: those days are not "idle", they are unknown
     assert daily_deltas([(d0, D(10)), (d0 + timedelta(days=1), D(25))], first_day=d0 - timedelta(days=5), last_day=d0 + timedelta(days=1)) == [D(15)]
+
+
+def utc(day, hour=0, minute=0):
+    return datetime(2026, 11, day, hour, minute, tzinfo=timezone.utc)
+
+
+def test_partial_days_are_scaled_by_the_share_that_was_observed():
+    # observed from 12:00 on the 15th to 12:00 on the 16th: half of each day
+    rates = partial_day_rates({date(2026, 11, 15): D(30), date(2026, 11, 16): D(10)}, utc(15, 12), utc(16, 12))
+    assert rates == [D(60), D(20)]  # 30 km in half a day = 60 km/day, 10 km in half a day = 20 km/day
+
+
+def test_a_day_inside_the_window_without_km_is_idle_not_unknown():
+    rates = partial_day_rates({date(2026, 11, 15): D(50)}, utc(15), utc(18))
+    # the 15th, 16th, 17th are fully inside; the 18th has zero observed time and is not counted
+    assert rates == [D(50), D(0), D(0)]
+
+
+def test_a_barely_observed_day_is_dropped_and_an_empty_window_gives_nothing():
+    # the 15th is observed for 1 hour (4 %) only: too noisy to be a rate
+    rates = partial_day_rates({date(2026, 11, 15): D(5), date(2026, 11, 16): D(40)}, utc(15, 23), utc(17))
+    assert rates == [D(40)]
+    assert partial_day_rates({}, utc(16), utc(16)) == []
+    assert partial_day_rates({}, utc(17), utc(16)) == []
 
 
 def test_asset_with_a_month_of_data_is_dominated_by_its_own_pace():
@@ -139,8 +163,19 @@ def test_overrun_projection_and_tolerance_check():
     assert m.overrun_on(TODAY) == D(0)
     # +10 days at 54 km/day = 540 km -> 5340 used -> 340 over, inside the 500 tolerance
     assert m.overrun_on(TODAY + timedelta(days=10)) == D(340)
-    assert not m.beyond_tolerance_on(TODAY + timedelta(days=10))
+    # an approval is judged at the CAUTIOUS pace (71 km/day): 9 days = 639 km -> 439 over, 10 days = 710 km -> 510 over
+    assert not m.beyond_tolerance_on(TODAY + timedelta(days=9))
+    assert m.beyond_tolerance_on(TODAY + timedelta(days=10))
     assert m.beyond_tolerance_on(TODAY + timedelta(days=20))
+
+
+def test_a_slow_typical_pace_does_not_hide_a_long_deferral():
+    # typical 2 km/day looks harmless (120 days = 240 km), but the cautious pace of 28 km/day says 3 360 km
+    m = compute_markers(TODAY, [km_meter(current=4880, p25=0, p50=2, p75=28)], None, tolerance_pct=D(10), lead_days=7)
+    far = TODAY + timedelta(days=120)
+    assert m.overrun_on(far) == D(120)  # at the typical pace: 4880 + 240 - 5000
+    assert m.cautious_overrun_on(far) == D(3240)
+    assert m.beyond_tolerance_on(far)
 
 
 def test_without_any_pace_or_calendar_nothing_is_projected():
@@ -157,6 +192,9 @@ def test_confidence():
     assert confidence(baseline_source="provisional", pace=solid, stale=False) == "low"
     assert confidence(baseline_source="completed", pace=pace(1, 2, 3, n=2, source="blend"), stale=False) == "low"
     assert confidence(baseline_source="completed", pace=solid, stale=True) == "stale"
+    # km that are only an estimate (wagon mileage built from Wialon brackets) never give a "reliable" forecast
+    assert confidence(baseline_source="completed", pace=solid, stale=False, estimated=True) == "low"
+    assert confidence(baseline_source="completed", pace=solid, stale=True, estimated=True) == "stale"
 
 
 # ── cascade and visits ───────────────────────────────────────────────────────

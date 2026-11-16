@@ -27,6 +27,7 @@ def _user(user_id=None):
 def _db():
     return SimpleNamespace(
         commit=AsyncMock(),
+        flush=AsyncMock(),
         refresh=AsyncMock(),
         rollback=AsyncMock(),
     )
@@ -310,12 +311,12 @@ async def test_work_order_reads_gated_wialon_mileage_for_locomotive_and_diesel()
 
 
 @pytest.mark.asyncio
-async def test_work_order_uses_only_confirmed_wagon_projection():
+async def test_work_order_uses_only_approved_wagon_projection():
     db = SimpleNamespace()
     asset = SimpleNamespace(asset_type="wagon", id=uuid4(), mileage=Decimal("500"))
     with patch.object(
         work_orders_repository.mileage_repository,
-        "has_confirmed_projection",
+        "has_approved_projection",
         new=AsyncMock(return_value=True),
     ):
         mileage = await work_orders_repository.get_known_asset_mileage(db, asset)
@@ -323,7 +324,7 @@ async def test_work_order_uses_only_confirmed_wagon_projection():
 
     with patch.object(
         work_orders_repository.mileage_repository,
-        "has_confirmed_projection",
+        "has_approved_projection",
         new=AsyncMock(return_value=False),
     ):
         mileage = await work_orders_repository.get_known_asset_mileage(db, asset)

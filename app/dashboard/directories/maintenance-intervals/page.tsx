@@ -28,6 +28,10 @@ type IntervalForm = {
   name: string
   interval_km: string
   interval_days: string
+  interval_hours: string
+  rank: string
+  tolerance_pct: string
+  lead_days: string
   asset_types: string[]
   warn_percent: string
   is_active: boolean
@@ -39,6 +43,10 @@ const emptyForm: IntervalForm = {
   name: "",
   interval_km: "",
   interval_days: "",
+  interval_hours: "",
+  rank: "",
+  tolerance_pct: "10",
+  lead_days: "7",
   asset_types: ["locomotive", "diesel"],
   warn_percent: "10",
   is_active: true,
@@ -51,6 +59,10 @@ function toForm(interval: MaintenanceInterval): IntervalForm {
     name: interval.name,
     interval_km: interval.interval_km?.toString() ?? "",
     interval_days: interval.interval_days?.toString() ?? "",
+    interval_hours: interval.interval_hours?.toString() ?? "",
+    rank: interval.rank?.toString() ?? "",
+    tolerance_pct: (interval.tolerance_pct ?? 10).toString(),
+    lead_days: (interval.lead_days ?? 7).toString(),
     asset_types: [...interval.asset_types],
     warn_percent: interval.warn_percent.toString(),
     is_active: interval.is_active,
@@ -124,16 +136,36 @@ export default function MaintenanceIntervalsPage() {
     const name = formData.name.trim()
     const km = formData.interval_km.trim() ? Number(formData.interval_km) : null
     const days = formData.interval_days.trim() ? Number(formData.interval_days) : null
+    const hours = formData.interval_hours.trim() ? Number(formData.interval_hours) : null
+    const rank = formData.rank.trim() ? Number(formData.rank) : null
+    const tolerance = Number(formData.tolerance_pct)
+    const lead = Number(formData.lead_days)
     if (!code || !name) {
       setError("Укажите код и название интервала")
       return
     }
-    if (km === null && days === null) {
-      setError("Укажите пробег и/или срок в днях")
+    if (km === null && days === null && hours === null) {
+      setError("Укажите пробег, срок в днях и/или моточасы")
       return
     }
-    if ((km !== null && !Number.isFinite(km)) || (days !== null && !Number.isInteger(days))) {
+    if (
+      (km !== null && !Number.isFinite(km)) ||
+      (days !== null && !Number.isInteger(days)) ||
+      (hours !== null && (!Number.isFinite(hours) || hours <= 0))
+    ) {
       setError("Значения интервала должны быть корректными числами")
+      return
+    }
+    if (rank !== null && (!Number.isInteger(rank) || rank < 1 || rank > 99)) {
+      setError("Ранг — целое число от 1 до 99 (пусто — интервал независимый)")
+      return
+    }
+    if (!Number.isFinite(tolerance) || tolerance < 0 || tolerance > 100) {
+      setError("Допуск должен быть от 0 до 100 %")
+      return
+    }
+    if (!Number.isInteger(lead) || lead < 0 || lead > 365) {
+      setError("Упреждение — целое число дней от 0 до 365")
       return
     }
 
@@ -145,6 +177,10 @@ export default function MaintenanceIntervalsPage() {
       name,
       interval_km: km,
       interval_days: days,
+      interval_hours: hours,
+      rank,
+      tolerance_pct: tolerance,
+      lead_days: lead,
       asset_types: formData.asset_types,
       warn_percent: Number(formData.warn_percent),
       is_active: formData.is_active,
@@ -253,7 +289,55 @@ export default function MaintenanceIntervalsPage() {
           />
         </label>
         <label className="space-y-1 text-xs font-semibold text-gray-700 dark:text-gray-300">
-          Предупреждение (%)
+          Интервал (моточасы)
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={formData.interval_hours}
+            onChange={(event) => setFormData({ ...formData, interval_hours: event.target.value })}
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal dark:border-gray-600 dark:bg-gray-800"
+          />
+        </label>
+        <label className="space-y-1 text-xs font-semibold text-gray-700 dark:text-gray-300">
+          Ранг (старший перекрывает младшие)
+          <input
+            type="number"
+            min="1"
+            max="99"
+            step="1"
+            placeholder="пусто — независимый"
+            value={formData.rank}
+            onChange={(event) => setFormData({ ...formData, rank: event.target.value })}
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal dark:border-gray-600 dark:bg-gray-800"
+          />
+        </label>
+        <label className="space-y-1 text-xs font-semibold text-gray-700 dark:text-gray-300">
+          Допуск сверх лимита (%)
+          <input
+            type="number"
+            min="0"
+            max="100"
+            step="0.01"
+            value={formData.tolerance_pct}
+            onChange={(event) => setFormData({ ...formData, tolerance_pct: event.target.value })}
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal dark:border-gray-600 dark:bg-gray-800"
+          />
+        </label>
+        <label className="space-y-1 text-xs font-semibold text-gray-700 dark:text-gray-300">
+          Упреждение планирования (дней до осторожной даты)
+          <input
+            type="number"
+            min="0"
+            max="365"
+            step="1"
+            value={formData.lead_days}
+            onChange={(event) => setFormData({ ...formData, lead_days: event.target.value })}
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal dark:border-gray-600 dark:bg-gray-800"
+          />
+        </label>
+        <label className="space-y-1 text-xs font-semibold text-gray-700 dark:text-gray-300">
+          Предупреждение (%) — только для старой оценки срочности
           <input
             type="number"
             min="0"
@@ -400,6 +484,8 @@ export default function MaintenanceIntervalsPage() {
                     <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
                       {interval.interval_km !== null ? `${Number(interval.interval_km).toLocaleString()} км` : "—"}
                       {interval.interval_days !== null ? ` / ${interval.interval_days} дн.` : ""}
+                      {interval.interval_hours ? ` / ${Number(interval.interval_hours).toLocaleString()} мото-ч` : ""}
+                      {interval.rank ? ` · ранг ${interval.rank}` : ""}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                       {interval.asset_types.map((assetType) =>

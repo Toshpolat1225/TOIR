@@ -37,7 +37,7 @@ def baseline(a, i, *, km=0, hours=None, done_at=None, source="manual"):
 
 
 def context(a, *, per_day=54, days=30, baselines=(), open_plans=(), closed=None, trusted=(), behaviors=None,
-            hours_current=None, hours_per_day=None, stale_assets=()):
+            hours_current=None, hours_per_day=None, stale_assets=(), estimated=()):
     km_deltas = {a.id: [D(per_day)] * days} if days else {}
     hours_deltas = {a.id: [D(hours_per_day)] * days} if hours_per_day is not None else {}
     book = mo.PaceBook(day=TODAY, built_at=0.0, km_deltas=km_deltas, hours_deltas=hours_deltas, group_km={}, group_hours={})
@@ -48,7 +48,7 @@ def context(a, *, per_day=54, days=30, baselines=(), open_plans=(), closed=None,
         closed_triggers=closed or {},
         last_data_at={} if a.id not in stale_assets else {a.id: NOW - timedelta(hours=72)},
         hours_current={a.id: D(hours_current)} if hours_current is not None else {},
-        trusted_wagons=set(trusted), assets_in_shop=set(), sensor_failure=set(),
+        trusted_wagons=set(trusted), assets_in_shop=set(), sensor_failure=set(), estimated_wagons=set(estimated),
         behavior_of_status=behaviors or {"operational": "operational", "repair": "repair", "out": "out_of_service"},
     )
 
@@ -93,6 +93,34 @@ def test_an_open_plan_keeps_its_own_cycle_even_after_the_limit_is_passed():
     assert ob.markers.state == "over_limit"  # the obligation is not lost, it is overdue
 
 
+def test_a_plan_made_for_another_interval_length_is_rebased_to_the_grid():
+    # the interval used to be 900 km: the plan says "due at 900" although the unit is at 450 and the interval is now 90
+    a, i = asset(mileage=450), interval(km=90)
+    stale = plan(a, i, trigger=900)
+    [ob] = mo.evaluate_asset(a, [i], context(a, open_plans=[stale]))
+    assert ob.rebased is True
+    assert ob.due_km == D(450) and ob.baseline_km == D(360)  # counted from the current grid
+    assert ob.markers.used == D(90) and ob.markers.state == "over_limit"
+
+    # a normal plan (cycle already started) is left alone
+    [normal] = mo.evaluate_asset(a, [i], context(a, open_plans=[plan(a, i, trigger=450)]))
+    assert normal.rebased is False and normal.due_km == D(450)
+    # an overdue plan far BELOW the mileage is a real overdue, not a stale one
+    overdue_asset = asset(mileage=700)
+    [late] = mo.evaluate_asset(overdue_asset, [i], context(overdue_asset, open_plans=[plan(overdue_asset, i, trigger=450)]))
+    assert late.rebased is False and late.markers.state == "over_tolerance"
+
+
+@pytest.mark.asyncio
+async def test_persist_moves_a_rebased_plan_to_the_new_trigger():
+    a, i = asset(mileage=450), interval(km=90)
+    stale = plan(a, i, trigger=900)
+    [ob] = mo.evaluate_asset(a, [i], context(a, open_plans=[stale]))
+    with patch.object(mo.repository, "get_plan_for_trigger", new=AsyncMock(return_value=None)):
+        await mo.persist_obligations(Mock(flush=AsyncMock()), [ob], TODAY)
+    assert stale.trigger_mileage == D(450)
+
+
 def test_a_closed_cycle_is_not_planned_again():
     a, i = asset(mileage=5100), interval()
     [ob] = mo.evaluate_asset(a, [i], context(a, closed={(a.id, i.id): D(10000)}))
@@ -103,6 +131,19 @@ def test_wagon_km_obligations_exist_only_for_confirmed_mileage():
     a, i = asset(mileage=4650, asset_type="wagon"), interval()
     assert mo.evaluate_asset(a, [i], context(a)) == []
     assert len(mo.evaluate_asset(a, [i], context(a, trusted=[a.id]))) == 1
+
+
+def test_a_wagon_with_estimated_km_is_always_labelled_approximate():
+    wagon, i = asset(mileage=40, asset_type="wagon"), interval()
+    real = baseline(wagon, i, km=0, source="completed")
+    [measured] = mo.evaluate_asset(wagon, [i], context(wagon, baselines=[real], trusted=[wagon.id]))
+    assert measured.confidence == "high" and measured.mileage_estimated is False
+    [estimated] = mo.evaluate_asset(wagon, [i], context(wagon, baselines=[real], trusted=[wagon.id], estimated=[wagon.id]))
+    assert estimated.confidence == "low" and estimated.mileage_estimated is True
+    # the flag belongs to wagons only
+    loco = asset(mileage=40)
+    [ob] = mo.evaluate_asset(loco, [i], context(loco, baselines=[baseline(loco, i, km=0, source="completed")], estimated=[loco.id]))
+    assert ob.mileage_estimated is False and ob.confidence == "high"
 
 
 def test_withdrawn_assets_have_no_obligations_and_assets_in_the_shop_are_paused():
@@ -183,6 +224,19 @@ async def test_persist_moves_a_scheduled_plan_with_the_forecast_but_not_a_pinned
     [ob] = mo.evaluate_asset(a, [i], context(a, open_plans=[pinned]))
     await mo.persist_obligations(db, [ob], TODAY)
     assert pinned.scheduled_date == pinned_date and pinned.recommended_date == ob.planned_date
+
+
+@pytest.mark.asyncio
+async def test_persist_does_not_touch_a_plan_whose_dates_did_not_change():
+    a, i = asset(mileage=4650), interval()
+    [first] = mo.evaluate_asset(a, [i], context(a))
+    p = plan(a, i, scheduled=first.planned_date)  # already on the forecast date
+    [ob] = mo.evaluate_asset(a, [i], context(a, open_plans=[p]))
+    await mo.persist_obligations(Mock(flush=AsyncMock()), [ob], TODAY)
+    assert p.updated_at is None  # not rewritten: no UPDATE, no audit event, every hour
+    p.scheduled_date = first.planned_date + timedelta(days=3)
+    await mo.persist_obligations(Mock(flush=AsyncMock()), [ob], TODAY)
+    assert p.scheduled_date == first.planned_date and p.updated_at is not None  # a real move is still written
 
 
 @pytest.mark.asyncio

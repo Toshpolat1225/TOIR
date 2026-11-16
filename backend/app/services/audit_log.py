@@ -26,8 +26,23 @@ _OPERATIONAL_TABLES = {
     "gtk_locomotives",
     "gtk_train_members",
     "gtk_trains",
-    "wialon_counter_states",
+    "wialon_counter_state",  # (was misspelled "wialon_counter_states", so it was never excluded)
     "wialon_rejected_readings",
+    # append-only integration feeds: the tables themselves are the record, an audit copy only multiplies them
+    "wialon_raw_receipts",
+    "wialon_odometer_readings",
+    "mileage_history",
+    "mileage_calculation_inputs",
+    "asset_meter_daily",
+    "gtk_raw_snapshots",
+    "gtk_sync_runs",
+    "gtk_membership_observations",
+    "gtk_wagon_mileage_log",
+    "gtk_locomotive_mileage_checkpoints",
+}
+# Columns a Wialon pull rewrites constantly: an update that touches nothing else is not an event worth auditing.
+_SYNC_ONLY_COLUMNS = {
+    "fixed_assets": {"wialon_last_sync", "wialon_online", "wialon_speed", "updated_at"},
 }
 _SENSITIVE_PARTS = (
     "password",
@@ -183,6 +198,17 @@ def _collect_model_changes(
                     after = history.added[0] if history.added else None
                     changes[attribute.key] = (_safe_value(before), _safe_value(after))
             if not changes and not redacted_fields_count:
+                continue
+            if (
+                not redacted_fields_count
+                and session.info.get("audit_actor_type", "system") == "system"
+                and (
+                    set(changes) <= _SYNC_ONLY_COLUMNS.get(table_name, set())
+                    # the mileage delta of a pull is already recorded in mileage_history
+                    or (table_name == "fixed_assets" and set(changes) <= _SYNC_ONLY_COLUMNS["fixed_assets"] | {"mileage"})
+                    or table_name == "wialon_settings"
+                )
+            ):
                 continue
             old_values = {key: pair[0] for key, pair in changes.items()}
             new_values = {key: pair[1] for key, pair in changes.items()}

@@ -27,11 +27,12 @@ from app.models.maintenance import (
     MaintenanceInterval,
     MaintenancePlan,
 )
-from app.models.mileage import WagonMileageLedger
 from app.models.wialon_units import WialonUnitRecord
 from app.models.localization import FixedAssetStatus
+from app.models.mileage import WagonMileageLedger, WagonMileageOpeningBalance
 from app.models.work_orders import WorkOrder
 from app.repositories import maintenance as repository
+from app.repositories import mileage as mileage_repository
 from app.services.maintenance_engine import (
     CalendarInput,
     Markers,
@@ -46,6 +47,7 @@ from app.services.maintenance_engine import (
     group_pace,
     merge_visits,
     own_pace,
+    partial_day_rates,
     priority_score,
 )
 from app.services.maintenance_planning import next_mileage_threshold
@@ -56,6 +58,10 @@ WITHDRAWN_BEHAVIORS = frozenset({"out_of_service"})  # withdrawn from service: n
 OPEN_PLAN_STATUSES = ("scheduled", "in_progress", "blocked")
 CLOSED_PLAN_STATUSES = ("completed", "covered", "waived")
 _PACE_BOOK_TTL_SECONDS = 20 * 60
+# A group needs this many observed days per member before it can stand in for a unit without data. Wagons only
+# have the ledger (a few days), so a group of wagons is allowed to form earlier than a group of locomotives.
+_GROUP_MIN_DAYS = {"wagon": 1}
+_GROUP_MIN_DAYS_DEFAULT = 3
 
 
 # ── pace history ─────────────────────────────────────────────────────────────
@@ -136,6 +142,8 @@ async def _build_pace_book(db: AsyncSession, today: date) -> PaceBook:
         asset_id: daily_deltas(series, first_day=anchor_day, last_day=last_day)
         for asset_id, series in km_series.items()
     }
+    # Wagon mileage is a ledger projection, not a counter that is sampled: pace comes from the ledger.
+    km_deltas.update(await _wagon_ledger_rates(db, start_dt))
     hours_deltas = {
         asset_id: daily_deltas(series, first_day=anchor_day, last_day=last_day)
         for asset_id, series in hours_series.items()
@@ -150,18 +158,62 @@ async def _build_pace_book(db: AsyncSession, today: date) -> PaceBook:
             ).all()
         }
 
-    def groups(deltas: dict[UUID, list[Decimal]]) -> dict[str, Pace | None]:
+    def groups(deltas: dict[UUID, list[Decimal]], min_days: dict[str, int] | None = None) -> dict[str, Pace | None]:
         by_type: dict[str, list[Pace]] = {}
         for asset_id, values in deltas.items():
             own = own_pace(values)
             if own is not None and asset_id in types:
                 by_type.setdefault(types[asset_id], []).append(own)
-        return {asset_type: group_pace(paces) for asset_type, paces in by_type.items()}
+        return {
+            asset_type: group_pace(paces, min_days=(min_days or {}).get(asset_type, _GROUP_MIN_DAYS_DEFAULT))
+            for asset_type, paces in by_type.items()
+        }
 
     return PaceBook(
         day=today, built_at=time.monotonic(), km_deltas=km_deltas, hours_deltas=hours_deltas,
-        group_km=groups(km_deltas), group_hours=groups(hours_deltas),
+        group_km=groups(km_deltas, _GROUP_MIN_DAYS), group_hours=groups(hours_deltas),
     )
+
+
+async def _wagon_ledger_rates(db: AsyncSession, start_dt: datetime) -> dict[UUID, list[Decimal]]:
+    """Daily km rates of every wagon with an approved projection, from the wagon ledger.
+
+    The ledger covers [first computed period, last computed period]; time inside that window without km is
+    idle, time outside it is unknown (not idle). Only eligible CONFIRMED/ESTIMATED km count, as in the
+    projection itself.
+    """
+    approved = select(WagonMileageOpeningBalance.asset_id).where(WagonMileageOpeningBalance.status == "approved")
+    coverage = (
+        await db.execute(
+            select(func.min(WagonMileageLedger.period_from), func.max(WagonMileageLedger.period_to)).where(
+                WagonMileageLedger.period_from >= start_dt
+            )
+        )
+    ).one()
+    if coverage[0] is None:
+        return {}
+    day_km: dict[UUID, dict[date, Decimal]] = {}
+    rows = await db.execute(
+        select(
+            WagonMileageLedger.wagon_asset_id,
+            func.date(WagonMileageLedger.period_from),
+            func.sum(WagonMileageLedger.distance_km),
+        )
+        .where(
+            WagonMileageLedger.status == "active",
+            WagonMileageLedger.calculation_eligible.is_(True),
+            WagonMileageLedger.classification.in_(("CONFIRMED", "ESTIMATED")),
+            WagonMileageLedger.period_from >= start_dt,
+            WagonMileageLedger.wagon_asset_id.in_(approved),
+        )
+        .group_by(WagonMileageLedger.wagon_asset_id, func.date(WagonMileageLedger.period_from))
+    )
+    for wagon_id, day, km in rows.all():
+        day_km.setdefault(wagon_id, {})[day] = Decimal(km)
+    wagons = (await db.scalars(approved)).all()
+    return {
+        wagon_id: partial_day_rates(day_km.get(wagon_id, {}), coverage[0], coverage[1]) for wagon_id in wagons
+    }
 
 
 # ── context ──────────────────────────────────────────────────────────────────
@@ -182,6 +234,7 @@ class Context:
     assets_in_shop: set[UUID]  # assets that have an order being worked on right now
     sensor_failure: set[UUID]
     behavior_of_status: dict[str, str] = field(default_factory=dict)  # status code -> behavior
+    estimated_wagons: set[UUID] = field(default_factory=set)  # wagon km that include ESTIMATED ledger km
 
     def behavior(self, asset: FixedAsset) -> str:
         return self.behavior_of_status.get(asset.status, "operational")
@@ -240,6 +293,7 @@ async def load_context(
     last_data_at: dict[UUID, datetime | None] = {}
     hours_current: dict[UUID, Decimal] = {}
     trusted_wagons: set[UUID] = set()
+    estimated_wagons: set[UUID] = set()
     assets_in_shop: set[UUID] = set()
     sensor_failure: set[UUID] = set()
     if ids:
@@ -281,21 +335,11 @@ async def load_context(
             last_data_at[asset_id] = last_message
             if cneh is not None and cneh > 0:
                 hours_current[asset_id] = Decimal(cneh)
-        if any(asset.asset_type == "wagon" for asset in assets):
-            trusted_wagons = set(
-                (
-                    await db.scalars(
-                        select(WagonMileageLedger.wagon_asset_id)
-                        .where(
-                            WagonMileageLedger.wagon_asset_id.in_(ids),
-                            WagonMileageLedger.status == "active",
-                            WagonMileageLedger.classification == "CONFIRMED",
-                            WagonMileageLedger.calculation_eligible.is_(True),
-                        )
-                        .distinct()
-                    )
-                ).all()
-            )
+        wagon_ids = [asset.id for asset in assets if asset.asset_type == "wagon"]
+        if wagon_ids:
+            # decision D9: a wagon's km are trusted once its projection is approved (approved opening balance)
+            trusted_wagons = await mileage_repository.approved_projection_asset_ids(db, wagon_ids)
+            estimated_wagons = await mileage_repository.estimated_projection_asset_ids(db, trusted_wagons)
         assets_in_shop = set(
             (
                 await db.scalars(
@@ -325,7 +369,7 @@ async def load_context(
         today=today, now=now, default_pace=default_pace, default_source=default_source, book=book,
         baselines=baselines, open_plans=open_plans, closed_triggers=closed_triggers, last_data_at=last_data_at,
         hours_current=hours_current, trusted_wagons=trusted_wagons, assets_in_shop=assets_in_shop,
-        sensor_failure=sensor_failure, behavior_of_status=behavior_of_status,
+        sensor_failure=sensor_failure, behavior_of_status=behavior_of_status, estimated_wagons=estimated_wagons,
     )
 
 
@@ -349,6 +393,8 @@ class Obligation:
     urgency: str | None
     opportunistic: bool = False
     pace_km: Pace | None = None
+    mileage_estimated: bool = False  # the km behind this obligation are an estimate, not a measurement
+    rebased: bool = False  # the open plan's cycle was inconsistent with the interval and was moved to the grid
 
     @property
     def key(self) -> tuple[UUID, UUID]:
@@ -404,6 +450,7 @@ def evaluate_asset(
         meters: list[MeterInput] = []
         baseline_km: Decimal | None = None
         due_km: Decimal | None = None
+        rebased = False
         source = baseline.source if explicit else "provisional"
 
         wagon_ok = asset.asset_type != "wagon" or asset.id in ctx.trusted_wagons
@@ -413,6 +460,12 @@ def evaluate_asset(
                 baseline_km = Decimal(baseline.km)
             elif plan is not None and plan.trigger_mileage is not None:
                 baseline_km = Decimal(plan.trigger_mileage) - limit  # the cycle the open plan stands for
+                if baseline_km > current_km:
+                    # That cycle has not even started: the plan was made when the interval had another length.
+                    # Keeping it would show a limit hundreds of km away; count from the current grid instead.
+                    trigger = next_mileage_threshold(current_km, limit)
+                    baseline_km = trigger - limit if trigger is not None else None
+                    rebased = baseline_km is not None
             else:
                 trigger = next_mileage_threshold(current_km, limit)
                 baseline_km = trigger - limit if trigger is not None else None
@@ -461,12 +514,16 @@ def evaluate_asset(
             and markers.limit > 0
             and markers.used / markers.limit * 100 >= settings.maintenance_min_early_pct
         )
+        mileage_estimated = (
+            asset.asset_type == "wagon" and asset.id in ctx.estimated_wagons and markers.limiting == "km"
+        )
         raw.append(
             Obligation(
                 asset=asset, interval=interval, plan=plan, baseline_source=source, baseline_km=baseline_km, due_km=due_km,
-                markers=markers, pace=limiting_pace, confidence=confidence(baseline_source=source, pace=reliable, stale=stale),
+                markers=markers, pace=limiting_pace, confidence=confidence(baseline_source=source, pace=reliable, stale=stale, estimated=mileage_estimated),
                 paused=paused, planned_date=markers.date_p75, merged_into=None, priority=priority,
                 urgency=urgency_of(markers, interval.lead_days), opportunistic=opportunistic, pace_km=km_pace,
+                mileage_estimated=mileage_estimated, rebased=rebased,
             )
         )
         drafts.append(
@@ -514,18 +571,24 @@ async def persist_obligations(db: AsyncSession, obligations: Iterable[Obligation
             continue
         if ob.paused or plan.status != "scheduled":
             continue  # running or blocked plans are not rewritten by the forecast
+        changed = False
         if plan.scheduled_date_manual:
-            plan.recommended_date = planned  # the planner's date stays; the recommendation keeps moving
-        else:
+            if plan.recommended_date != planned:
+                plan.recommended_date = planned  # the planner's date stays; the recommendation keeps moving
+                changed = True
+        elif plan.scheduled_date != planned:
             plan.scheduled_date = planned
+            changed = True
         if (
             ob.due_km is not None
             and plan.trigger_mileage != ob.due_km
-            and ob.baseline_source != "provisional"
+            and (ob.baseline_source != "provisional" or ob.rebased)
             and await repository.get_plan_for_trigger(db, ob.asset.id, ob.interval.id, ob.due_km) is None
         ):
             plan.trigger_mileage = ob.due_km  # an imported/completed baseline moved the cycle
-        plan.updated_at = datetime.now(timezone.utc)
+            changed = True
+        if changed:  # an untouched plan must stay untouched: every write is also an audit event, once an hour per plan
+            plan.updated_at = datetime.now(timezone.utc)
     await db.flush()
     return created
 

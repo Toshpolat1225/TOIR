@@ -7,9 +7,9 @@ import logging
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from starlette.middleware.base import RequestResponseEndpoint
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
 from app.core.config import settings
 from app.core.database import SessionFactory, engine
@@ -94,6 +94,31 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await engine.dispose()
 
 
+def _sqlstate(error: BaseException | None) -> str | None:
+    """SQLSTATE of a driver error, looking through SQLAlchemy's adapter wrapper (`orig` / `__cause__`)."""
+    seen: set[int] = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        code = getattr(error, "sqlstate", None) or getattr(error, "pgcode", None)
+        if code:
+            return str(code)
+        error = getattr(error, "orig", None) or error.__cause__
+    return None
+
+
+def database_error_response(request: Request, exc: DBAPIError) -> Response:
+    """A value PostgreSQL cannot store (SQLSTATE class 22: a NUL character, an out-of-range number...) is the
+    caller's mistake (422). Everything else stays what it was: a logged 500."""
+    code = _sqlstate(exc)
+    if code is not None and code.startswith("22"):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "The request contains characters or values the database cannot store"},
+        )
+    logger.exception("Unhandled database error on %s %s", request.method, request.url.path, exc_info=exc)
+    return PlainTextResponse("Internal Server Error", status_code=500)
+
+
 app = FastAPI(
     title="TOIR API",
     version="1.0.0",
@@ -102,6 +127,7 @@ app = FastAPI(
     openapi_url="/openapi.json" if settings.api_docs_enabled else None,
     lifespan=lifespan,
 )
+app.add_exception_handler(DBAPIError, database_error_response)
 
 
 async def _record_untracked_mutation(request: Request, response: Response) -> None:

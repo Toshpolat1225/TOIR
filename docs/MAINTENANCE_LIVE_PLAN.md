@@ -15,6 +15,13 @@ Holat: joriy etilgan 2026-11-16 (migratsiya `0032_tirik_reja`). Loyiha taklifi: 
 - **Ustuvorlik 0–100** (vazn: vaqt 40, oqibat 20, salomatlik 15, kechiktirishlar 10, tayyorlik 10, kalendar 5; limitga yetgan ≥ 80) va sababi oddiy tilda.
 - **Ishonch**: `high` / `low` (taxminiy hisob boshi yoki ma'lumot kam) / `stale` (datchik 24 soatdan beri jim yoki sensor_failure).
 
+## Vagonlar: qaysi probeg ishonchli hisoblanadi
+Qaror D9: vagon probegi (`fixed_assets.mileage`) = administrator **tasdiqlagan boshlang'ich** + hisobga yaroqli `CONFIRMED` **va** `ESTIMATED` ledger km. Shuning uchun reja vagon km'ini tasdiqlangan boshlang'ich probeg (`wagon_mileage_opening_balances.status='approved'`) bo'lsa ishonchli deb oladi (`mileage_repository.has_approved_projection`; reja, naryad va ML bir xil qoidadan foydalanadi). Avval «kamida bitta `CONFIRMED` ledger qatori» talab qilinardi: bu qoida D9 dan oldin yozilgan edi va 481 vagondan 480 tasini tashlab yuborardi.
+- Probegi `ESTIMATED` km'dan iborat vagonlar «Прогноз приблизительный» belgisi bilan chiqadi (`mileageEstimated`), hech qachon «надёжный» emas.
+- Tasdiqlangan boshlang'ich yo'q vagon (ledger bo'lsa ham) km majburiyatiga ega bo'lmaydi: probeg e'lon qilinmagan.
+- **Vagon tempi `wagon_mileage_ledger` dan olinadi** (`_wagon_ledger_rates`): tasdiqlangan boshlang'ichi bor har bir vagon uchun kunlik km. Ledger qoplagan oyna ichida km'siz vaqt = bekor turish (0), oynadan tashqari = noma'lum. Faqat qisman kuzatilgan kun (birinchi/oxirgi) kuzatilgan ulushga ko'ra shkalalanadi (`partial_day_rates`), 25 % dan kam kuzatilgan kun tashlanadi. Ma'lumot kam bo'lsa temp vagonlar guruhiga tortiladi (guruh 1 kunlik ma'lumotdan boshlab tuziladi, lokomotivlarda 3 kun). 7 kundan keyin vagon o'z tempi bilan ishlaydi, shu paytgacha ishonch «low».
+- Cheklov: ledgerda `HELD` (hisoblab bo'lmagan) davrlar bekor turish sifatida hisoblanadi, shuning uchun temp bir oz past chiqishi mumkin.
+
 ## Holatlar
 `scheduled → in_progress → completed`; `blocked` (sabab bilan), `covered` (yuqori ТО qamrab oldi), `waived` (admin o'tkazib yubordi), `cancelled` (faqat tizim: nogiron aktiv). PATCH orqali `cancelled` — 409.
 - Naryad bekor qilinsa/o'chirilsa reja `scheduled` ga qaytadi; naryad tugasa `completed` + yangi hisob boshi + kaskad.

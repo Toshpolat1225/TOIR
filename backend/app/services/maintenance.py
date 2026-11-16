@@ -586,6 +586,7 @@ def _model_fields(ob: "obligations.Obligation | None") -> dict[str, Any]:
         "dateTypical": markers.date_p50,
         "dateLate": markers.date_p25,
         "paceKmPerDay": km_pace.p50 if km_pace is not None else None,
+        "paceFastKmPerDay": km_pace.p75 if km_pace is not None else None,
         "paceSource": km_pace.source if km_pace is not None else None,
         "paceDays": km_pace.n_days if km_pace is not None else None,
         "confidence": ob.confidence,
@@ -595,6 +596,7 @@ def _model_fields(ob: "obligations.Obligation | None") -> dict[str, Any]:
         "mergedInto": ob.merged_into,
         "opportunistic": ob.opportunistic,
         "paused": ob.paused,
+        "mileageEstimated": ob.mileage_estimated,
         "urgency": ob.urgency,
     }
 

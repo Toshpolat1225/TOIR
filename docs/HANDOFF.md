@@ -1211,3 +1211,16 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 - Qo'shildi: `backend/app/services/ad_auth.py`, `services/auth.py` oqimi, `ad_*` sozlamalar (standart o'chiq), CA sertifikati `backend/app/certs/`, `ldap3==2.9.1`, login formasida «Логин или Email», compose'da `AD_AUTH_ENABLED`. Tafsilot: `docs/AD_LOGIN.md`.
 - Tekshirilgan: pytest 375 o'tdi (yangi 19 ta: AD unit va PG oqim testlari), `tsc`, build 0. PC'dan: sertifikat barmoq izi mos, 636 ochiq, TLS `Verify return code: 0 (ok)`.
 - **Tekshirilmagan:** haqiqiy domen paroli bilan kirish (foydalanuvchi o'zi sinaydi), konteyner ichidan DNS/636, brauzer.
+
+## Jonli end-to-end tekshiruv va tuzatishlar (2026-11-16)
+
+### Verified (buyruq natijasi ko'rilgan)
+- 257 jonli tekshiruv (API, ruxsatlar 738 so'rov, haqiqiy Edge brauzeri 19 sahifa × 4 rol, 12 parallel foydalanuvchi). Hisobot: `docs/E2E_REPORT_2026-11-16.md`.
+- 14 nuqson tuzatilib joylandi va jonli qayta tekshirildi (hisobotning 4-bo'limi). Backend 516 test (pg bilan) o'tdi; frontend `tsc` 0, 57 unit test; ТО oqimi jonli 91/91.
+- Test ma'lumotlari o'chirildi: `ZZTEST` qoldig'i 0; 13 statik jadvalning mazmun xeshi tekshiruvdan oldingi bilan bir xil.
+
+### Next task
+- P0 (hisobotning 5-bo'limi): HTTPS (O1), avtomatik zaxira (O3), audit tarixini tozalash (O2, tasdiq kerak). Keyin: healthcheck (O4), Wialon `cneh`/jim birliklar (O5), demo ma'lumotlarni arxivlash (O8), `test` intervali va rejalarini tozalash (O10), vagon me'yorlari.
+
+### NOT TESTED
+- Haqiqiy AD/Wialon/GTK, WebSocket, chaos testlari, boshqa brauzerlar. O'zgarishlar git'ga commit qilinmagan (foydalanuvchi qiladi).

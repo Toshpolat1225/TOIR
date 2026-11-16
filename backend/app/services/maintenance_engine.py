@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
 
 ZERO = Decimal("0")
 HUNDRED = Decimal("100")
@@ -76,6 +76,35 @@ def daily_deltas(
             values.append(last_value)
         day += timedelta(days=1)
     return [max(ZERO, values[i] - values[i - 1]) for i in range(1, len(values))]
+
+
+def partial_day_rates(
+    day_km: Mapping[date, Decimal],
+    window_start: datetime,
+    window_end: datetime,
+    *,
+    min_fraction: float = 0.25,
+) -> list[Decimal]:
+    """Per-day km RATES from a source that knows only the km of each calendar day (UTC) inside a window.
+
+    The wagon ledger starts at some moment and ends at the last computed period, so the first and the last
+    day are only partly observed. Such a day is scaled by the share of it that was observed (km / share),
+    which keeps the rate unbiased; a day observed for less than `min_fraction` is dropped (too noisy). A
+    day inside the window without any km is a real idle day (0). Returns [] for an empty window.
+    """
+    start = window_start.astimezone(timezone.utc)
+    end = window_end.astimezone(timezone.utc)
+    if end <= start:
+        return []
+    rates: list[Decimal] = []
+    day = start.date()
+    while day <= end.date():
+        day_start = datetime.combine(day, time.min, tzinfo=timezone.utc)
+        observed = (min(day_start + timedelta(days=1), end) - max(day_start, start)).total_seconds() / 86400
+        if observed >= min_fraction:
+            rates.append(day_km.get(day, ZERO) / Decimal(str(observed)))
+        day += timedelta(days=1)
+    return rates
 
 
 def _flat_pace(value: Decimal, source: str, n_days: int = 0) -> Pace:
@@ -162,6 +191,7 @@ class Markers:
     date_p25: date | None
     window_open: date | None
     state: str  # 'forecast' | 'due_soon' | 'over_limit' | 'over_tolerance'
+    pace_p75: Decimal = ZERO  # per day, the cautious (fast) pace
 
     def projected_used(self, on: date) -> Decimal:
         return self.used + self.pace_p50 * Decimal(max(0, (on - self.as_of).days))
@@ -170,8 +200,14 @@ class Markers:
         """How far past the limit the unit will be on `on` at its typical pace (0 if still inside)."""
         return max(ZERO, self.projected_used(on) - self.limit)
 
+    def cautious_overrun_on(self, on: date) -> Decimal:
+        """Same, at the cautious pace: the unit that runs fast is the one that gets into trouble."""
+        days = Decimal(max(0, (on - self.as_of).days))
+        return max(ZERO, self.used + self.pace_p75 * days - self.limit)
+
     def beyond_tolerance_on(self, on: date) -> bool:
-        return self.overrun_on(on) > self.tolerance
+        """True when the cautious projection exceeds the tolerance (what needs an administrator's approval)."""
+        return self.cautious_overrun_on(on) > self.tolerance
 
 
 def project_date(today: date, remaining: Decimal, pace_per_day: Decimal) -> date | None:
@@ -203,7 +239,7 @@ def compute_markers(
         p50 = project_date(today, remaining, meter.pace.p50)
         p25 = project_date(today, remaining, meter.pace.p25)
         tolerance = meter.limit * tolerance_pct / HUNDRED
-        candidates.append((p75, _markers(today, meter.name, used, meter.limit, remaining, tolerance, meter.pace.p50, p75, p50, p25, lead_days)))
+        candidates.append((p75, _markers(today, meter.name, used, meter.limit, remaining, tolerance, meter.pace.p50, p75, p50, p25, lead_days, pace_p75=meter.pace.p75)))
 
     if calendar is not None:
         used_days = Decimal((today - calendar.baseline_date).days)
@@ -211,7 +247,7 @@ def compute_markers(
         remaining_days = limit_days - used_days
         due = calendar.baseline_date + timedelta(days=calendar.limit_days)
         tolerance = limit_days * tolerance_pct / HUNDRED
-        candidates.append((due, _markers(today, "days", used_days, limit_days, remaining_days, tolerance, Decimal(1), due, due, due, lead_days)))
+        candidates.append((due, _markers(today, "days", used_days, limit_days, remaining_days, tolerance, Decimal(1), due, due, due, lead_days, pace_p75=Decimal(1))))
 
     if not candidates:
         return _markers(today, None, ZERO, ZERO, ZERO, ZERO, ZERO, None, None, None, lead_days)
@@ -235,6 +271,7 @@ def _markers(
     p50: date | None,
     p25: date | None,
     lead_days: int,
+    pace_p75: Decimal = ZERO,
 ) -> Markers:
     window_open = p75 - timedelta(days=lead_days) if p75 is not None else None
     if limiting is None:
@@ -250,14 +287,16 @@ def _markers(
     return Markers(
         as_of=today, limiting=limiting, used=used, limit=limit, remaining=remaining, tolerance=tolerance,
         pace_p50=pace_p50, date_p75=p75, date_p50=p50, date_p25=p25, window_open=window_open, state=state,
+        pace_p75=pace_p75,
     )
 
 
-def confidence(*, baseline_source: str, pace: Pace, stale: bool) -> str:
-    """'stale' beats everything (the data may be wrong); 'low' = guessed baseline or thin pace data."""
+def confidence(*, baseline_source: str, pace: Pace, stale: bool, estimated: bool = False) -> str:
+    """'stale' beats everything (the data may be wrong); 'low' = guessed baseline, thin pace data or km
+    that are an estimate (wagon mileage built from Wialon brackets) rather than a measurement."""
     if stale:
         return "stale"
-    if baseline_source == "provisional" or not pace.reliable:
+    if baseline_source == "provisional" or not pace.reliable or estimated:
         return "low"
     return "high"
 

@@ -6,8 +6,14 @@ http://{$DOMAIN} {
         X-Frame-Options "DENY"
         Referrer-Policy "strict-origin-when-cross-origin"
         Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        # Only the directives that cannot break the Next.js pages: no framing, no foreign <base>/forms/plugins.
+        Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
         -Server
     }
+
+    # API answers carry personal and operational data: browsers and proxies must not keep them.
+    @api path /api /api/*
+    header @api Cache-Control "no-store"
 
     @backend path /api /api/* /ws /docs /redoc /openapi.json
     reverse_proxy @backend backend:8000

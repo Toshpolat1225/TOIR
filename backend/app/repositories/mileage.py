@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from datetime import datetime
 from uuid import UUID
 from decimal import Decimal
@@ -10,19 +11,56 @@ from app.models.mileage import WagonMileageOpeningBalance
 from app.models.mileage import WagonMileageLedger
 
 
-async def has_confirmed_projection(db: AsyncSession, asset_id: UUID) -> bool:
+async def has_approved_projection(db: AsyncSession, asset_id: UUID) -> bool:
+    """True when the wagon's mileage (`fixed_assets.mileage`) is a published projection.
+
+    Decision D9: projection = approved opening balance + eligible CONFIRMED *and* ESTIMATED ledger km.
+    Without an administrator-approved opening balance nothing is published, so only that decides it.
+    (The old rule asked for at least one CONFIRMED ledger row, which wrongly dropped wagons whose km
+    are estimated by Wialon brackets, i.e. almost every moving wagon.)
+    """
     return bool(
         await db.scalar(
             select(
                 exists().where(
-                    WagonMileageLedger.wagon_asset_id == asset_id,
-                    WagonMileageLedger.status == "active",
-                    WagonMileageLedger.classification == "CONFIRMED",
-                    WagonMileageLedger.calculation_eligible.is_(True),
+                    WagonMileageOpeningBalance.asset_id == asset_id,
+                    WagonMileageOpeningBalance.status == "approved",
                 )
             )
         )
     )
+
+
+async def approved_projection_asset_ids(db: AsyncSession, asset_ids: Iterable[UUID]) -> set[UUID]:
+    """Batch form of `has_approved_projection`."""
+    ids = list(asset_ids)
+    if not ids:
+        return set()
+    rows = await db.scalars(
+        select(WagonMileageOpeningBalance.asset_id).where(
+            WagonMileageOpeningBalance.asset_id.in_(ids),
+            WagonMileageOpeningBalance.status == "approved",
+        )
+    )
+    return set(rows.all())
+
+
+async def estimated_projection_asset_ids(db: AsyncSession, asset_ids: Iterable[UUID]) -> set[UUID]:
+    """Wagons whose projection includes ESTIMATED km (shown as approximate, never as measured)."""
+    ids = list(asset_ids)
+    if not ids:
+        return set()
+    rows = await db.scalars(
+        select(WagonMileageLedger.wagon_asset_id)
+        .where(
+            WagonMileageLedger.wagon_asset_id.in_(ids),
+            WagonMileageLedger.status == "active",
+            WagonMileageLedger.classification == "ESTIMATED",
+            WagonMileageLedger.calculation_eligible.is_(True),
+        )
+        .distinct()
+    )
+    return set(rows.all())
 
 
 async def get_asset_for_opening(

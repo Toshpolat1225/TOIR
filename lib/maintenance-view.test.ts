@@ -338,6 +338,10 @@ describe("living plan: per-asset pace", () => {
     assert.equal(far.needsApproval, true) // 1300 km over, tolerance 500
     const earlier = rescheduleImpact(item, "2026-11-18", "2026-11-16", null)
     assert.equal(earlier.needsApproval, false) // moving earlier never needs approval
+    // a slow typical pace (2 km/day) must not hide a long deferral: the cautious pace (28 km/day) decides
+    const slow = make({ ...item, paceKmPerDay: 2, paceFastKmPerDay: 28, remainingKm: 120 })
+    assert.equal(rescheduleImpact(slow, "2026-12-16", "2026-11-16", null).needsApproval, true) // 30 days: 840 km vs 120 left, tolerance 500
+    assert.equal(rescheduleImpact(slow, "2026-11-20", "2026-11-16", null).needsApproval, false) // 4 days: 112 km, inside
     const tired = make({ ...item, deferralCount: 2 })
     assert.equal(rescheduleImpact(tired, "2026-11-21", "2026-11-16", null).needsApproval, true) // third deferral
   })
