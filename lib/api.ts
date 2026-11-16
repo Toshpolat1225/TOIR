@@ -1643,7 +1643,7 @@ export type MaintenanceScheduleItem = {
   durationH: number;
   depot: string;
   tech: string;
-  status: "upcoming" | "in_progress" | "completed" | "overdue";
+  status: "upcoming" | "in_progress" | "completed" | "overdue" | "blocked";
   urgency: "high" | "medium" | "low" | null;
   note: string | null;
   mileage: number | string | null;
@@ -1669,7 +1669,41 @@ export type MaintenanceScheduleItem = {
   dateManual?: boolean;
   recommendedDate?: string | null;
   rescheduleReason?: string | null;
+  // Living-plan model (absent on a backend that predates it).
+  planStatus?: MaintenancePlanStatus | null;
+  state?: "forecast" | "due_soon" | "over_limit" | "over_tolerance" | null;
+  rank?: number | null;
+  limiting?: "km" | "hours" | "days" | null;
+  limitingUsed?: number | string | null;
+  limitingLimit?: number | string | null;
+  tolerance?: number | string | null;
+  windowOpen?: string | null;
+  dateEarly?: string | null; // cautious (fast pace): act by this date
+  dateTypical?: string | null;
+  dateLate?: string | null; // slow pace
+  paceKmPerDay?: number | string | null;
+  paceSource?: string | null;
+  paceDays?: number | null;
+  confidence?: MaintenanceConfidence | null;
+  baselineSource?: MaintenanceBaselineSource | null;
+  priority?: number | null;
+  priorityWhy?: string[];
+  blockedReason?: MaintenanceBlockReason | null;
+  blockedUntil?: string | null;
+  blockedNote?: string | null;
+  deferralCount?: number;
+  mergedInto?: string | null;
+  opportunistic?: boolean;
+  paused?: boolean;
 };
+
+export type MaintenancePlanStatus =
+  | "scheduled" | "in_progress" | "completed" | "cancelled" | "blocked" | "covered" | "waived";
+export type MaintenanceConfidence = "high" | "low" | "stale";
+export type MaintenanceBaselineSource = "provisional" | "import" | "completed" | "manual" | "waived";
+export type MaintenanceBlockReason =
+  | "parts" | "no_bay" | "no_crew" | "unit_unavailable" | "accident" | "unplanned_repair"
+  | "sensor_failure" | "weather" | "other";
 
 export type MaintenanceScheduleResponse = {
   schedule: MaintenanceScheduleItem[];
@@ -1691,7 +1725,7 @@ export type MaintenancePlan = {
   interval_name: string;
   work_type_id: string | null;
   urgency: "high" | "medium" | "low" | null;
-  status: "scheduled" | "in_progress" | "completed" | "cancelled";
+  status: MaintenancePlanStatus;
   trigger_mileage: number | string | null;
   scheduled_date: string | null;
   completed_date: string | null;
@@ -1699,6 +1733,83 @@ export type MaintenancePlan = {
   scheduled_date_manual?: boolean;
   recommended_date?: string | null;
   reschedule_reason?: string | null;
+  blocked_reason?: MaintenanceBlockReason | null;
+  blocked_until?: string | null;
+  blocked_note?: string | null;
+  deferral_count?: number;
+};
+
+export type MaintenanceKpis = {
+  as_of: string;
+  obligations: number;
+  over_limit: number;
+  over_tolerance: number;
+  due_soon: number;
+  blocked: number;
+  low_confidence: number;
+  provisional_baseline: number;
+  open_plans: number;
+  manual_dates: number;
+  avg_deferrals: number;
+  completed_last_90d: number;
+  on_time_last_90d: number;
+  on_time_pct: number | null;
+};
+
+export type MaintenanceDisruption = {
+  id: string;
+  kind: MaintenanceBlockReason;
+  scope: "asset" | "section" | "all";
+  asset_id: string | null;
+  section_id: string | null;
+  starts_on: string;
+  ends_on: string | null;
+  status: "open" | "closed";
+  note: string | null;
+  affected_plans: number;
+};
+
+export type MaintenanceDisruptionCreate = {
+  kind: MaintenanceBlockReason;
+  scope: "asset" | "section" | "all";
+  asset_id?: string | null;
+  section_id?: string | null;
+  starts_on?: string | null;
+  ends_on?: string | null;
+  note?: string | null;
+};
+
+export type MaintenanceBaseline = {
+  asset_id: string;
+  interval_id: string;
+  done_at: string | null;
+  km: number | string;
+  hours: number | string | null;
+  source: MaintenanceBaselineSource;
+  note: string | null;
+  work_order_id: string | null;
+  updated_at: string | null;
+};
+
+export type MaintenanceBaselineUpsert = {
+  asset_id: string;
+  interval_id: string;
+  done_at: string;
+  km?: number | null;
+  odometer_km?: number | null;
+  hours?: number | null;
+  note?: string | null;
+};
+
+export type MaintenanceDecision = {
+  id: string;
+  plan_id: string;
+  kind: "reschedule" | "block" | "unblock" | "waive" | "cover" | "release";
+  reason_code: string | null;
+  note: string | null;
+  from_date: string | null;
+  to_date: string | null;
+  created_at: string;
 };
 
 export type MaintenancePlanUpdate = Partial<{
@@ -1751,6 +1862,52 @@ const maintenancePlans = {
       path: "/maintenance-plan/from-forecast",
       body: data,
     });
+  },
+  async block(
+    id: string,
+    data: { reason_code: MaintenanceBlockReason; until?: string | null; note?: string | null },
+  ): Promise<MaintenancePlan> {
+    return request<MaintenancePlan>({ method: "POST", path: `/maintenance-plan/${id}/block`, body: data });
+  },
+  async unblock(id: string): Promise<MaintenancePlan> {
+    return request<MaintenancePlan>({ method: "POST", path: `/maintenance-plan/${id}/unblock` });
+  },
+  async waive(id: string, data: { reason: string }): Promise<MaintenancePlan> {
+    return request<MaintenancePlan>({ method: "POST", path: `/maintenance-plan/${id}/waive`, body: data });
+  },
+  async decisions(id: string): Promise<MaintenanceDecision[]> {
+    return request<MaintenanceDecision[]>({ method: "GET", path: `/maintenance-plan/${id}/decisions` });
+  },
+};
+
+const maintenanceLive = {
+  async kpis(): Promise<MaintenanceKpis> {
+    return request<MaintenanceKpis>({ method: "GET", path: "/maintenance-kpis", suppressNetworkLog: true });
+  },
+  async disruptions(params: { only_open?: boolean } = {}): Promise<MaintenanceDisruption[]> {
+    return request<MaintenanceDisruption[]>({
+      method: "GET",
+      path: "/maintenance-disruptions",
+      params,
+      suppressNetworkLog: true,
+    });
+  },
+  async createDisruption(data: MaintenanceDisruptionCreate): Promise<MaintenanceDisruption> {
+    return request<MaintenanceDisruption>({ method: "POST", path: "/maintenance-disruptions", body: data });
+  },
+  async closeDisruption(id: string): Promise<MaintenanceDisruption> {
+    return request<MaintenanceDisruption>({ method: "POST", path: `/maintenance-disruptions/${id}/close` });
+  },
+  async baselines(assetId: string): Promise<MaintenanceBaseline[]> {
+    return request<MaintenanceBaseline[]>({
+      method: "GET",
+      path: "/maintenance-baselines",
+      params: { asset_id: assetId },
+      suppressNetworkLog: true,
+    });
+  },
+  async saveBaseline(data: MaintenanceBaselineUpsert): Promise<MaintenanceBaseline> {
+    return request<MaintenanceBaseline>({ method: "PUT", path: "/maintenance-baselines", body: data });
   },
 };
 
@@ -1951,6 +2108,11 @@ export type MaintenanceInterval = {
   name: string;
   interval_km: number | string | null;
   interval_days: number | null;
+  // Living-plan model: moto-hours limit, rank in the cascade (higher covers lower), tolerance, lead time.
+  interval_hours?: number | string | null;
+  rank?: number | null;
+  tolerance_pct?: number | string;
+  lead_days?: number;
   asset_types: string[];
   warn_percent: number | string;
   is_active: boolean;
@@ -2251,6 +2413,7 @@ export const api = {
   workTypeTemplates,
   maintenanceSchedule,
   maintenancePlans,
+  maintenanceLive,
   maintenanceSettings,
   dashboard,
   analytics,

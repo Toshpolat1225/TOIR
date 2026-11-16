@@ -311,6 +311,10 @@ class MaintenanceIntervalRead(BaseModel):
     name: str
     interval_km: Decimal | None
     interval_days: int | None
+    interval_hours: Decimal | None = None
+    rank: int | None = None
+    tolerance_pct: Decimal = Decimal("10")
+    lead_days: int = 7
     asset_types: list[str]
     warn_percent: Decimal
     is_active: bool
@@ -324,6 +328,12 @@ class MaintenanceIntervalCreate(BaseModel):
     name: str = Field(min_length=1)
     interval_km: Decimal | None = Field(default=None, max_digits=12, decimal_places=2)
     interval_days: int | None = None
+    # Living-plan model: moto-hours limit, rank in the cascade (higher covers lower; empty = independent),
+    # tolerance beyond the limit (% of the interval) and how many days before the cautious date to plan.
+    interval_hours: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
+    rank: int | None = Field(default=None, ge=1, le=99)
+    tolerance_pct: Decimal = Field(default=Decimal("10"), ge=0, le=100, max_digits=5, decimal_places=2)
+    lead_days: int = Field(default=7, ge=0, le=365)
     asset_types: list[str] = Field(default_factory=lambda: ["locomotive", "diesel"])
     warn_percent: Decimal = Field(default=Decimal("10"), max_digits=5, decimal_places=2)
     is_active: bool = True
@@ -334,8 +344,8 @@ class MaintenanceIntervalCreate(BaseModel):
         self.name = self.name.strip()
         if not self.code or not self.name:
             raise ValueError("Interval code and name must not be empty")
-        if self.interval_km is None and self.interval_days is None:
-            raise ValueError("At least one of interval_km or interval_days is required")
+        if self.interval_km is None and self.interval_days is None and self.interval_hours is None:
+            raise ValueError("At least one of interval_km, interval_days or interval_hours is required")
         self.asset_types = [asset_type.strip() for asset_type in self.asset_types]
         if any(not asset_type for asset_type in self.asset_types):
             raise ValueError("asset_types must not contain empty values")
@@ -348,6 +358,10 @@ class MaintenanceIntervalUpdate(PatchModel):
     name: str | None = Field(default=None, min_length=1)
     interval_km: Decimal | None = Field(default=None, max_digits=12, decimal_places=2)
     interval_days: int | None = None
+    interval_hours: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
+    rank: int | None = Field(default=None, ge=1, le=99)
+    tolerance_pct: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
+    lead_days: int | None = Field(default=None, ge=0, le=365)
     asset_types: list[str] | None = None
     warn_percent: Decimal | None = Field(default=None, max_digits=5, decimal_places=2)
     is_active: bool | None = None
@@ -370,6 +384,9 @@ class MaintenanceIntervalUpdate(PatchModel):
             raise ValueError("is_active cannot be null")
         if "warn_percent" in self.model_fields_set and self.warn_percent is None:
             raise ValueError("warn_percent cannot be null")
+        for field_name in ("tolerance_pct", "lead_days"):
+            if field_name in self.model_fields_set and getattr(self, field_name) is None:
+                raise ValueError(f"{field_name} cannot be null")
         return self
 
 

@@ -58,6 +58,16 @@ class Settings(BaseSettings):
     ad_connect_timeout: int = Field(default=5, ge=1, le=30)
     ad_receive_timeout: int = Field(default=10, ge=1, le=60)
     daily_km_estimate: int = Field(default=200, gt=0)
+    # "Tirik reja" planning engine (see docs and maintenance_engine.py). Defaults are the proposal's values.
+    maintenance_pace_window_days: int = Field(default=30, ge=7, le=180)
+    maintenance_pace_min_days: int = Field(default=7, ge=1, le=60)
+    maintenance_pace_shrink_k: int = Field(default=7, ge=1, le=60)
+    maintenance_stale_hours: int = Field(default=24, ge=1, le=720)  # no Wialon message for this long = unreliable forecast
+    maintenance_merge_pct: int = Field(default=15, ge=0, le=100)  # lower rank due this close (% of its interval) joins the visit
+    maintenance_min_early_pct: int = Field(default=70, ge=1, le=100)  # opportunistic offer from this share of the interval
+    maintenance_deferral_escalation: int = Field(default=2, ge=1, le=10)  # postponements before admin approval is required
+    maintenance_job_enabled: bool = True
+    maintenance_job_interval_minutes: int = Field(default=60, ge=1, le=1440)
 
     @field_validator("wialon_host", mode="before")
     @classmethod

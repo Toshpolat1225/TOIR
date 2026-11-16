@@ -565,12 +565,18 @@ CREATE TABLE maintenance_intervals (
     name           text NOT NULL,
     interval_km    numeric(12,2),
     interval_days  integer,
+    interval_hours numeric(12,2),                      -- moto-soat limiti (teplovozlar uchun odatiy)
+    rank           integer,                            -- sikldagi o'rni: yuqori daraja pastkilarni qoplaydi; NULL = mustaqil
+    tolerance_pct  numeric(5,2) NOT NULL DEFAULT 10,   -- limitdan oshishga ruxsat (intervalning %)
+    lead_days      integer NOT NULL DEFAULT 7,         -- ehtiyotkor sanadan necha kun oldin rejalash boshlanadi
     asset_types    text[] NOT NULL DEFAULT '{locomotive,diesel}',
     warn_percent   numeric(5,2) NOT NULL DEFAULT 10,   -- chegaraga shuncha % qolganda ogohlantirish
     is_active      boolean NOT NULL DEFAULT true,
     created_at     timestamptz NOT NULL DEFAULT now(),
     updated_at     timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT ck_interval_defined CHECK (interval_km IS NOT NULL OR interval_days IS NOT NULL)
+    CONSTRAINT ck_interval_defined CHECK (interval_km IS NOT NULL OR interval_days IS NOT NULL OR interval_hours IS NOT NULL),
+    CONSTRAINT ck_interval_tolerance_range CHECK (tolerance_pct >= 0 AND tolerance_pct <= 100),
+    CONSTRAINT ck_interval_lead_days_range CHECK (lead_days >= 0 AND lead_days <= 1000)
 );
 
 -- =====================================================================
@@ -724,7 +730,7 @@ CREATE TABLE maintenance_plan (
     asset_id          uuid NOT NULL REFERENCES fixed_assets(id) ON DELETE CASCADE,
     interval_id       uuid NOT NULL REFERENCES maintenance_intervals(id) ON DELETE RESTRICT,
     status            text NOT NULL DEFAULT 'scheduled'
-                      CHECK (status IN ('scheduled','in_progress','completed','cancelled')),
+                      CHECK (status IN ('scheduled','in_progress','completed','cancelled','blocked','covered','waived')),
     trigger_mileage   numeric(12,2),
     scheduled_date    date,
     completed_date    date,
@@ -732,15 +738,96 @@ CREATE TABLE maintenance_plan (
     scheduled_date_manual boolean NOT NULL DEFAULT false,
     recommended_date  date,
     reschedule_reason text,
+    blocked_reason    text,
+    blocked_until     date,
+    blocked_note      text,
+    blocked_by_disruption_id uuid,
+    deferral_count    integer NOT NULL DEFAULT 0,
+    covered_by_plan_id uuid REFERENCES maintenance_plan(id) ON DELETE SET NULL,
+    completed_km      numeric(14,2),
+    completed_hours   numeric(14,3),
     created_at        timestamptz NOT NULL DEFAULT now(),
     updated_at        timestamptz NOT NULL DEFAULT now(),
     UNIQUE (asset_id, interval_id, trigger_mileage),
+    CONSTRAINT ck_maintenance_plan_blocked_consistency
+        CHECK ((status = 'blocked') = (blocked_reason IS NOT NULL)),
+    CONSTRAINT ck_maintenance_plan_deferral_count CHECK (deferral_count >= 0),
     CONSTRAINT ck_maintenance_plan_reschedule_reason_len
         CHECK (reschedule_reason IS NULL OR char_length(reschedule_reason) <= 500),
     CONSTRAINT ck_maintenance_plan_manual_consistency
         CHECK (scheduled_date_manual OR (recommended_date IS NULL AND reschedule_reason IS NULL))
 );
 CREATE INDEX ix_plan_status_date ON maintenance_plan(status, scheduled_date);
+
+-- "Oxirgi ТО dan beri" sanashning boshlanish nuqtasi: texnika x interval bo'yicha bitta joriy qator.
+CREATE TABLE asset_maintenance_baseline (
+    asset_id      uuid NOT NULL REFERENCES fixed_assets(id) ON DELETE CASCADE,
+    interval_id   uuid NOT NULL REFERENCES maintenance_intervals(id) ON DELETE CASCADE,
+    done_at       date,
+    km            numeric(14,2) NOT NULL DEFAULT 0,
+    hours         numeric(14,3),
+    source        text NOT NULL,
+    note          text,
+    work_order_id uuid REFERENCES work_orders(id) ON DELETE SET NULL,
+    updated_by    uuid REFERENCES users(id) ON DELETE SET NULL,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    updated_at    timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT asset_maintenance_baseline_pkey PRIMARY KEY (asset_id, interval_id),
+    CONSTRAINT ck_baseline_hours_nonnegative CHECK (hours IS NULL OR hours >= 0),
+    CONSTRAINT ck_baseline_source CHECK (source IN ('provisional','import','completed','manual','waived'))
+);
+
+-- Rejadagi har bir inson qarori: sabab, kim so'radi, kim tasdiqladi.
+CREATE TABLE maintenance_decision (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    plan_id      uuid NOT NULL REFERENCES maintenance_plan(id) ON DELETE CASCADE,
+    kind         text NOT NULL,
+    reason_code  text,
+    note         text,
+    from_date    date,
+    to_date      date,
+    requested_by uuid REFERENCES users(id) ON DELETE SET NULL,
+    approved_by  uuid REFERENCES users(id) ON DELETE SET NULL,
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_decision_kind CHECK (kind IN ('reschedule','block','unblock','waive','cover','release')),
+    CONSTRAINT ck_decision_note_len CHECK (note IS NULL OR char_length(note) <= 500)
+);
+CREATE INDEX ix_decision_plan_time ON maintenance_decision(plan_id, created_at);
+
+-- Hodisa: reja vaqtincha to'sqinlikka uchraydi (qism yo'q, joy yo'q, avariya...).
+CREATE TABLE maintenance_disruption (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    kind        text NOT NULL,
+    scope       text NOT NULL,
+    asset_id    uuid REFERENCES fixed_assets(id) ON DELETE CASCADE,
+    section_id  uuid REFERENCES sections(id) ON DELETE SET NULL,
+    starts_on   date NOT NULL,
+    ends_on     date,
+    status      text NOT NULL DEFAULT 'open',
+    note        text,
+    created_by  uuid REFERENCES users(id) ON DELETE SET NULL,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    closed_at   timestamptz,
+    CONSTRAINT ck_disruption_kind CHECK (kind IN ('parts','no_bay','no_crew','unit_unavailable','accident','unplanned_repair','sensor_failure','weather','other')),
+    CONSTRAINT ck_disruption_scope CHECK (scope IN ('asset','section','all')),
+    CONSTRAINT ck_disruption_status CHECK (status IN ('open','closed')),
+    CONSTRAINT ck_disruption_scope_target CHECK ((scope <> 'asset' OR asset_id IS NOT NULL) AND (scope <> 'section' OR section_id IS NOT NULL)),
+    CONSTRAINT ck_disruption_dates CHECK (ends_on IS NULL OR ends_on >= starts_on),
+    CONSTRAINT ck_disruption_note_len CHECK (note IS NULL OR char_length(note) <= 500)
+);
+CREATE INDEX ix_disruption_status_dates ON maintenance_disruption(status, starts_on, ends_on);
+ALTER TABLE maintenance_plan
+    ADD CONSTRAINT maintenance_plan_blocked_by_disruption_id_fkey
+    FOREIGN KEY (blocked_by_disruption_id) REFERENCES maintenance_disruption(id) ON DELETE SET NULL;
+
+-- Kun oxiridagi hisoblagich qiymatlari: tezlikni baholash tarixi (moto-soat uchun yagona manba).
+CREATE TABLE asset_meter_daily (
+    asset_id uuid NOT NULL REFERENCES fixed_assets(id) ON DELETE CASCADE,
+    day      date NOT NULL,
+    km       numeric(14,2),
+    hours    numeric(14,3),
+    CONSTRAINT asset_meter_daily_pkey PRIMARY KEY (asset_id, day)
+);
 
 -- Admin/operator/management-configured daily mileage estimate for maintenance forecasts.
 CREATE TABLE maintenance_settings (

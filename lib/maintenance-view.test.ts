@@ -6,6 +6,8 @@ import {
   formatDate, groupByUnit, intervalCode, intervalKind, intervalTitle, inventoryNumberOf, isInRange,
   isReschedulable, isTestInterval, paletteForCode, parseDate, progressPct, recommend, rescheduleImpact,
   shiftDate, shiftFromPixels, toIsoDate, validateRescheduleDate, type Enriched, type ScheduleItem,
+  canBlock, canSetBaseline, canUnblock, canWaive, markerTimeline, paceOf, paceText, parseKmInput,
+  priorityTone, validateBaselineDate,
 } from "./maintenance-view.ts"
 
 const base: ScheduleItem = {
@@ -311,5 +313,144 @@ describe("paletteForCode", () => {
     assert.deepEqual(paletteForCode("ТО-1В"), first)
     assert.match(first.color, /^#[0-9a-f]{6}$/)
     assert.ok(first.bar.startsWith("bg-"))
+  })
+})
+
+
+describe("living plan: per-asset pace", () => {
+  it("prefers the asset's own pace over the page-wide default", () => {
+    assert.equal(paceOf(make({ paceKmPerDay: "54" }), 200), 54)
+    assert.equal(paceOf(make({}), 200), 200)
+    assert.equal(paceOf(make({ paceKmPerDay: 0 }), null), null)
+    // 350 km at 54 km/day = 7 days (not 2 days at the default 200)
+    assert.equal(entry({ mileage: 4650, remainingKm: 350, nextThreshold: 5000, intervalKm: 5000, paceKmPerDay: 54 }, 200).daysLeft, 7)
+  })
+  it("estimates a move with the asset's own pace and flags the need for approval", () => {
+    const item = make({
+      entity_type: "maintenance_plan", plan_id: "p", startDate: "2026-11-20", mileage: 4900, remainingKm: 100,
+      nextThreshold: 5000, intervalKm: 5000, paceKmPerDay: 100, tolerance: 500, limiting: "km", deferralCount: 0,
+    })
+    const near = rescheduleImpact(item, "2026-11-22", "2026-11-16", null)
+    assert.equal(near.paceKm, 100)
+    assert.equal(near.remainingAtNewKm, -500) // 100 - 100 * 6 days
+    assert.equal(near.needsApproval, false) // 500 km over is exactly the tolerance, not beyond it
+    const far = rescheduleImpact(item, "2026-11-30", "2026-11-16", null)
+    assert.equal(far.needsApproval, true) // 1300 km over, tolerance 500
+    const earlier = rescheduleImpact(item, "2026-11-18", "2026-11-16", null)
+    assert.equal(earlier.needsApproval, false) // moving earlier never needs approval
+    const tired = make({ ...item, deferralCount: 2 })
+    assert.equal(rescheduleImpact(tired, "2026-11-21", "2026-11-16", null).needsApproval, true) // third deferral
+  })
+})
+
+describe("living plan: blocked plans and states", () => {
+  it("explains a blocked plan and says the obligation is not lost", () => {
+    const rec = entry({
+      entity_type: "maintenance_plan", plan_id: "p", status: "blocked", planStatus: "blocked",
+      blockedReason: "parts", blockedUntil: "2026-11-25",
+    }).rec
+    assert.equal(rec.level, "warning")
+    assert.match(rec.text, /нет запчастей/)
+    assert.match(rec.text, /25\.11\.2026/)
+    assert.match(rec.text, /не потеряно/)
+  })
+  it("shouts when the tolerance is exceeded", () => {
+    const rec = entry({ mileage: 5600, remainingKm: -600, nextThreshold: 5000, intervalKm: 5000, state: "over_tolerance" }).rec
+    assert.equal(rec.level, "critical")
+    assert.match(rec.text, /Допуск превышен/)
+  })
+  it("a blocked plan cannot be dragged, but can be unblocked", () => {
+    const blocked = make({ entity_type: "maintenance_plan", plan_id: "p", status: "blocked", planStatus: "blocked" })
+    assert.equal(isReschedulable(blocked, true), false)
+    assert.equal(canUnblock(blocked, true), true)
+    assert.equal(canBlock(blocked, true), false)
+    assert.equal(canUnblock(blocked, false), false)
+  })
+})
+
+describe("living plan: who may do what", () => {
+  const plan = make({ entity_type: "maintenance_plan", plan_id: "p", status: "upcoming", planStatus: "scheduled", interval_id: "i" })
+  it("operators block and set baselines, only administrators waive", () => {
+    assert.equal(canBlock(plan, true), true)
+    assert.equal(canBlock(plan, false), false)
+    assert.equal(canWaive(plan, false), false)
+    assert.equal(canWaive(plan, true), true)
+    assert.equal(canWaive(make({ ...plan, planStatus: "in_progress", status: "in_progress" }), true), false)
+    assert.equal(canSetBaseline(plan, true), true)
+    assert.equal(canSetBaseline(make({ entity_type: "work_order", interval_id: null }), true), false)
+  })
+  it("a forecast row has no plan to block or waive", () => {
+    const forecast = make({ interval_id: "i" })
+    assert.equal(canBlock(forecast, true), false)
+    assert.equal(canWaive(forecast, true), false)
+    assert.equal(canSetBaseline(forecast, true), true)
+  })
+})
+
+describe("living plan: markers timeline", () => {
+  it("places the window, the three dates and today on one 0-100 % line", () => {
+    const line = markerTimeline(
+      make({ windowOpen: "2026-11-14", dateEarly: "2026-11-21", dateTypical: "2026-11-23", dateLate: "2026-11-25" }),
+      "2026-11-16",
+    )
+    assert.ok(line)
+    assert.equal(line.points.length, 4)
+    const byKey = Object.fromEntries(line.points.map((point) => [point.key, point.pct]))
+    assert.equal(byKey.window, 0) // earliest
+    assert.equal(byKey.late, 100) // latest
+    assert.ok(byKey.early < byKey.typical && byKey.typical < byKey.late)
+    assert.ok(line.todayPct > 0 && line.todayPct < byKey.early)
+    assert.equal(line.fromIso, "2026-11-14")
+    assert.equal(line.toIso, "2026-11-25")
+  })
+  it("draws a slow-pace date that is years away at the right edge instead of squashing the other dates", () => {
+    const line = markerTimeline(
+      make({ windowOpen: "2026-11-14", dateEarly: "2026-11-21", dateTypical: "2026-11-30", dateLate: "2028-07-04" }),
+      "2026-11-16",
+    )
+    assert.ok(line)
+    const byKey = Object.fromEntries(line.points.map((point) => [point.key, point]))
+    assert.equal(byKey.late.pct, 100)
+    assert.equal(byKey.late.clamped, true)
+    assert.equal(byKey.late.iso, "2028-07-04") // the real date is still shown in the list
+    assert.equal(byKey.typical.clamped, false)
+    assert.ok(byKey.typical.pct < 30, `typical at ${byKey.typical.pct}%`) // not pushed to the left by the far date
+    assert.equal(line.toIso, "2027-03-16") // 120 days from today
+  })
+  it("is null without any marker and survives a single date", () => {
+    assert.equal(markerTimeline(make({}), "2026-11-16"), null)
+    assert.equal(markerTimeline(make({ windowOpen: "2026-11-10" }), "2026-11-16"), null) // a window alone says nothing
+    const single = markerTimeline(make({ dateEarly: "2026-11-16" }), "2026-11-16")
+    assert.ok(single)
+    assert.equal(single.points[0].pct, 0)
+  })
+})
+
+describe("living plan: small helpers", () => {
+  it("maps a priority score to a tone", () => {
+    assert.equal(priorityTone(95), "critical")
+    assert.equal(priorityTone(80), "critical")
+    assert.equal(priorityTone(60), "high")
+    assert.equal(priorityTone(35), "medium")
+    assert.equal(priorityTone(10), "low")
+    assert.equal(priorityTone(null), "low")
+  })
+  it("describes the pace and its source", () => {
+    assert.equal(paceText(make({})), null)
+    const text = paceText(make({ paceKmPerDay: "54.2", paceSource: "asset", paceDays: 30 }))
+    assert.match(text as string, /54,2 км\/сут/)
+    assert.match(text as string, /по самой технике, 30 дн\. данных/)
+  })
+  it("validates the date of the last service", () => {
+    assert.equal(validateBaselineDate("2026-11-10", "2026-11-16"), null)
+    assert.equal(validateBaselineDate("2026-11-16", "2026-11-16"), null)
+    assert.match(validateBaselineDate("2026-11-17", "2026-11-16") as string, /будущем/)
+    assert.match(validateBaselineDate("", "2026-11-16") as string, /Укажите/)
+  })
+  it("parses typed kilometres with spaces and a decimal comma", () => {
+    assert.equal(parseKmInput("1 234,5"), 1234.5)
+    assert.equal(parseKmInput("-3000"), -3000)
+    assert.equal(parseKmInput(""), null)
+    assert.equal(parseKmInput("abc"), null)
   })
 })

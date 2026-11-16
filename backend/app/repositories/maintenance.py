@@ -429,7 +429,7 @@ async def list_schedule_plans(
     )
     overdue = and_(
         MaintenancePlan.scheduled_date < today,
-        MaintenancePlan.status.not_in(("completed", "cancelled")),
+        MaintenancePlan.status.not_in(("completed", "cancelled", "covered", "waived")),
     )
     statement = _plan_statement().where(or_(in_month, overdue))
     if master_section_id is not None:
@@ -540,16 +540,6 @@ async def get_linked_plan(
     if lock:
         statement = statement.with_for_update()
     return (await db.execute(statement)).scalar_one_or_none()
-
-
-async def complete_plan_for_order(
-    db: AsyncSession, work_order_id: UUID, completed_date: date
-) -> None:
-    plan = await get_linked_plan(db, work_order_id, lock=True)
-    if plan is not None and plan.status != "completed":
-        plan.status = "completed"
-        plan.completed_date = completed_date
-        plan.updated_at = datetime.now(timezone.utc)
 
 
 async def list_asset_interval_plans(

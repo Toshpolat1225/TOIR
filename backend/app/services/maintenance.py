@@ -15,8 +15,10 @@ from app.models.assets import FixedAsset
 from app.models.identity import User
 from app.models.maintenance import MaintenanceInterval, MaintenancePlan
 from app.repositories import maintenance as repository
-from app.repositories import mileage as mileage_repository
 from app.schemas.maintenance import (
+    MaintenanceDecisionRead,
+    MaintenancePlanBlock,
+    MaintenancePlanWaive,
     MaintenancePlanFromForecast,
     MaintenancePlanRead,
     MaintenancePlanUpdate,
@@ -25,11 +27,9 @@ from app.schemas.maintenance import (
     MaintenanceSettingsRead,
     MaintenanceSettingsUpdate,
 )
-from app.services.maintenance_planning import (
-    calculate_maintenance_target,
-    maintenance_urgency,
-    next_mileage_threshold,
-)
+from app.services import maintenance_lifecycle as lifecycle
+from app.services import maintenance_obligations as obligations
+from app.services.maintenance_planning import maintenance_urgency
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +68,10 @@ def estimate_date(
 
 
 def _plan_status(plan: MaintenancePlan) -> str:
-    if plan.status == "completed":
+    if plan.status in ("completed", "covered", "waived"):
         return "completed"
+    if plan.status == "blocked":
+        return "blocked"
     if plan.scheduled_date is not None and plan.scheduled_date < date.today():
         return "overdue"
     if plan.status == "scheduled":
@@ -101,42 +103,15 @@ async def update_settings(
     return MaintenanceSettingsRead(daily_average_km=result.daily_average_km)
 
 
-LOCOMOTIVE_TYPES = frozenset({"locomotive", "diesel"})
-KM_PLANNED_TYPES = LOCOMOTIVE_TYPES | {"wagon"}
-
 async def reconcile_asset_plans(
     db: AsyncSession, asset: FixedAsset, mileage: Decimal
 ) -> int:
-    # Wagons need an approved projection. Locomotive/diesel mileage comes from
-    # the gated Wialon pull (D10) and is trusted as is.
-    if asset.asset_type == "wagon" and not await mileage_repository.has_confirmed_projection(
-        db, asset.id
-    ):
-        return 0
-    today = date.today()
-    created = 0
-    intervals = await repository.list_active_intervals(db, asset.asset_type)
-    for interval in intervals:
-        target = calculate_maintenance_target(
-            asset_type=asset.asset_type,
-            interval_asset_types=interval.asset_types,
-            mileage=mileage,
-            interval_km=interval.interval_km,
-            warn_percent=interval.warn_percent,
-            daily_km_estimate=settings.daily_km_estimate,
-            today=today,
-        )
-        if target is None:
-            continue
-        _, was_created = await repository.upsert_scheduled_plan_with_created(
-            db,
-            asset_id=asset.id,
-            interval_id=interval.id,
-            trigger_mileage=target.trigger_mileage,
-            scheduled_date=target.scheduled_date,
-        )
-        created += was_created
-    return created
+    """Re-plan one asset with the living-plan engine; returns the number of NEW plans.
+
+    `mileage` is the value the caller has just learned (it wins over `asset.mileage`).
+    Wagon km obligations exist only for wagons whose mileage is CONFIRMED (see the obligations loader).
+    """
+    return await obligations.reconcile_asset(db, asset, mileage)
 
 
 def _plan_read(row: dict[str, Any]) -> MaintenancePlanRead:
@@ -160,6 +135,10 @@ def _plan_read(row: dict[str, Any]) -> MaintenancePlanRead:
         scheduled_date_manual=plan.scheduled_date_manual,
         recommended_date=plan.recommended_date,
         reschedule_reason=plan.reschedule_reason,
+        blocked_reason=plan.blocked_reason,
+        blocked_until=plan.blocked_until,
+        blocked_note=plan.blocked_note,
+        deferral_count=plan.deferral_count or 0,
     )
 
 
@@ -253,18 +232,27 @@ async def update_plan(
             )
 
     requested_status = values.get("status")
+    if requested_status == "cancelled":
+        raise _conflict(
+            "A maintenance obligation is never cancelled: block the plan (POST .../block) "
+            "or ask an administrator to waive the cycle (POST .../waive)"
+        )
     if requested_status is not None and requested_status != plan.status:
         allowed = {
-            "scheduled": {"in_progress", "cancelled"},
-            "in_progress": {"completed", "cancelled"},
+            "scheduled": {"in_progress"},
+            "in_progress": {"completed"},
         }
         if requested_status not in allowed.get(plan.status, set()):
             raise _conflict(
                 f"Invalid maintenance plan status transition: {plan.status} -> {requested_status}"
             )
-    await _apply_reschedule(db, plan, values)
-    if requested_status == "completed" and "completed_date" not in values:
-        values["completed_date"] = date.today()
+    await _apply_reschedule(db, plan, values, user)
+    if requested_status == "completed" and plan.status != "completed":
+        completed_on = values.pop("completed_date", None) or date.today()
+        values.pop("status")
+        await lifecycle.finalize_completion(
+            db, plan, completed_on=completed_on, work_order_id=values.get("work_order_id"), user=user
+        )
     for field, value in values.items():
         setattr(plan, field, value)
     plan.updated_at = datetime.now(timezone.utc)
@@ -302,19 +290,56 @@ def _clean_reason(reason: str | None) -> str | None:
     return cleaned or None
 
 
+async def _obligation_of(
+    db: AsyncSession, plan: MaintenancePlan
+) -> obligations.Obligation | None:
+    asset = await db.get(FixedAsset, plan.asset_id)
+    if asset is None:
+        return None
+    _, evaluated = await obligations.evaluate_for_asset(db, asset)
+    for ob in evaluated:
+        if ob.interval.id == plan.interval_id:
+            return ob
+    return None
+
+
 async def _recommended_date_now(
     db: AsyncSession, plan: MaintenancePlan, today: date
 ) -> date | None:
-    """The date the system would plan today for this plan's threshold, if it can tell."""
-    asset = await db.get(FixedAsset, plan.asset_id)
-    if asset is None or plan.trigger_mileage is None or asset.mileage is None:
-        return None
-    remaining = plan.trigger_mileage - asset.mileage
-    return estimate_date(today, remaining, Decimal(settings.daily_km_estimate))
+    """The date the system would plan today for this plan's obligation, if it can tell."""
+    ob = await _obligation_of(db, plan)
+    return ob.planned_date if ob is not None else None
+
+
+async def _require_approval_if_needed(
+    db: AsyncSession, plan: MaintenancePlan, new_date: date, user: User
+) -> None:
+    """Operators may move a date inside the tolerance; anything bigger needs an administrator."""
+    if user.role == "admin":
+        return
+    deferring = plan.scheduled_date is not None and new_date > plan.scheduled_date
+    if deferring and (plan.deferral_count or 0) >= settings.maintenance_deferral_escalation:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"Administrator approval required: this plan was already deferred "
+                f"{plan.deferral_count} times"
+            ),
+        )
+    if deferring:
+        ob = await _obligation_of(db, plan)
+        if ob is not None and ob.markers.beyond_tolerance_on(new_date):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Administrator approval required: the new date is beyond the tolerance of the limit",
+            )
 
 
 async def _apply_reschedule(
-    db: AsyncSession, plan: MaintenancePlan, values: dict[str, Any]
+    db: AsyncSession,
+    plan: MaintenancePlan,
+    values: dict[str, Any],
+    user: User | None = None,
 ) -> None:
     """Handle `scheduled_date` / `reset_schedule` of a plan update (mutates `plan` and `values`)."""
     reset = bool(values.pop("reset_schedule", False))
@@ -338,9 +363,12 @@ async def _apply_reschedule(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Rescheduling cannot be combined with other plan changes",
         )
+    if plan.status == "blocked":
+        raise _conflict("Unblock the maintenance plan before rescheduling it")
     if plan.status != "scheduled":
         raise _conflict("Only scheduled maintenance plans can be rescheduled")
     today = date.today()
+    previous = plan.scheduled_date
     if moving:
         if new_date is None:
             raise HTTPException(
@@ -348,11 +376,20 @@ async def _apply_reschedule(
                 detail="scheduled_date must be a date (use reset_schedule to return to the recommendation)",
             )
         _validate_reschedule_date(new_date, today)
+        if user is not None:
+            await _require_approval_if_needed(db, plan, new_date, user)
         if not plan.scheduled_date_manual:
             plan.recommended_date = plan.scheduled_date
+        if previous is not None and new_date > previous:
+            plan.deferral_count = (plan.deferral_count or 0) + 1
         plan.scheduled_date = new_date
         plan.scheduled_date_manual = True
         plan.reschedule_reason = _clean_reason(reason)
+        if user is not None:
+            await lifecycle.log_decision(
+                db, plan, "reschedule", note=plan.reschedule_reason, from_date=previous, to_date=new_date,
+                user=user, approver=user if user.role == "admin" else None,
+            )
         return
     if not plan.scheduled_date_manual:
         raise _conflict("The plan already uses the recommended date")
@@ -363,6 +400,11 @@ async def _apply_reschedule(
     plan.scheduled_date_manual = False
     plan.recommended_date = None
     plan.reschedule_reason = None
+    if user is not None:
+        await lifecycle.log_decision(
+            db, plan, "reschedule", note="возврат к рекомендованной дате", from_date=previous,
+            to_date=recommended, user=user,
+        )
 
 
 async def create_plan_from_forecast(
@@ -387,42 +429,37 @@ async def create_plan_from_forecast(
         )
     today = date.today()
     _validate_reschedule_date(payload.scheduled_date, today)
-    has_trusted_mileage = asset.asset_type in LOCOMOTIVE_TYPES or (
-        asset.asset_type == "wagon"
-        and await mileage_repository.has_confirmed_projection(db, asset.id)
-    )
-    if interval.interval_km is not None and not has_trusted_mileage:
+    _, evaluated = await obligations.evaluate_for_asset(db, asset)
+    obligation = next((ob for ob in evaluated if ob.interval.id == interval.id), None)
+    if obligation is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="The mileage of this asset is not trusted yet, so a km-based plan cannot be created",
+            detail=(
+                "There is no trusted forecast for this interval yet (untrusted mileage or no baseline), "
+                "so a plan cannot be created"
+            ),
         )
-    plans_by_key = await repository.list_asset_interval_plans(
-        db, master_section_id=master_section_id
-    )
-    trigger, recommended = await _interval_target(
-        asset, interval, plans_by_key, Decimal(settings.daily_km_estimate), today
-    )
-    for existing in plans_by_key.get((asset.id, interval.id), []):
-        if (trigger is not None and existing.trigger_mileage == trigger) or (
-            trigger is None
-            and existing.trigger_mileage is None
-            and existing.status in {"scheduled", "in_progress"}
-        ):
-            raise _conflict(
-                "A plan for this threshold already exists; reschedule that plan instead"
-            )
+    if obligation.plan is not None:
+        raise _conflict(
+            "A plan for this threshold already exists; reschedule that plan instead"
+        )
     plan = MaintenancePlan(
         asset_id=asset.id,
         interval_id=interval.id,
         status="scheduled",
-        trigger_mileage=trigger,
+        trigger_mileage=obligation.due_km,
         scheduled_date=payload.scheduled_date,
         scheduled_date_manual=True,
-        recommended_date=recommended,
+        recommended_date=obligation.planned_date or today,
         reschedule_reason=_clean_reason(payload.reschedule_reason),
     )
     db.add(plan)
     try:
+        await db.flush()
+        await lifecycle.log_decision(
+            db, plan, "reschedule", note=plan.reschedule_reason, from_date=plan.recommended_date,
+            to_date=payload.scheduled_date, user=user, approver=user if user.role == "admin" else None,
+        )
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
@@ -435,41 +472,71 @@ async def create_plan_from_forecast(
     return _plan_read(row)
 
 
-async def _interval_target(
-    asset: FixedAsset,
-    interval: MaintenanceInterval,
-    plans_by_key: dict[tuple[UUID, UUID], list[MaintenancePlan]],
-    daily_average_km: Decimal | None,
-    today: date,
-) -> tuple[Decimal | None, date]:
-    plans = plans_by_key.get((asset.id, interval.id), [])
-    if interval.interval_km is not None:
-        if asset.asset_type not in KM_PLANNED_TYPES:
-            return None, today
-        if daily_average_km is None:
-            return None, today
-        trigger = next_mileage_threshold(asset.mileage, interval.interval_km)
-        if trigger is None:
-            return None, today
-        remaining = trigger - asset.mileage
-        return trigger, estimate_date(today, remaining, daily_average_km)
-    if interval.interval_days is not None:
-        completed_dates = [
-            plan.completed_date
-            for plan in plans
-            if plan.status == "completed" and plan.completed_date is not None
-        ]
-        outstanding_dates = [
-            plan.scheduled_date
-            for plan in plans
-            if plan.status in {"scheduled", "in_progress"}
-            and plan.scheduled_date is not None
-        ]
-        target = min(outstanding_dates) if outstanding_dates else (
-            max(completed_dates, default=today) + timedelta(days=interval.interval_days)
-        )
-        return None, target
-    return None, today
+# ── block / unblock / waive / decisions ──────────────────────────────────────
+
+async def _load_plan_for_action(
+    db: AsyncSession, user: User, plan_id: UUID
+) -> tuple[MaintenancePlan, UUID | None]:
+    master_section_id = _master_section_scope(user)
+    plan = await repository.get_plan(
+        db, plan_id, master_section_id=master_section_id, lock=True
+    )
+    if plan is None:
+        raise _not_found()
+    return plan, master_section_id
+
+
+async def _commit_and_read(
+    db: AsyncSession, plan_id: UUID, master_section_id: UUID | None
+) -> MaintenancePlanRead:
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise _conflict("Maintenance plan references an invalid record") from exc
+    row = await repository.get_plan_read_row(
+        db, plan_id, master_section_id=master_section_id
+    )
+    if row is None:
+        raise _not_found()
+    return _plan_read(row)
+
+
+async def block_plan(
+    db: AsyncSession, user: User, plan_id: UUID, payload: MaintenancePlanBlock
+) -> MaintenancePlanRead:
+    plan, master = await _load_plan_for_action(db, user, plan_id)
+    await lifecycle.block_plan(db, plan, payload, user)
+    return await _commit_and_read(db, plan_id, master)
+
+
+async def unblock_plan(
+    db: AsyncSession, user: User, plan_id: UUID
+) -> MaintenancePlanRead:
+    plan, master = await _load_plan_for_action(db, user, plan_id)
+    await lifecycle.unblock_plan(db, plan, user)
+    return await _commit_and_read(db, plan_id, master)
+
+
+async def waive_plan(
+    db: AsyncSession, user: User, plan_id: UUID, payload: MaintenancePlanWaive
+) -> MaintenancePlanRead:
+    plan, master = await _load_plan_for_action(db, user, plan_id)
+    await lifecycle.waive_plan(db, plan, payload, user)
+    return await _commit_and_read(db, plan_id, master)
+
+
+async def list_plan_decisions(
+    db: AsyncSession, user: User, plan_id: UUID
+) -> list[MaintenanceDecisionRead]:
+    master_section_id = _master_section_scope(user)
+    plan = await repository.get_plan(db, plan_id, master_section_id=master_section_id)
+    if plan is None:
+        raise _not_found()
+    return [
+        MaintenanceDecisionRead.model_validate(row)
+        for row in await lifecycle.list_decisions(db, plan_id)
+    ]
 
 
 def _with_asset_display(
@@ -501,6 +568,37 @@ def _with_asset_display(
     )
 
 
+def _model_fields(ob: "obligations.Obligation | None") -> dict[str, Any]:
+    """The living-plan facts of one obligation, in the names of the schedule item."""
+    if ob is None:
+        return {}
+    markers = ob.markers
+    km_pace = ob.pace_km
+    return {
+        "state": markers.state,
+        "rank": ob.interval.rank,
+        "limiting": markers.limiting,
+        "limitingUsed": markers.used,
+        "limitingLimit": markers.limit,
+        "tolerance": markers.tolerance,
+        "windowOpen": markers.window_open,
+        "dateEarly": markers.date_p75,
+        "dateTypical": markers.date_p50,
+        "dateLate": markers.date_p25,
+        "paceKmPerDay": km_pace.p50 if km_pace is not None else None,
+        "paceSource": km_pace.source if km_pace is not None else None,
+        "paceDays": km_pace.n_days if km_pace is not None else None,
+        "confidence": ob.confidence,
+        "baselineSource": ob.baseline_source,
+        "priority": ob.priority.score,
+        "priorityWhy": list(ob.priority.why),
+        "mergedInto": ob.merged_into,
+        "opportunistic": ob.opportunistic,
+        "paused": ob.paused,
+        "urgency": ob.urgency,
+    }
+
+
 async def get_schedule(
     db: AsyncSession, user: User, month: str
 ) -> MaintenanceScheduleRead:
@@ -513,7 +611,23 @@ async def get_schedule(
         day=monthrange(month_start.year, month_start.month)[1]
     ) + timedelta(days=1)
 
-    daily_average_km = Decimal(settings.daily_km_estimate)
+    today = date.today()
+    assets = await repository.list_schedule_assets(
+        db, master_section_id=master_section_id
+    )
+    ctx = await obligations.load_context(db, assets, today=today)
+    intervals_by_type: dict[str, list[MaintenanceInterval]] = {}
+    by_key: dict[tuple[UUID, UUID], obligations.Obligation] = {}
+    for asset in assets:
+        if asset.asset_type not in intervals_by_type:
+            intervals_by_type[asset.asset_type] = await repository.list_active_intervals(
+                db, asset.asset_type
+            )
+        if not intervals_by_type[asset.asset_type]:
+            continue
+        for ob in obligations.evaluate_asset(asset, intervals_by_type[asset.asset_type], ctx):
+            by_key[ob.key] = ob
+
     schedule: list[MaintenanceScheduleItem] = []
     work_orders = await repository.list_work_orders_for_schedule(
         db,
@@ -528,7 +642,7 @@ async def get_schedule(
             "overdue"
             if order.status in {"pending", "in_progress"}
             and order.date_end is not None
-            and order.date_end.date() < date.today()
+            and order.date_end.date() < today
             else {
                 "pending": "upcoming",
                 "in_progress": "in_progress",
@@ -563,118 +677,97 @@ async def get_schedule(
         db,
         start=month_start,
         end=month_end,
-        today=date.today(),
+        today=today,
         master_section_id=master_section_id,
-    )
-    plans_by_key = await repository.list_asset_interval_plans(
-        db, master_section_id=master_section_id
     )
     for row in plan_rows:
         plan = row["plan"]
         if plan.status == "cancelled":
             continue
         mileage = row["mileage"]
-        displayed_status = _plan_status(plan)
+        ob = by_key.get((plan.asset_id, plan.interval_id))
+        if ob is not None and ob.plan is not plan:
+            ob = None  # that obligation belongs to another cycle of the same interval
+        if plan.status not in {"scheduled", "in_progress", "blocked"}:
+            ob = None
+        fields = _model_fields(ob)
+        urgency = fields.pop("urgency", None) if ob is not None else _plan_urgency(row)
+        due_km = ob.due_km if ob is not None and ob.due_km is not None else plan.trigger_mileage
         schedule.append(
             MaintenanceScheduleItem(
                 id=str(plan.id),
                 entity_type="maintenance_plan",
                 unit=f"{row['asset_name']} · {row['asset_inv_number']}",
                 type=f"{row['interval_code']} — {row['interval_name']}",
-                startDate=plan.scheduled_date or date.today(),
+                startDate=plan.scheduled_date or today,
                 depot=row["section_name"] or "",
                 tech="",
-                status=displayed_status,
+                status=_plan_status(plan),
                 mileage=mileage,
-                remainingKm=(
-                    plan.trigger_mileage - mileage
-                    if plan.trigger_mileage is not None
-                    else None
-                ),
-                nextThreshold=plan.trigger_mileage,
+                remainingKm=due_km - mileage if due_km is not None else None,
+                nextThreshold=due_km,
                 intervalKm=row.get("interval_km"),
                 asset_id=plan.asset_id,
                 section_id=row["section_id"],
                 interval_id=plan.interval_id,
                 work_type_id=row["work_type_id"],
-                urgency=_plan_urgency(row),
+                urgency=urgency,
                 plan_id=plan.id,
                 work_order_id=plan.work_order_id,
                 dateManual=plan.scheduled_date_manual,
                 recommendedDate=plan.recommended_date,
                 rescheduleReason=plan.reschedule_reason,
+                planStatus=plan.status,
+                blockedReason=plan.blocked_reason,
+                blockedUntil=plan.blocked_until,
+                blockedNote=plan.blocked_note,
+                deferralCount=plan.deferral_count or 0,
+                **fields,
             )
         )
 
-    today = date.today()
-    assets = await repository.list_schedule_assets(
-        db, master_section_id=master_section_id
-    )
-    for asset in assets:
-        has_wagon_projection = (
-            asset.asset_type == "wagon"
-            and await mileage_repository.has_confirmed_projection(db, asset.id)
-        ) or asset.asset_type in LOCOMOTIVE_TYPES
-        intervals = await repository.list_active_intervals(db, asset.asset_type)
-        for interval in intervals:
-            if interval.interval_km is not None and not has_wagon_projection:
-                continue
-            if interval.interval_km is not None and daily_average_km is None:
-                continue
-            plans = plans_by_key.get((asset.id, interval.id), [])
-            trigger, scheduled_date = await _interval_target(
-                asset,
-                interval,
-                plans_by_key,
-                daily_average_km,
-                today,
+    assets_by_id = {asset.id: asset for asset in assets}
+    for ob in by_key.values():
+        if ob.plan is not None:
+            continue  # shown as its plan
+        planned = ob.planned_date
+        overdue = ob.markers.state in {"over_limit", "over_tolerance"} or (
+            planned is not None and planned < today
+        )
+        if not overdue and not _in_month(planned, month_start, month_end):
+            continue
+        asset = assets_by_id[ob.asset.id]
+        start_date = planned or today
+        trusted = asset.asset_type != "wagon" or asset.id in ctx.trusted_wagons
+        fields = _model_fields(ob)
+        urgency = fields.pop("urgency")
+        schedule.append(
+            MaintenanceScheduleItem(
+                id=f"forecast:{asset.id}:{ob.interval.id}",
+                entity_type="forecast",
+                unit=f"{asset.name} · {asset.inv_number}",
+                type=f"{ob.interval.code} — {ob.interval.name}",
+                startDate=start_date,
+                depot=asset.depot or "",
+                tech="",
+                status="overdue" if start_date < today else "upcoming",
+                mileage=asset.mileage if trusted else None,
+                remainingKm=ob.due_km - asset.mileage if ob.due_km is not None else None,
+                nextThreshold=ob.due_km,
+                intervalKm=ob.interval.interval_km,
+                asset_id=asset.id,
+                section_id=asset.section_id,
+                interval_id=ob.interval.id,
+                work_type_id=ob.interval.work_type_id,
+                urgency=urgency,
+                **fields,
             )
-            if any(
-                (
-                    trigger is not None
-                    and plan.trigger_mileage == trigger
-                )
-                or (
-                    trigger is None
-                    and plan.trigger_mileage is None
-                    and plan.status in {"scheduled", "in_progress"}
-                )
-                for plan in plans
-            ):
-                continue
-            remaining = trigger - asset.mileage if trigger is not None else None
-            display_status = (
-                "overdue"
-                if scheduled_date < today
-                else "upcoming"
-            )
-            if not _in_month(scheduled_date, month_start, month_end) and display_status != "overdue":
-                continue
-            schedule.append(
-                MaintenanceScheduleItem(
-                    id=f"forecast:{asset.id}:{interval.id}",
-                    entity_type="forecast",
-                    unit=f"{asset.name} · {asset.inv_number}",
-                    type=f"{interval.code} — {interval.name}",
-                    startDate=scheduled_date,
-                    depot=asset.depot or "",
-                    tech="",
-                    status=display_status,
-                    mileage=asset.mileage if has_wagon_projection else None,
-                    remainingKm=remaining,
-                    nextThreshold=trigger,
-                    intervalKm=interval.interval_km,
-                    asset_id=asset.id,
-                    section_id=asset.section_id,
-                    interval_id=interval.id,
-                    work_type_id=interval.work_type_id,
-                )
-            )
+        )
     asset_info = await repository.list_asset_display_info(
         db, master_section_id=master_section_id
     )
     schedule = [_with_asset_display(item, asset_info.get(item.asset_id)) for item in schedule]
     schedule.sort(key=lambda item: (item.startDate, item.unit, item.type))
     return MaintenanceScheduleRead(
-        schedule=schedule, daily_average_km=daily_average_km
+        schedule=schedule, daily_average_km=ctx.default_pace
     )

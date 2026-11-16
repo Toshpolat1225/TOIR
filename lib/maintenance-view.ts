@@ -4,7 +4,7 @@ import type { MaintenanceScheduleItem } from "./api"
 
 export type ScheduleItem = MaintenanceScheduleItem
 export type Status = ScheduleItem["status"]
-export type SortKey = "mileage" | "remaining" | "progress" | "date" | "unit" | "status" | "urgency"
+export type SortKey = "mileage" | "remaining" | "progress" | "date" | "unit" | "status" | "urgency" | "priority"
 export type SortDir = "asc" | "desc"
 export type RecLevel = "critical" | "warning" | "info" | "ok"
 export type Recommendation = { level: RecLevel; text: string }
@@ -35,7 +35,7 @@ export const PLAN_AHEAD_PCT = 70
 /** Select value of the "no section" option of the section filter. */
 export const NO_DEPOT = "__none__"
 
-export const STATUS_RANK: Record<Status, number> = { overdue: 0, in_progress: 1, upcoming: 2, completed: 3 }
+export const STATUS_RANK: Record<Status, number> = { overdue: 0, blocked: 1, in_progress: 2, upcoming: 3, completed: 4 }
 export const URGENCY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 }
 const LEVEL_RANK: Record<RecLevel, number> = { critical: 0, warning: 1, info: 2, ok: 3 }
 
@@ -94,8 +94,19 @@ export function recommend(
     if (item.status === "in_progress") return { level: "info", text: "Наряд выполняется" }
     return { level: "info", text: "Наряд создан, ожидает начала работ" }
   }
+  if (item.status === "blocked") {
+    const why = BLOCK_REASON_LABEL[item.blockedReason ?? "other"] ?? "причина не указана"
+    const until = item.blockedUntil ? ` до ${formatDate(item.blockedUntil)}` : ""
+    return {
+      level: "warning",
+      text: `Заблокировано: ${why.toLowerCase()}${until}. Обязательство не потеряно, наработка продолжает расти`,
+    }
+  }
   if (item.status === "in_progress") return { level: "info", text: "ТО выполняется" }
   if (item.status === "completed") return { level: "ok", text: "ТО выполнено" }
+  if (item.state === "over_tolerance") {
+    return { level: "critical", text: "Допуск превышен: ТО нужно выполнить немедленно, перенос только с согласованием администратора" }
+  }
   if (mileage === null) {
     return { level: "warning", text: "Нет данных о пробеге: проверьте привязку к Wialon и ГТК" }
   }
@@ -117,14 +128,20 @@ export function recommend(
   return { level: "ok", text: `Плановая эксплуатация, до порога ${fmtNum(remaining)} км${days}` }
 }
 
+/** The asset's own typical pace (km/day) when the server knows it, else the page-wide default. */
+export function paceOf(item: ScheduleItem, defaultKm: number | null): number | null {
+  const own = toNum(item.paceKmPerDay)
+  return own !== null && own > 0 ? own : defaultKm !== null && defaultKm > 0 ? defaultKm : null
+}
+
 export function enrich(item: ScheduleItem, dailyKm: number | null): Enriched {
   const mileage = toNum(item.mileage)
   const remaining = toNum(item.remainingKm)
   const threshold = toNum(item.nextThreshold)
   const intervalKm = toNum(item.intervalKm)
   const progress = progressPct(mileage, threshold, intervalKm, remaining)
-  const daysLeft =
-    remaining !== null && remaining > 0 && dailyKm !== null && dailyKm > 0 ? Math.ceil(remaining / dailyKm) : null
+  const pace = paceOf(item, dailyKm)
+  const daysLeft = remaining !== null && remaining > 0 && pace !== null ? Math.ceil(remaining / pace) : null
   return {
     item, mileage, remaining, threshold, intervalKm, progress, daysLeft,
     rec: recommend(item, mileage, remaining, progress, daysLeft),
@@ -149,6 +166,7 @@ export function sortValue(e: Enriched, key: SortKey): number | string | null {
     case "unit": return e.item.unit
     case "status": return STATUS_RANK[e.item.status]
     case "urgency": return e.item.urgency ? URGENCY_RANK[e.item.urgency] : null
+    case "priority": return e.item.priority ?? null
     case "date": {
       const time = parseDate(e.item.startDate).getTime()
       return Number.isNaN(time) ? null : time
@@ -174,7 +192,8 @@ export function compareEnriched(a: Enriched, b: Enriched, key: SortKey, dir: Sor
   )
 }
 
-export const defaultSortDir = (key: SortKey): SortDir => (key === "mileage" || key === "progress" ? "desc" : "asc")
+export const defaultSortDir = (key: SortKey): SortDir =>
+  key === "mileage" || key === "progress" || key === "priority" ? "desc" : "asc"
 
 /** The interval that needs attention first: worst level, then least km left, then type. */
 function compareLead(a: Enriched, b: Enriched): number {
@@ -331,6 +350,8 @@ export function validateRescheduleDate(newIso: string, todayIso: string): string
 }
 
 export type RescheduleImpact = {
+  paceKm: number | null // km/day used for the estimate
+  needsApproval: boolean // the server will ask an administrator (beyond tolerance or too many deferrals)
   fromIso: string
   toIso: string
   shiftDays: number // vs the date the bar has now
@@ -354,16 +375,22 @@ export function rescheduleImpact(
   const fromIso = item.startDate.slice(0, 10)
   const recommendedIso = (item.dateManual && item.recommendedDate ? item.recommendedDate : item.startDate).slice(0, 10)
   const remaining = toNum(item.remainingKm)
+  const paceKm = paceOf(item, dailyKm)
   const daysFromToday = Math.max(0, diffDaysIso(todayIso, toIso))
-  const remainingAtNewKm =
-    remaining !== null && dailyKm !== null && dailyKm > 0 ? remaining - dailyKm * daysFromToday : null
+  const remainingAtNewKm = remaining !== null && paceKm !== null ? remaining - paceKm * daysFromToday : null
   const vsRecommendedDays = diffDaysIso(recommendedIso, toIso)
   const rawOverrunKm = remainingAtNewKm !== null && remainingAtNewKm < 0 ? Math.abs(remainingAtNewKm) : 0
   // The recommended day is the day the threshold is reached (rounded up), so it is never an overrun by itself.
   // A threshold that is ALREADY exceeded today stays an overrun whatever date is chosen.
   const forgiven = remaining !== null && remaining > 0 && vsRecommendedDays <= 0
   const overrunKm = forgiven ? 0 : rawOverrunKm
+  const toleranceKm = item.limiting === "km" || !item.limiting ? toNum(item.tolerance) : null
+  const deferring = diffDaysIso(fromIso, toIso) > 0
+  const needsApproval =
+    deferring && ((toleranceKm !== null && overrunKm > toleranceKm) || (item.deferralCount ?? 0) >= DEFERRALS_BEFORE_APPROVAL)
   return {
+    paceKm,
+    needsApproval,
     fromIso,
     toIso,
     shiftDays: diffDaysIso(fromIso, toIso),
@@ -391,4 +418,173 @@ export function paletteForCode(code: string): CodeStyle {
   let hash = 0
   for (const char of code) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
   return PALETTE[hash % PALETTE.length]
+}
+
+
+// ── Living-plan model: labels and pure helpers ───────────────────────────────
+
+/** Same limit as the server: after this many deferrals an administrator must approve another one. */
+export const DEFERRALS_BEFORE_APPROVAL = 2
+
+export const BLOCK_REASON_LABEL: Record<string, string> = {
+  parts: "Нет запчастей",
+  no_bay: "Нет свободного бокса",
+  no_crew: "Нет бригады",
+  unit_unavailable: "Техника недоступна",
+  accident: "Авария / происшествие",
+  unplanned_repair: "Внеплановый ремонт",
+  sensor_failure: "Сбой датчика",
+  weather: "Погодные условия",
+  other: "Другая причина",
+}
+
+export const CONFIDENCE_LABEL: Record<string, { label: string; cls: string; hint: string }> = {
+  high: {
+    label: "Прогноз надёжный",
+    cls: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+    hint: "Есть реальная точка отсчёта (последнее ТО) и достаточно данных о наработке",
+  },
+  low: {
+    label: "Прогноз приблизительный",
+    cls: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+    hint: "Точка отсчёта взята по сетке порогов или данных о наработке мало: внесите дату и пробег последнего ТО",
+  },
+  stale: {
+    label: "Данные устарели",
+    cls: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
+    hint: "Датчик давно не передавал данные или помечен как неисправный: пробег может быть неточным",
+  },
+}
+
+export const STATE_LABEL: Record<string, string> = {
+  forecast: "Прогноз",
+  due_soon: "Окно плана открыто",
+  over_limit: "Лимит достигнут",
+  over_tolerance: "Допуск превышен",
+}
+
+export const PACE_SOURCE_LABEL: Record<string, string> = {
+  asset: "по самой технике",
+  blend: "своих данных мало: смешано с группой",
+  group: "по группе однотипной техники",
+  setting: "по настройке суточного пробега",
+  default: "значение по умолчанию",
+}
+
+export const BASELINE_SOURCE_LABEL: Record<string, string> = {
+  provisional: "по сетке порогов (предположение)",
+  import: "импорт из паспорта / 1С",
+  completed: "по выполненному ТО в системе",
+  manual: "внесено вручную",
+  waived: "цикл пропущен администратором",
+}
+
+export function limitingLabel(item: ScheduleItem): string {
+  if (item.limiting === "hours") return "по моточасам"
+  if (item.limiting === "days") return "по сроку"
+  return "по пробегу"
+}
+
+export function limitingUnit(item: ScheduleItem): string {
+  return item.limiting === "hours" ? "ч" : item.limiting === "days" ? "дн." : "км"
+}
+
+export type PriorityTone = "critical" | "high" | "medium" | "low"
+
+export function priorityTone(score: number | null | undefined): PriorityTone {
+  if (score === null || score === undefined) return "low"
+  if (score >= 80) return "critical"
+  if (score >= 60) return "high"
+  if (score >= 35) return "medium"
+  return "low"
+}
+
+export const PRIORITY_CLS: Record<PriorityTone, string> = {
+  critical: "bg-red-600 text-white",
+  high: "bg-orange-500 text-white",
+  medium: "bg-amber-400 text-amber-950",
+  low: "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200",
+}
+
+/** The line shows at most this many days ahead; a slow-pace date years away is drawn at the right edge. */
+export const TIMELINE_MAX_DAYS = 120
+
+export type TimelinePoint = {
+  key: "window" | "early" | "typical" | "late"
+  label: string
+  iso: string
+  pct: number
+  /** True when the real date is beyond the end of the line (it is drawn at the edge). */
+  clamped: boolean
+}
+export type Timeline = { points: TimelinePoint[]; todayPct: number; fromIso: string; toIso: string }
+
+/**
+ * Positions (0–100 %) of the planning window, the three date markers and today on one line, so the planner
+ * sees the spread of the forecast. Null when the server has no markers for this item.
+ */
+export function markerTimeline(item: ScheduleItem, todayIso: string): Timeline | null {
+  const defs: [TimelinePoint["key"], string, string | null | undefined][] = [
+    ["window", "Окно плана", item.windowOpen],
+    ["early", "Осторожно", item.dateEarly],
+    ["typical", "Обычно", item.dateTypical],
+    ["late", "Медленно", item.dateLate],
+  ]
+  const present = defs.filter((entry): entry is [TimelinePoint["key"], string, string] => !!entry[2])
+  if (!present.some(([key]) => key !== "window")) return null
+  const realOffsets = present.map(([, , iso]) => diffDaysIso(todayIso, iso.slice(0, 10)))
+  const offsets = realOffsets.map((offset) => Math.min(offset, TIMELINE_MAX_DAYS))
+  const low = Math.min(0, ...offsets)
+  const high = Math.max(0, ...offsets)
+  const span = high - low || 1
+  const pct = (offset: number) => Math.round(((offset - low) / span) * 1000) / 10
+  return {
+    points: present.map(([key, label, iso], index) => ({
+      key, label, iso: iso.slice(0, 10), pct: pct(offsets[index]), clamped: realOffsets[index] > TIMELINE_MAX_DAYS,
+    })),
+    todayPct: pct(0),
+    fromIso: shiftDate(todayIso, low),
+    toIso: shiftDate(todayIso, high),
+  }
+}
+
+export function paceText(item: ScheduleItem): string | null {
+  const pace = toNum(item.paceKmPerDay)
+  if (pace === null) return null
+  const source = PACE_SOURCE_LABEL[item.paceSource ?? ""] ?? item.paceSource ?? ""
+  const days = item.paceDays ? `, ${item.paceDays} дн. данных` : ""
+  return `${fmtNum(pace)} км/сут (${source}${days})`
+}
+
+const isPlan = (item: ScheduleItem): boolean => item.entity_type === "maintenance_plan" && !!item.plan_id
+
+function planStatusOf(item: ScheduleItem): string {
+  return item.planStatus ?? (item.status === "upcoming" || item.status === "overdue" ? "scheduled" : item.status)
+}
+
+export const canBlock = (item: ScheduleItem, canUpdate: boolean): boolean =>
+  canUpdate && isPlan(item) && planStatusOf(item) === "scheduled"
+
+export const canUnblock = (item: ScheduleItem, canUpdate: boolean): boolean =>
+  canUpdate && isPlan(item) && planStatusOf(item) === "blocked"
+
+export const canWaive = (item: ScheduleItem, isAdmin: boolean): boolean =>
+  isAdmin && isPlan(item) && (planStatusOf(item) === "scheduled" || planStatusOf(item) === "blocked")
+
+export const canSetBaseline = (item: ScheduleItem, canUpdate: boolean): boolean =>
+  canUpdate && item.entity_type !== "work_order" && !!item.interval_id
+
+/** `YYYY-MM-DD` of a date that is not in the future, or an error text. */
+export function validateBaselineDate(iso: string, todayIso: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return "Укажите дату последнего ТО"
+  if (diffDaysIso(todayIso, iso) > 0) return "Дата не может быть в будущем"
+  return null
+}
+
+/** Number typed by a person ("1 234,5"); null when empty or invalid. */
+export function parseKmInput(text: string): number | null {
+  const cleaned = text.replace(/\s/g, "").replace(",", ".")
+  if (cleaned === "") return null
+  const value = Number(cleaned)
+  return Number.isFinite(value) ? value : null
 }

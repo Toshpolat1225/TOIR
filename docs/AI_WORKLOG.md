@@ -325,3 +325,11 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 - Xavfsizlik: frontend faqat backend `dateManual` yuborganda sudrashni yoqadi (eski backendda sudrash o'chiq).
 - Tekshirildi: backend 435 test (pg_rehearse, migratsiya up/down/up, schema.sql parity 13 ustun), frontend 43 unit test, haqiqiy Edge brauzerida 14 + 5 tekshiruv.
 - Ogohlantirish: migratsiya jonli bazaga `docker compose up --build frontend` orqali (backend bog'liqligi) avtomatik qo'llandi; keyingi safar `--no-deps` ishlatish.
+
+## 2026-11-16: «Tirik reja» modeli to'liq joriy etildi
+- Task: ТО rejalashni «oxirgi ТО'dan beri» + har texnika tempi + majburiyat yo'qolmasligi modeliga o'tkazish (taklif artifact'i bo'yicha).
+- Backend: `maintenance_engine` (sof hisob: temp, 3 sana, допуск, kaskad, birlashtirish, ustuvorlik), `maintenance_obligations` (yuklash/baholash/saqlash), `maintenance_lifecycle` (yakunlash+kaskad, block/unblock/waive, uzilishlar, bazalar, KPI, health, soatlik ish, CSV import, shadow report). `reconcile_asset_plans` va `get_schedule` dvigatelga o'tdi. Migratsiya `0032_tirik_reja` (4 yangi jadval, intervalga rank/moto-soat/допуск/lead, rejaga yangi holatlar). CLI: `maintenance-shadow-report`, `maintenance-health`, `maintenance-baseline-import`.
+- Frontend: «Живой план» kartasi (markerlar chizig'i, ishonch, ustuvorlik sabablari, qarorlar jurnali), bloklash/o'tkazish/baza/uzilish dialoglari, KPI paneli, jadvalda «Приоритет» ustuni, «Отменить план» olib tashlandi, har texnikaning o'z tempi.
+- Tested: backend 481 test (pg_rehearse), migratsiya up/down/up + schema.sql parity (yangi jadvallar), jonli baza nusxasida (213 MB zaxira) ikki marta soatlik sikl: farqsiz. Frontend tsc/eslint 0, 57 unit test, haqiqiy Edge'da stub API bilan 18/18 (admin va operator).
+- Jonli: migratsiya 0032 qo'llandi (zaxira `backups/pre0032_20261116_181356.dump`), 87 aktiv / 775 majburiyat, hammasining hisob boshi taxminiy; hujjat: docs/MAINTENANCE_LIVE_PLAN.md.
+- Next: foydalanuvchi oxirgi ТО sanalari/probegini CSV bilan beradi; kaskad xaritasi va допуск qiymatlarini tasdiqlaydi; audit_logs va `wialon_counter_states` imlo xatosi (kechiktirilgan).

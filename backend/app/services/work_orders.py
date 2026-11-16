@@ -14,6 +14,7 @@ from app.models.maintenance import MaintenancePlan
 from app.models.work_orders import WorkOrder
 from app.repositories import work_orders as repository
 from app.repositories import maintenance as maintenance_repository
+from app.services import maintenance_lifecycle as maintenance_lifecycle
 from app.repositories import references as references_repository
 from app.schemas.work_orders import (
     NormCheckRequest,
@@ -323,10 +324,15 @@ async def create_order(
                             status_code=422,
                             detail="Maintenance plan must exist and belong to the selected fixed asset",
                         )
-                    if plan.status in {"completed", "cancelled"}:
+                    if plan.status in {"completed", "cancelled", "covered", "waived"}:
                         raise _conflict(
-                            "A completed or cancelled maintenance plan cannot be reopened"
+                            "A completed, covered, waived or cancelled maintenance plan cannot be reopened"
                         )
+                    # starting the work is the decision to act: a blocked plan is released by it
+                    plan.blocked_reason = None
+                    plan.blocked_until = None
+                    plan.blocked_note = None
+                    plan.blocked_by_disruption_id = None
                     plan.work_order_id = order_id
                     plan.status = "in_progress"
                     plan.updated_at = datetime.now(timezone.utc)
@@ -433,8 +439,12 @@ async def update_order(
         if "repairs" in payload.model_fields_set:
             await repository.replace_repairs(db, order.id, payload.repairs or [])
         if requested_status == "completed":
-            await maintenance_repository.complete_plan_for_order(
-                db, order.id, datetime.now(timezone.utc).date()
+            await maintenance_lifecycle.complete_plan_for_order(
+                db, order, datetime.now(timezone.utc).date(), user=user
+            )
+        elif requested_status == "cancelled":
+            await maintenance_lifecycle.release_plan_for_order(
+                db, order.id, note="наряд отменён"
             )
         await db.commit()
     except IntegrityError as exc:
@@ -450,6 +460,9 @@ async def delete_order(db: AsyncSession, order_id: UUID) -> None:
     order = await repository.get_order(db, order_id, lock=True)
     if order is None:
         raise _not_found()
+    await maintenance_lifecycle.release_plan_for_order(
+        db, order.id, note="наряд удалён"
+    )
     await db.delete(order)
     try:
         await db.commit()

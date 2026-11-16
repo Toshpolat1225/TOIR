@@ -84,7 +84,7 @@ def test_p6_migration_chain_is_linear_from_0012_to_head():
             parents.add(down_revision)
         elif isinstance(down_revision, (tuple, list)):
             parents.update(down_revision)
-    assert all_revisions - parents == {"0031_plan_manual_date"}
+    assert all_revisions - parents == {"0032_tirik_reja"}
     assert all(len(revision) <= 32 for revision in all_revisions)
 
     p6_revisions = [

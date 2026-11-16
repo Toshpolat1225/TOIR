@@ -37,6 +37,10 @@ from app.models.localization import (
     WorkTypeTranslation,
 )
 from app.models.maintenance import (
+    AssetMaintenanceBaseline,
+    AssetMeterDaily,
+    MaintenanceDecision,
+    MaintenanceDisruption,
     MaintenanceInterval,
     MaintenancePlan,
     MaintenanceSettings,
@@ -78,6 +82,10 @@ __all__ = [
     "MaintenanceLog",
     "MaintenancePlan",
     "MaintenanceSettings",
+    "AssetMaintenanceBaseline",
+    "AssetMeterDaily",
+    "MaintenanceDecision",
+    "MaintenanceDisruption",
     "MileageCalculationInput",
     "MileageHistory",
     "Nomenclature",

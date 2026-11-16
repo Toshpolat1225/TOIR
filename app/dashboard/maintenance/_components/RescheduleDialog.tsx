@@ -114,8 +114,14 @@ export function RescheduleDialog({ item, toIso, todayIso, dailyKm, color, busy, 
             <div role="alert" className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
               <p className="font-bold">{"Порог ТО будет превышен"}</p>
               <p className="mt-1">
-                {`К ${formatDate(impact.toIso)} при среднем пробеге ${fmtNum(dailyKm ?? 0)} км/сут пробег превысит порог (${intervalTitle(item.type)}) примерно на ${fmtNum(impact.overrunKm)} км. Эксплуатация сверх порога повышает риск отказа.`}
+                {`К ${formatDate(impact.toIso)} при пробеге этой техники ${fmtNum(impact.paceKm ?? 0)} км/сут пробег превысит порог (${intervalTitle(item.type)}) примерно на ${fmtNum(impact.overrunKm)} км. Эксплуатация сверх порога повышает риск отказа.`}
               </p>
+            </div>
+          )}
+          {impact.needsApproval && (
+            <div role="note" className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-200">
+              <p className="font-bold">{"Потребуется согласование администратора"}</p>
+              <p className="mt-1">{"Новая дата выходит за допуск сверх лимита или это уже третий перенос подряд. Оператору сервер откажет; администратор может подтвердить перенос."}</p>
             </div>
           )}
           {impact.level === "info" && (

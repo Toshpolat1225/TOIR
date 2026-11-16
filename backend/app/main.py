@@ -42,6 +42,7 @@ from app.services.wialon import run_periodic_wialon_sync
 from app.services.gtk import run_periodic_gtk_sync
 from app.models.audit_log import AuditLog
 from app.services.audit_log import run_audit_retention
+from app.services.maintenance_lifecycle import run_periodic_maintenance
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         else None
     )
     gtk_task = _create_gtk_sync_task()
+    maintenance_task = (
+        asyncio.create_task(run_periodic_maintenance())
+        if settings.maintenance_job_enabled
+        else None
+    )
     try:
         yield
     finally:
@@ -81,6 +87,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         if gtk_task is not None:
             gtk_task.cancel()
             tasks.append(gtk_task)
+        if maintenance_task is not None:
+            maintenance_task.cancel()
+            tasks.append(maintenance_task)
         await asyncio.gather(*tasks, return_exceptions=True)
         await engine.dispose()
 

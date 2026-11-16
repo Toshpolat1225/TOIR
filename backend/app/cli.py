@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import csv
 import getpass
 import json
 import logging
@@ -544,6 +545,61 @@ def _probe_unit(item: dict[str, object]) -> dict[str, object]:
     }
 
 
+async def _maintenance_shadow_report() -> int:
+    from app.services import maintenance_lifecycle
+
+    try:
+        async with SessionFactory() as db:
+            report = await maintenance_lifecycle.shadow_report(db)
+    except SQLAlchemyError:
+        logger.exception("Could not build the maintenance shadow report")
+        return 2
+    finally:
+        await engine.dispose()
+    print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
+    return 0
+
+
+async def _maintenance_health(fix: bool) -> int:
+    from app.services import maintenance_lifecycle
+
+    try:
+        async with SessionFactory() as db:
+            report = await maintenance_lifecycle.run_health(db, fix=fix)
+            if fix:
+                await db.commit()
+    except SQLAlchemyError:
+        logger.exception("Could not run the maintenance health check")
+        return 2
+    finally:
+        await engine.dispose()
+    print(json.dumps(report.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    return 0 if report.ok or fix else 1
+
+
+async def _maintenance_baseline_import(path: str, apply: bool) -> int:
+    from app.services import maintenance_lifecycle
+
+    try:
+        with open(path, newline="", encoding="utf-8-sig") as handle:
+            rows = list(csv.DictReader(handle))
+    except OSError as exc:
+        print(f"Fayl o'qilmadi: {exc}", file=sys.stderr)
+        return 2
+    try:
+        async with SessionFactory() as db:
+            report = await maintenance_lifecycle.import_baselines(db, rows, apply=apply)
+    except SQLAlchemyError:
+        logger.exception("Could not import maintenance baselines")
+        return 2
+    finally:
+        await engine.dispose()
+    print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
+    if not apply:
+        print("DRY-RUN: hech narsa yozilmadi. Yozish uchun --apply qo'shing.", file=sys.stderr)
+    return 0 if not report["errors"] else 1
+
+
 async def _wialon_probe() -> int:
     if settings.wialon_host is None or settings.wialon_token is None:
         print("Wialon sozlanmagan: WIALON_HOST yoki WIALON_TOKEN yo‘q.", file=sys.stderr)
@@ -582,6 +638,20 @@ def main() -> int:
         help="Idempotently recalculate plans for operational locomotive and diesel assets",
     )
     subparsers.add_parser("wialon-probe", help="Read safe Wialon unit diagnostics")
+    subparsers.add_parser(
+        "maintenance-shadow-report",
+        help="Read-only: what the living-plan engine sees (states, confidence, pace, what it would plan)",
+    )
+    health_parser = subparsers.add_parser(
+        "maintenance-health", help="Check the plan invariants (--fix repairs the safe ones)"
+    )
+    health_parser.add_argument("--fix", action="store_true")
+    baseline_parser = subparsers.add_parser(
+        "maintenance-baseline-import",
+        help="Import 'last service' baselines from a CSV (inv_number,interval_code,done_at,odometer_km|km,hours,note); dry-run by default",
+    )
+    baseline_parser.add_argument("--file", required=True)
+    baseline_parser.add_argument("--apply", action="store_true")
     mileage_parser = subparsers.add_parser(
         "wagon-mileage-run",
         help="Calculate and report wagon mileage",
@@ -626,6 +696,12 @@ def main() -> int:
                 help="Limit to this locomotive inventory number (repeatable); use it for a first trial",
             )
     arguments = parser.parse_args()
+    if arguments.command == "maintenance-shadow-report":
+        return asyncio.run(_maintenance_shadow_report())
+    if arguments.command == "maintenance-health":
+        return asyncio.run(_maintenance_health(arguments.fix))
+    if arguments.command == "maintenance-baseline-import":
+        return asyncio.run(_maintenance_baseline_import(arguments.file, arguments.apply))
     if arguments.command == "wialon-counter-release":
         return asyncio.run(
             _wialon_counter_release(

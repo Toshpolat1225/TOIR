@@ -16,7 +16,7 @@ def _plan(**over):
     base = dict(
         status="scheduled", scheduled_date=TODAY + timedelta(days=2), scheduled_date_manual=False,
         recommended_date=None, reschedule_reason=None, trigger_mileage=Decimal("5000"),
-        asset_id="asset", interval_id="interval",
+        asset_id="asset", interval_id="interval", deferral_count=0,
     )
     base.update(over)
     return SimpleNamespace(**base)

@@ -1,14 +1,22 @@
 "use client"
 
 import { Fragment, useState, useEffect, useCallback, useRef } from "react"
-import { api, type Employee, type MaintenancePlan, type MaintenanceScheduleItem, type MileageHistory, type Section, type WorkType } from "@/lib/api"
+import {
+  api, type Employee, type MaintenanceBlockReason, type MaintenanceDecision, type MaintenanceDisruption,
+  type MaintenanceDisruptionCreate, type MaintenanceKpis, type MaintenancePlan, type MaintenanceScheduleItem,
+  type MileageHistory, type Section, type WorkType,
+} from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import {
   AssetStatusChip, AssetTypeIcon, EquipmentAvatar, IntervalChip, OnlineChip, SectionChip, assetStyle,
 } from "./_components/EquipmentBadge"
 import { RescheduleDialog } from "./_components/RescheduleDialog"
+import { LivePlanCard } from "./_components/LivePlanCard"
+import { LiveOverview } from "./_components/LiveOverview"
+import { BaselineDialog, BlockDialog, DisruptionDialog, WaiveDialog } from "./_components/PlanDialogs"
 import {
-  NEAR_THRESHOLD_PCT, NO_DEPOT, buildCsv, compareEnriched, defaultSortDir, enrich, fmtNum, formatDate,
+  CONFIDENCE_LABEL, NEAR_THRESHOLD_PCT, NO_DEPOT, PRIORITY_CLS, buildCsv, compareEnriched, defaultSortDir, enrich,
+  fmtNum, formatDate, priorityTone,
   MAX_RESCHEDULE_DAYS, clampShift, equipmentSubtitle, equipmentTitle, groupByUnit, intervalCode, intervalTitle,
   inventoryNumberOf, isInRange, isReschedulable, isTestInterval, paletteForCode, parseDate, shiftDate,
   shiftFromPixels, toIsoDate, toNum, validateRescheduleDate,
@@ -18,13 +26,13 @@ import {
 import {
   Calendar, Wrench, CheckCircle, Clock, AlertTriangle,
   BarChart3, List, ChevronLeft, ChevronRight, Info, Plus, X, ChevronDown,
-  Gauge, Bell, Filter, Search, RotateCcw
+  Gauge, Bell, Filter, Search, RotateCcw, Lock
 } from "@/components/ui/icons"
 
 /* ═══════════════════════════════════════
    ДАННЫЕ
 ═══════════════════════════════════════ */
-type Status = "upcoming" | "in_progress" | "completed" | "overdue"
+type Status = "upcoming" | "in_progress" | "completed" | "overdue" | "blocked"
 type ScheduleItem = MaintenanceScheduleItem
 
 type ToastNotification = {
@@ -272,6 +280,7 @@ const statusConfig: Record<Status, { label: string; icon: React.ElementType; cls
   in_progress: { label:"Выполняется",  icon:Wrench,        cls:"bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400",     dot:"bg-amber-500" },
   completed:   { label:"Выполнено",    icon:CheckCircle,   cls:"bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400",     dot:"bg-green-500" },
   overdue:     { label:"Просрочено",   icon:AlertTriangle, cls:"bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400",             dot:"bg-red-500" },
+  blocked:     { label:"Заблокировано", icon:Lock,         cls:"bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300", dot:"bg-orange-500" },
 }
 
 /* ═══════════════════════════════════════
@@ -304,6 +313,7 @@ const SORT_LABELS: Record<SortKey, string> = {
   unit: "Название",
   status: "Статус",
   urgency: "Срочность",
+  priority: "Приоритет",
 }
 
 const REC_CLS: Record<RecLevel, string> = {
@@ -323,14 +333,13 @@ const URGENCY_LABEL: Record<string, { label: string; cls: string }> = {
 }
 
 // Only these moves are accepted by the API (maintenance.update_plan); anything else is a 409.
+// A maintenance obligation is never cancelled by hand: it is blocked (reason) or, by an administrator, waived.
 const PLAN_TRANSITIONS: Record<string, { to: MaintenancePlan["status"]; label: string; danger?: boolean }[]> = {
   scheduled: [
     { to: "in_progress", label: "Начать выполнение" },
-    { to: "cancelled", label: "Отменить план", danger: true },
   ],
   in_progress: [
     { to: "completed", label: "Завершить ТО" },
-    { to: "cancelled", label: "Отменить план", danger: true },
   ],
 }
 const PLAN_STATUS_LABEL: Record<string, string> = {
@@ -338,6 +347,9 @@ const PLAN_STATUS_LABEL: Record<string, string> = {
   in_progress: "Выполняется",
   completed: "Выполнено",
   cancelled: "Отменено",
+  blocked: "Заблокировано",
+  covered: "Перекрыто старшим ТО",
+  waived: "Цикл пропущен",
 }
 const MILEAGE_SOURCE_LABEL: Record<string, string> = { wialon: "Wialon", gtk: "ГТК", manual: "Вручную" }
 
@@ -362,6 +374,7 @@ const TABLE_COLUMNS: { label: string; sort?: SortKey }[] = [
   { label: "До ТО", sort: "remaining" },
   { label: "Выработка", sort: "progress" },
   { label: "Срочность", sort: "urgency" },
+  { label: "Приоритет", sort: "priority" },
   { label: "Дата", sort: "date" },
   { label: "Статус", sort: "status" },
   { label: "Рекомендация" },
@@ -1049,7 +1062,7 @@ const dateToDdMmYyyy = formatDate
 /* ═══════════════════════════════════════
    КАРТОЧКА ТО (боковая панель)
 ═══════════════════════════════════════ */
-function DetailDrawer({ entry, siblings, onSelect, plan, canUpdate, updating, error, onClose, onCreateOrder, onChangeStatus, canReschedule, suspended, onRequestMove, onResetDate }: {
+function DetailDrawer({ entry, siblings, onSelect, plan, canUpdate, updating, error, onClose, onCreateOrder, onChangeStatus, canReschedule, suspended, onRequestMove, onResetDate, isAdmin, todayIso: todayIsoProp, decisions, decisionsError, onBlock, onUnblock, onWaive, onBaseline }: {
   entry: Enriched
   siblings: Enriched[]
   onSelect: (id: string) => void
@@ -1064,14 +1077,22 @@ function DetailDrawer({ entry, siblings, onSelect, plan, canUpdate, updating, er
   suspended: boolean // a confirmation dialog is open on top: Escape must close only that dialog
   onRequestMove: (item: ScheduleItem, toIso: string) => void
   onResetDate: (item: ScheduleItem) => void
+  isAdmin: boolean
+  todayIso: string
+  decisions: MaintenanceDecision[] | null
+  decisionsError: boolean
+  onBlock: (item: ScheduleItem) => void
+  onUnblock: (item: ScheduleItem) => void
+  onWaive: (item: ScheduleItem) => void
+  onBaseline: (item: ScheduleItem) => void
 }) {
   const item = entry.item
   const st = statusConfig[item.status]
   const cfg = typeCfg(item.type)
   const urgency = item.urgency ? URGENCY_LABEL[item.urgency] : null
-  const planStatus = plan?.status ?? (item.status === "upcoming" || item.status === "overdue" ? "scheduled" : item.status)
+  const planStatus = plan?.status ?? item.planStatus ?? (item.status === "upcoming" || item.status === "overdue" ? "scheduled" : item.status)
   const transitions = item.entity_type === "maintenance_plan" && item.plan_id ? PLAN_TRANSITIONS[planStatus] ?? [] : []
-  const todayIso = toIsoDate(new Date())
+  const todayIso = todayIsoProp
   const [completedDate, setCompletedDate] = useState(todayIso)
   const [moveDate, setMoveDate] = useState(item.startDate.slice(0, 10))
   useEffect(() => { setMoveDate(item.startDate.slice(0, 10)) }, [item.id, item.startDate])
@@ -1154,6 +1175,10 @@ function DetailDrawer({ entry, siblings, onSelect, plan, canUpdate, updating, er
             <p className="mb-1 text-[10px] font-bold uppercase tracking-wider opacity-70">{"Рекомендация"}</p>
             {entry.rec.text}
           </div>
+
+          <LivePlanCard item={item} todayIso={todayIso} canUpdate={canUpdate} isAdmin={isAdmin} busy={updating}
+            decisions={decisions} decisionsError={decisionsError}
+            onBlock={() => onBlock(item)} onUnblock={() => onUnblock(item)} onWaive={() => onWaive(item)} onBaseline={() => onBaseline(item)} />
 
           <div className="grid grid-cols-2 gap-3">
             {metric("Пробег", entry.mileage !== null ? `${fmtNum(entry.mileage)} км` : "—")}
@@ -1302,7 +1327,7 @@ function DetailDrawer({ entry, siblings, onSelect, plan, canUpdate, updating, er
               </div>
             </div>
           )}
-          {item.entity_type === "maintenance_plan" && transitions.length === 0 && (
+          {item.entity_type === "maintenance_plan" && transitions.length === 0 && planStatus !== "blocked" && (
             <p className="text-xs text-gray-400">{`Статус «${PLAN_STATUS_LABEL[planStatus] ?? planStatus}» изменить нельзя.`}</p>
           )}
 
@@ -1380,6 +1405,19 @@ export default function MaintenancePage() {
   const [moveBusy, setMoveBusy] = useState(false)
   const [moveError, setMoveError] = useState<string | null>(null)
   const [drawerId, setDrawerId] = useState<string | null>(null)
+  // Living plan: KPIs, disruptions, the decision log of the open card and the dialogs on top of it.
+  const [kpis, setKpis] = useState<MaintenanceKpis | null>(null)
+  const [disruptions, setDisruptions] = useState<MaintenanceDisruption[]>([])
+  const [serverPace, setServerPace] = useState<number | null>(null)
+  const [decisions, setDecisions] = useState<MaintenanceDecision[] | null>(null)
+  const [decisionsError, setDecisionsError] = useState(false)
+  type LiveDialog =
+    | { kind: "block" | "waive" | "baseline"; item: ScheduleItem }
+    | { kind: "disruption" }
+  const [liveDialog, setLiveDialog] = useState<LiveDialog | null>(null)
+  const [liveBusy, setLiveBusy] = useState(false)
+  const [liveError, setLiveError] = useState<string | null>(null)
+  const [closingDisruptionId, setClosingDisruptionId] = useState<string | null>(null)
   // The full-page spinner is only for the very first load; later refreshes keep the page (and an open card) in place.
   const hasLoadedRef = useRef(false)
   const [grouped, setGrouped] = useState(true) // one row per unit; the rest of its intervals expand below it
@@ -1479,6 +1517,7 @@ export default function MaintenancePage() {
       const response = await api.maintenanceSchedule.get({ month: queryMonth })
       if (requestId !== scheduleRequestIdRef.current) return
       setSchedule(response.schedule)
+      setServerPace(toNum(response.daily_average_km))
       setScheduleError(null)
     } catch (e) {
       if (requestId !== scheduleRequestIdRef.current) return
@@ -1506,7 +1545,7 @@ export default function MaintenancePage() {
     }
     if (filterAssetId) params.asset_id = filterAssetId
     if (filter !== "overdue") params.month = month
-    if (filter === "in_progress" || filter === "completed") {
+    if (filter === "in_progress" || filter === "completed" || filter === "blocked") {
       params.status = filter
     } else if (filter === "upcoming" || filter === "overdue") {
       params.status = "scheduled"
@@ -1527,6 +1566,22 @@ export default function MaintenancePage() {
   }, [filter, filterAssetId, filterUrgency, monthOffset])
 
   useEffect(() => { void fetchPlans() }, [fetchPlans])
+
+  // KPIs and open disruptions: a failure here must never break the page (they are an overview, not the data).
+  const fetchLive = useCallback(async () => {
+    try {
+      const [kpiResponse, disruptionResponse] = await Promise.all([
+        api.maintenanceLive.kpis(),
+        api.maintenanceLive.disruptions({ only_open: true }),
+      ])
+      setKpis(kpiResponse)
+      setDisruptions(disruptionResponse)
+    } catch {
+      setKpis(null)
+      setDisruptions([])
+    }
+  }, [])
+  useEffect(() => { void fetchLive() }, [fetchLive])
 
   useEffect(() => {
     let active = true
@@ -1634,7 +1689,10 @@ export default function MaintenancePage() {
     ...new Map(allSchedule.map((item) => [item.asset_id, item.unit] as const)).entries(),
   ]
   
-  const dailyKm = toNum(dailyAverageKm) !== null && Number(dailyAverageKm) > 0 ? Number(dailyAverageKm) : null
+  // The configured figure wins; otherwise the server's default. Each row also carries its own pace (paceKmPerDay).
+  const dailyKm = toNum(dailyAverageKm) !== null && Number(dailyAverageKm) > 0
+    ? Number(dailyAverageKm)
+    : serverPace !== null && serverPace > 0 ? serverPace : null
   const depotOptions = [...new Set(allSchedule.map((item) => item.depot).filter(Boolean))].sort((a, b) =>
     a.localeCompare(b, "ru"),
   )
@@ -1876,7 +1934,77 @@ export default function MaintenancePage() {
     }
   }
 
+  const refreshAll = () => Promise.all([fetchSchedule(monthOffset), fetchPlans(), fetchLive()])
+
+  const runLive = async (action: () => Promise<unknown>, done: { title: string; message: string }, failure: string) => {
+    setLiveBusy(true)
+    setLiveError(null)
+    try {
+      await action()
+      setLiveDialog(null)
+      addNotification({ type: "success", ...done }, undefined, true)
+      await refreshAll()
+      return true
+    } catch (cause) {
+      setLiveError(cause instanceof Error ? cause.message : failure)
+      return false
+    } finally {
+      setLiveBusy(false)
+    }
+  }
+
+  const confirmBlock = (item: ScheduleItem, data: { reason_code: MaintenanceBlockReason; until: string | null; note: string | null }) =>
+    runLive(() => api.maintenancePlans.block(item.plan_id as string, data),
+      { title: "План заблокирован", message: `${equipmentTitle(item)} · ${intervalCode(item.type)}: обязательство сохранено` },
+      "Не удалось заблокировать план")
+
+  const unblockItem = async (item: ScheduleItem) => {
+    if (!item.plan_id) return
+    await runLive(() => api.maintenancePlans.unblock(item.plan_id as string),
+      { title: "Блокировка снята", message: `${equipmentTitle(item)} · ${intervalCode(item.type)} вернулся в план` },
+      "Не удалось снять блокировку")
+  }
+
+  const confirmWaive = (item: ScheduleItem, reason: string) =>
+    runLive(() => api.maintenancePlans.waive(item.plan_id as string, { reason }),
+      { title: "Цикл пропущен", message: `${equipmentTitle(item)} · ${intervalCode(item.type)}: следующий отсчёт от порога этого цикла` },
+      "Не удалось пропустить цикл")
+
+  const confirmBaseline = (item: ScheduleItem, payload: { done_at: string; km?: number | null; odometer_km?: number | null; hours?: number | null; note?: string | null }) =>
+    runLive(() => api.maintenanceLive.saveBaseline({ asset_id: item.asset_id, interval_id: item.interval_id as string, ...payload }),
+      { title: "Последнее ТО сохранено", message: `${equipmentTitle(item)} · ${intervalCode(item.type)}: прогноз пересчитан от новой точки отсчёта` },
+      "Не удалось сохранить последнее ТО")
+
+  const confirmDisruption = (data: MaintenanceDisruptionCreate) =>
+    runLive(() => api.maintenanceLive.createDisruption(data),
+      { title: "Сбой зафиксирован", message: "Запланированные работы в этот период заблокированы, но не потеряны" },
+      "Не удалось зафиксировать сбой")
+
+  const closeDisruption = async (id: string) => {
+    setClosingDisruptionId(id)
+    try {
+      await api.maintenanceLive.closeDisruption(id)
+      addNotification({ type: "success", title: "Сбой закрыт", message: "Заблокированные работы вернулись в план" }, undefined, true)
+      await refreshAll()
+    } catch (cause) {
+      addNotification({ type: "error", title: "Не удалось закрыть сбой", message: cause instanceof Error ? cause.message : "Ошибка запроса" }, undefined, true)
+    } finally {
+      setClosingDisruptionId(null)
+    }
+  }
+
   const drawerEntry = drawerId ? allEnriched.find((entry) => entry.item.id === drawerId) ?? null : null
+  const drawerPlanId = drawerEntry?.item.plan_id ?? null
+  useEffect(() => {
+    setDecisions(null)
+    setDecisionsError(false)
+    if (!drawerPlanId) return
+    let active = true
+    api.maintenancePlans.decisions(drawerPlanId)
+      .then((rows) => { if (active) setDecisions(rows) })
+      .catch(() => { if (active) setDecisionsError(true) })
+    return () => { active = false }
+  }, [drawerPlanId, schedule])
   const drawerSiblings = drawerEntry
     ? allEnriched
         .filter((entry) => entry.item.asset_id === drawerEntry.item.asset_id)
@@ -1918,6 +2046,7 @@ export default function MaintenancePage() {
     in_progress: allSchedule.filter(s => s.status === "in_progress").length,
     completed:   allSchedule.filter(s => s.status === "completed").length,
     overdue:     allSchedule.filter(s => s.status === "overdue").length,
+    blocked:     allSchedule.filter(s => s.status === "blocked").length,
   }
 
   if (loading && !hasLoadedRef.current) return (
@@ -1959,7 +2088,32 @@ export default function MaintenancePage() {
           suspended={pendingMove !== null}
           onRequestMove={requestMove}
           onResetDate={resetManualDate}
+          isAdmin={user?.role === "admin"}
+          todayIso={todayIso}
+          decisions={decisions}
+          decisionsError={decisionsError}
+          onBlock={(item) => { setLiveError(null); setLiveDialog({ kind: "block", item }) }}
+          onUnblock={(item) => void unblockItem(item)}
+          onWaive={(item) => { setLiveError(null); setLiveDialog({ kind: "waive", item }) }}
+          onBaseline={(item) => { setLiveError(null); setLiveDialog({ kind: "baseline", item }) }}
         />
+      )}
+      {liveDialog?.kind === "block" && (
+        <BlockDialog item={liveDialog.item} todayIso={todayIso} busy={liveBusy} error={liveError}
+          onConfirm={(data) => void confirmBlock(liveDialog.item, data)} onCancel={() => { if (!liveBusy) setLiveDialog(null) }} />
+      )}
+      {liveDialog?.kind === "waive" && (
+        <WaiveDialog item={liveDialog.item} busy={liveBusy} error={liveError}
+          onConfirm={(reason) => void confirmWaive(liveDialog.item, reason)} onCancel={() => { if (!liveBusy) setLiveDialog(null) }} />
+      )}
+      {liveDialog?.kind === "baseline" && (
+        <BaselineDialog item={liveDialog.item} todayIso={todayIso} busy={liveBusy} error={liveError}
+          onConfirm={(payload) => void confirmBaseline(liveDialog.item, payload)} onCancel={() => { if (!liveBusy) setLiveDialog(null) }} />
+      )}
+      {liveDialog?.kind === "disruption" && (
+        <DisruptionDialog todayIso={todayIso} sections={sections} busy={liveBusy} error={liveError}
+          assets={assetOptions.map(([id, label]) => ({ id, label }))}
+          onConfirm={(data) => void confirmDisruption(data)} onCancel={() => { if (!liveBusy) setLiveDialog(null) }} />
       )}
       {pendingMove && (
         <RescheduleDialog
@@ -2172,6 +2326,7 @@ export default function MaintenancePage() {
                   <option value="in_progress">🟡 {"Выполняется"} ({counts.in_progress})</option>
                   <option value="upcoming">⚪ {"Запланировано"} ({counts.upcoming})</option>
                   <option value="completed">🟢 {"Выполнено"} ({counts.completed})</option>
+                  <option value="blocked">🟠 {"Заблокировано"} ({counts.blocked})</option>
                 </select>
               </div>
 
@@ -2367,6 +2522,11 @@ export default function MaintenancePage() {
         </div>
       )}
 
+      <LiveOverview kpis={kpis} disruptions={disruptions} sections={sections} canUpdate={canUpdatePlans}
+        assetLabel={(id) => assetOptions.find(([assetId]) => assetId === id)?.[1] ?? "техника"}
+        busyId={closingDisruptionId} onClose={(id) => void closeDisruption(id)}
+        onCreate={() => { setLiveError(null); setLiveDialog({ kind: "disruption" }) }} />
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <button type="button" onClick={() => { if (topMileage) setDrawerId(topMileage.lead.item.id) }} disabled={!topMileage}
           className="rounded-2xl border border-gray-200 bg-white p-4 text-left transition-colors hover:border-blue-300 disabled:cursor-default dark:border-gray-800 dark:bg-gray-900">
@@ -2394,8 +2554,8 @@ export default function MaintenancePage() {
       </div>
 
       {/* KPI карточки */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        {(["upcoming","in_progress","completed","overdue"] as Status[]).map(s => {
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 sm:gap-4">
+        {(["upcoming","in_progress","completed","overdue","blocked"] as Status[]).map(s => {
           const cfg = statusConfig[s]
           const count = counts[s]
           const pct = counts.all > 0 ? Math.round((count / counts.all) * 100) : 0
@@ -2691,6 +2851,21 @@ export default function MaintenancePage() {
                           className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold hover:opacity-80 ${urgency.cls}`}>{urgency.label}</button>
                       ) : (
                         <span className="text-sm text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {item.priority !== null && item.priority !== undefined ? (
+                        <span title={(item.priorityWhy ?? []).join("; ") || "Приоритет"}
+                          className={`inline-flex min-w-[2.25rem] justify-center rounded-full px-2 py-0.5 text-xs font-bold ${PRIORITY_CLS[priorityTone(item.priority)]}`}>
+                          {item.priority}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-gray-400">—</span>
+                      )}
+                      {item.confidence && item.confidence !== "high" && (
+                        <span title={CONFIDENCE_LABEL[item.confidence].hint} className="ml-1 text-xs text-amber-600 dark:text-amber-400">
+                          {item.confidence === "stale" ? "⚠" : "≈"}
+                        </span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">

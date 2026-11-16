@@ -902,10 +902,11 @@ async def update_maintenance_interval(
     changes = payload.model_dump(exclude_unset=True)
     next_km = changes.get("interval_km", interval.interval_km)
     next_days = changes.get("interval_days", interval.interval_days)
-    if next_km is None and next_days is None:
+    next_hours = changes.get("interval_hours", interval.interval_hours)
+    if next_km is None and next_days is None and next_hours is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="At least one of interval_km or interval_days is required",
+            detail="At least one of interval_km, interval_days or interval_hours is required",
         )
     for field_name, value in changes.items():
         setattr(interval, field_name, value)
