@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -23,8 +24,28 @@ async def list_unified_assets(
     offset: int,
     sort_by: str,
     sort_order: str,
+    connection: str | None = None,
+    mileage_min: Decimal | None = None,
+    mileage_max: Decimal | None = None,
+    wialon_min: Decimal | None = None,
+    wialon_max: Decimal | None = None,
+    suspect: bool = False,
 ) -> tuple[list[UnifiedAssetRead], int]:
     now = datetime.now(timezone.utc)
+    # Forward only the extra filters that are set, so callers/tests of the base
+    # filter set keep seeing exactly the same repository call.
+    extra_filters = {
+        key: value
+        for key, value in {
+            "connection": connection,
+            "mileage_min": mileage_min,
+            "mileage_max": mileage_max,
+            "wialon_min": wialon_min,
+            "wialon_max": wialon_max,
+            "suspect": suspect or None,
+        }.items()
+        if value is not None
+    }
     try:
         rows, total = await repository.list_unified_assets(
             db,
@@ -40,6 +61,7 @@ async def list_unified_assets(
             sort_by=sort_by,
             sort_order=sort_order,
             now=now,
+            **extra_filters,
         )
     except ValueError as exc:
         raise HTTPException(

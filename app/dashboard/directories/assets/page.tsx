@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useRealtime } from "@/lib/use-realtime"
 import { useDebouncedValue } from "@/lib/use-debounced-value"
 import {
@@ -1454,7 +1454,38 @@ function toRow(
   }
 }
 
-const PAGE_SIZE = 50
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200]
+type SortOrder = "asc" | "desc"
+type ConnectionFilter = "" | "online" | "offline" | "no_unit"
+
+// UI label -> backend sort field (UNIFIED_SORT_FIELDS in the unified assets repository).
+const SORT_OPTIONS: { value: string; label: string }[] = [
+  { value: "name", label: "Наименование" },
+  { value: "inv_number", label: "Инв. номер" },
+  { value: "series", label: "Серия" },
+  { value: "asset_type", label: "Тип" },
+  { value: "section", label: "Участок" },
+  { value: "status", label: "Статус" },
+  { value: "source", label: "Источник" },
+  { value: "mileage", label: "Пробег ТОИР" },
+  { value: "wialon_cnm", label: "Пробег Wialon" },
+  { value: "wialon_cneh", label: "Моточасы" },
+  { value: "speed", label: "Скорость" },
+  { value: "last_message_at", label: "Последнее сообщение" },
+]
+
+const TABLE_COLUMNS: { label: string; sort: string }[] = [
+  { label: "Источник", sort: "source" },
+  { label: "Тип", sort: "asset_type" },
+  { label: "Наименование / Номер", sort: "name" },
+  { label: "Участок", sort: "section" },
+  { label: "Пробег ТОИР, км", sort: "mileage" },
+  { label: "Пробег Wialon, км", sort: "wialon_cnm" },
+  { label: "Моточасы", sort: "wialon_cneh" },
+  { label: "Скорость", sort: "speed" },
+  { label: "Связь", sort: "last_message_at" },
+  { label: "Статус / действие", sort: "status" },
+]
 
 export default function OsPage() {
   const { sections, sectionsData, getSectionId, hasAmbiguousSectionName } = useSections()
@@ -1479,6 +1510,24 @@ export default function OsPage() {
   const [fSection,  setFSection]  = useState("")
   const [fStatus,   setFStatus]   = useState<AssetStatus | "">("")
   const [fBehavior, setFBehavior] = useState("")
+  const [fConnection, setFConnection] = useState<ConnectionFilter>("")
+  const [fMileageMin, setFMileageMin] = useState("")
+  const [fMileageMax, setFMileageMax] = useState("")
+  const [fWialonMin, setFWialonMin] = useState("")
+  const [fWialonMax, setFWialonMax] = useState("")
+  const [fSuspect, setFSuspect] = useState(false)
+  const [sortBy, setSortBy] = useState("name")
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc")
+  const [pageSize, setPageSize] = useState(50)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  // Typing a number must not fire a request per keystroke.
+  const rangeKey = useDebouncedValue(JSON.stringify([fMileageMin, fMileageMax, fWialonMin, fWialonMax]))
+  const extras = useMemo(() => {
+    const [mileageMin, mileageMax, wialonMin, wialonMax] = JSON.parse(rangeKey) as string[]
+    return { connection: fConnection, mileageMin, mileageMax, wialonMin, wialonMax, suspect: fSuspect, sortBy, sortOrder, pageSize }
+  }, [rangeKey, fConnection, fSuspect, sortBy, sortOrder, pageSize])
+  const extrasRef = useRef(extras)
+  useEffect(() => { extrasRef.current = extras }, [extras])
   const [counts, setCounts] = useState<FixedAssetStats | null>(null)
   const [loadError, setLoadError] = useState("")
   const [statsError, setStatsError] = useState("")
@@ -1559,12 +1608,21 @@ export default function OsPage() {
     // Background (realtime) refreshes must not flash the loading state or empty the table.
     if (!silent) setLoading(true)
     try {
+      // Sorting, page size and the extra filters are read from a ref so realtime refreshes
+      // always use the user's current choices.
+      const extra = extrasRef.current
       const params: Parameters<typeof api.fixedAssets.unified>[0] = {
-        limit: PAGE_SIZE,
-        offset: pg * PAGE_SIZE,
-        sort_by: "name",
-        sort_order: "asc",
+        limit: extra.pageSize,
+        offset: pg * extra.pageSize,
+        sort_by: extra.sortBy,
+        sort_order: extra.sortOrder,
       };
+      if (extra.connection) params.connection = extra.connection
+      if (extra.mileageMin !== "") params.mileage_min = extra.mileageMin
+      if (extra.mileageMax !== "") params.mileage_max = extra.mileageMax
+      if (extra.wialonMin !== "") params.wialon_min = extra.wialonMin
+      if (extra.wialonMax !== "") params.wialon_max = extra.wialonMax
+      if (extra.suspect) params.suspect = true
       if (q) params.q = q;
       if (ft) params.asset_type = ft as AssetType;
       if (source) params.source = source;
@@ -1630,7 +1688,7 @@ export default function OsPage() {
   useEffect(() => {
     setPage(0)
     setSelectedAssetIds([])
-  }, [search, fType, fSource, fSection, fStatus, fBehavior, fWithoutOrgUnit])
+  }, [search, fType, fSource, fSection, fStatus, fBehavior, fWithoutOrgUnit, extras])
 
   useEffect(() => {
     setSelectedAssetIds([])
@@ -1638,11 +1696,21 @@ export default function OsPage() {
 
   useEffect(() => {
     fetchAssets(page, debouncedSearch, fType, fSource, fStatus, fSection, fBehavior)
-  }, [fetchAssets, page, debouncedSearch, fType, fSource, fSection, fStatus, fBehavior]);
+  }, [fetchAssets, page, debouncedSearch, fType, fSource, fSection, fStatus, fBehavior, extras]);
 
-  const totalPages    = Math.ceil(total / PAGE_SIZE)
-  const activeFilters = [fType, fSource, fSection, fStatus, fBehavior, search, fWithoutOrgUnit].filter(Boolean).length
-  const clearFilters  = () => { setFType(""); setFSource(""); setFSection(""); setFStatus(""); setFBehavior(""); setFWithoutOrgUnit(false); setSearch("") }
+  const totalPages    = Math.ceil(total / pageSize)
+  // Sorting and page size are view settings, not filters, so they are not counted here.
+  const advancedActive = [fConnection, fMileageMin, fMileageMax, fWialonMin, fWialonMax, fSuspect].filter(Boolean).length
+  const activeFilters = [fType, fSource, fSection, fStatus, fBehavior, search, fWithoutOrgUnit].filter(Boolean).length + advancedActive
+  const clearFilters  = () => {
+    setFType(""); setFSource(""); setFSection(""); setFStatus(""); setFBehavior(""); setFWithoutOrgUnit(false); setSearch("")
+    setFConnection(""); setFMileageMin(""); setFMileageMax(""); setFWialonMin(""); setFWialonMax(""); setFSuspect(false)
+  }
+  // Clicking a header sorts by it; clicking the active one flips the direction.
+  const toggleSort = (field: string) => {
+    if (sortBy === field) setSortOrder((current) => current === "asc" ? "desc" : "asc")
+    else { setSortBy(field); setSortOrder("asc") }
+  }
   const selectType = (code: string) => setFType((current) => current === code ? "" : code)
   const selectBehavior = (code: string) => { setFStatus(""); setFBehavior((current) => current === code ? "" : code) }
   const selectStatus = (code: string, behavior?: string) => {
@@ -2199,6 +2267,38 @@ export default function OsPage() {
             Без участка
           </label>
 
+          <button type="button" onClick={() => setShowAdvanced((current) => !current)} aria-expanded={showAdvanced}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">
+            <SlidersHorizontal className="w-3.5 h-3.5"/> Ещё фильтры{advancedActive > 0 && <span className="rounded-full bg-blue-600 px-1.5 text-[10px] font-semibold text-white">{advancedActive}</span>}
+          </button>
+
+          {/* Sorting */}
+          <div className="flex items-center gap-1.5 text-sm text-gray-500">
+            <span>Сортировка:</span>
+            <div className="relative">
+              <select aria-label="Сортировать по" value={sortBy} onChange={(event) => setSortBy(event.target.value)} className={selCls}>
+                {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
+            </div>
+            <button type="button" onClick={() => setSortOrder((current) => current === "asc" ? "desc" : "asc")}
+              aria-label={sortOrder === "asc" ? "По возрастанию" : "По убыванию"}
+              title={sortOrder === "asc" ? "По возрастанию" : "По убыванию"}
+              className="rounded-lg border border-gray-300 px-2.5 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800">
+              {sortOrder === "asc" ? "▲ А→Я" : "▼ Я→А"}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5 text-sm text-gray-500">
+            <span>На странице:</span>
+            <div className="relative">
+              <select aria-label="Записей на странице" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className={selCls}>
+                {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
+            </div>
+          </div>
+
           {activeFilters > 0 && (
             <button onClick={clearFilters}
               className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium px-2.5 py-1.5 rounded-lg hover:bg-red-50 transition-colors border border-red-200 dark:border-red-800">
@@ -2209,6 +2309,45 @@ export default function OsPage() {
             Найдено: <span className="font-semibold text-gray-700 dark:text-gray-300">{total}</span>
           </div>
         </div>
+
+        {showAdvanced && (
+          <div className="mt-4 grid grid-cols-1 gap-4 border-t border-gray-100 pt-4 dark:border-gray-800 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">Связь Wialon</label>
+              <div className="relative">
+                <select aria-label="Связь Wialon" value={fConnection} onChange={(event) => setFConnection(event.target.value as ConnectionFilter)} className={selCls + " w-full"}>
+                  <option value="">Любая</option>
+                  <option value="online">Онлайн (сообщение до 15 мин)</option>
+                  <option value="offline">Нет связи (более 15 мин)</option>
+                  <option value="no_unit">Без блока Wialon</option>
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">Пробег ТОИР, км</label>
+              <div className="flex items-center gap-2">
+                <Input type="number" min="0" inputMode="decimal" placeholder="от" aria-label="Пробег ТОИР от" value={fMileageMin} onChange={(event) => setFMileageMin(event.target.value)} />
+                <span className="text-gray-400">—</span>
+                <Input type="number" min="0" inputMode="decimal" placeholder="до" aria-label="Пробег ТОИР до" value={fMileageMax} onChange={(event) => setFMileageMax(event.target.value)} />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">Пробег Wialon, км</label>
+              <div className="flex items-center gap-2">
+                <Input type="number" min="0" inputMode="decimal" placeholder="от" aria-label="Пробег Wialon от" value={fWialonMin} onChange={(event) => setFWialonMin(event.target.value)} />
+                <span className="text-gray-400">—</span>
+                <Input type="number" min="0" inputMode="decimal" placeholder="до" aria-label="Пробег Wialon до" value={fWialonMax} onChange={(event) => setFWialonMax(event.target.value)} />
+              </div>
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">
+                <input type="checkbox" checked={fSuspect} onChange={(event) => setFSuspect(event.target.checked)} />
+                Только подозрительные ⚠
+              </label>
+            </div>
+          </div>
+        )}
       </div>
 
       {(loadError || statsError) && <div role="alert" className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{loadError || statsError}</div>}
@@ -2224,9 +2363,19 @@ export default function OsPage() {
           <thead>
             <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
               {canWrite && <th className="px-3 py-3.5"><input type="checkbox" aria-label="Выбрать все основные средства на странице" checked={allPageSelected} disabled={selectableAssetIds.length === 0} onChange={() => setSelectedAssetIds((current) => allPageSelected ? current.filter((id) => !selectableAssetIds.includes(id)) : Array.from(new Set([...current, ...selectableAssetIds])))} /></th>}
-              {["Источник","Тип","Наименование / Номер","Участок","Пробег ТОИР, км","Пробег Wialon, км","Моточасы","Скорость","Связь","Статус / действие"].map((heading) => (
-                <th key={heading} className="text-left px-4 py-3.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{heading}</th>
-              ))}
+              {TABLE_COLUMNS.map((column) => {
+                const active = sortBy === column.sort
+                return (
+                  <th key={column.label} aria-sort={active ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}
+                    className="text-left px-4 py-3.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                    <button type="button" onClick={() => toggleSort(column.sort)} title="Нажмите для сортировки"
+                      className={`inline-flex items-center gap-1 uppercase tracking-wider hover:text-gray-900 dark:hover:text-white ${active ? "text-blue-600 dark:text-blue-400" : ""}`}>
+                      {column.label}
+                      <span aria-hidden="true" className={active ? "" : "opacity-30"}>{active ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}</span>
+                    </button>
+                  </th>
+                )
+              })}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">

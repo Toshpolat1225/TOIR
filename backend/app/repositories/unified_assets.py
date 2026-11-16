@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -138,10 +139,22 @@ async def list_unified_assets(
     sort_by: str,
     sort_order: str,
     now: datetime,
+    connection: str | None = None,
+    mileage_min: Decimal | None = None,
+    mileage_max: Decimal | None = None,
+    wialon_min: Decimal | None = None,
+    wialon_max: Decimal | None = None,
+    suspect: bool = False,
 ):
     if sort_by not in UNIFIED_SORT_FIELDS:
         raise ValueError("Unsupported sort field")
+    telemetry_filters = (
+        connection, mileage_min, mileage_max, wialon_min, wialon_max, suspect or None
+    )
     if source == "gtk":
+        # GTK-only objects have no TOIR mileage and no Wialon telemetry.
+        if any(value is not None for value in telemetry_filters):
+            return [], 0
         return await _list_gtk_only(
             db,
             asset_type=asset_type,
@@ -153,11 +166,32 @@ async def list_unified_assets(
             limit=limit,
             offset=offset,
             descending=sort_order == "desc",
+            sort_by=sort_by,
         )
 
     filters: list[Any] = []
     unit_links = _wialon_links()
     unit = aliased(WialonUnitRecord, unit_links)
+    online_since = now - timedelta(minutes=15)
+    if connection == "online":
+        filters.append(unit.last_message_at >= online_since)
+    elif connection == "offline":
+        filters.append(unit.unit_id.is_not(None))
+        filters.append(
+            or_(unit.last_message_at.is_(None), unit.last_message_at < online_since)
+        )
+    elif connection == "no_unit":
+        filters.append(unit.unit_id.is_(None))
+    if mileage_min is not None:
+        filters.append(FixedAsset.mileage >= mileage_min)
+    if mileage_max is not None:
+        filters.append(FixedAsset.mileage <= mileage_max)
+    if wialon_min is not None:
+        filters.append(unit.cnm >= wialon_min)
+    if wialon_max is not None:
+        filters.append(unit.cnm <= wialon_max)
+    if suspect:
+        filters.append(unit.suspect_absolute.is_(True))
     if source is not None:
         filters.append(_source_expression(unit) == source)
     if asset_type is not None:
@@ -198,7 +232,10 @@ async def list_unified_assets(
         rows_query = rows_query.where(*filters)
     total = (await db.execute(count_query)).scalar_one()
     column = _sort_columns(now, unit)[sort_by]
-    ordering = column.desc() if sort_order == "desc" else column.asc()
+    # NULLs last in both directions: PostgreSQL puts them first on DESC otherwise.
+    ordering = (
+        column.desc().nulls_last() if sort_order == "desc" else column.asc().nulls_last()
+    )
     result = await db.execute(
         rows_query.order_by(
             ordering,
@@ -247,6 +284,7 @@ async def _list_gtk_only(
     limit: int,
     offset: int,
     descending: bool,
+    sort_by: str = "name",
 ):
     """GTK objects that have no TOIR asset yet. They carry no TOIR status or section,
     so any filter on those (or a master's section scope) leaves nothing to show."""
@@ -273,10 +311,12 @@ async def _list_gtk_only(
         await db.execute(text(f"SELECT count(*) {_GTK_ONLY_FROM} {where}"), params)
     ).scalar_one()
     direction = "DESC" if descending else "ASC"
+    # Only these two columns exist for GTK-only rows; any other sort falls back to name.
+    order_column = "g.inventory_number" if sort_by == "inv_number" else "g.name"
     rows = await db.execute(
         text(
             f"SELECT g.kind, g.gtk_id, g.name, g.inventory_number {_GTK_ONLY_FROM} {where} "
-            f"ORDER BY g.name {direction}, g.gtk_id LIMIT :limit OFFSET :offset"
+            f"ORDER BY {order_column} {direction} NULLS LAST, g.gtk_id LIMIT :limit OFFSET :offset"
         ),
         params,
     )

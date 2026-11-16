@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 import csv
@@ -157,6 +158,12 @@ async def get_unified_fixed_assets(
     offset: int = Query(default=0, ge=0),
     sort_by: str = "name",
     sort_order: SortOrder = "asc",
+    connection: Literal["online", "offline", "no_unit"] | None = None,
+    mileage_min: Decimal | None = None,
+    mileage_max: Decimal | None = None,
+    wialon_min: Decimal | None = None,
+    wialon_max: Decimal | None = None,
+    suspect: bool = False,
 ) -> PaginatedResponse[UnifiedAssetRead]:
     items, total = await unified_service.list_unified_assets(
         db,
@@ -171,6 +178,12 @@ async def get_unified_fixed_assets(
         offset=offset,
         sort_by=sort_by,
         sort_order=sort_order,
+        connection=connection,
+        mileage_min=mileage_min,
+        mileage_max=mileage_max,
+        wialon_min=wialon_min,
+        wialon_max=wialon_max,
+        suspect=suspect,
     )
     return PaginatedResponse[UnifiedAssetRead](
         items=items, total=total, limit=limit, offset=offset

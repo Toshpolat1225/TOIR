@@ -1135,6 +1135,12 @@ export type UnifiedAssetListParams = ListParams & {
   section_id?: string;
   without_org_unit?: boolean;
   q?: string;
+  connection?: "online" | "offline" | "no_unit";
+  mileage_min?: string | number;
+  mileage_max?: string | number;
+  wialon_min?: string | number;
+  wialon_max?: string | number;
+  suspect?: boolean;
 };
 
 export type FixedAssetStats = {
