@@ -29,6 +29,7 @@ from app.services.wagon_mileage import (
     sum_wialon_sample_deltas,
 )
 from app.core.config import settings
+from app.services.wialon_quality import COUNTER_ADVANCED_REASON
 from app.services.wagon_mileage_engine import (
     OdometerInterval,
     select_main_locomotive,
@@ -97,6 +98,21 @@ def _decision_payload(decision: SegmentDecision) -> dict[str, Any]:
     }
 
 
+def is_superseded_same_time_reading(row: Any) -> bool:
+    """A later, higher counter value carrying the SAME message time as an earlier reading.
+
+    The gate keeps the earlier reading as the representative and counts the growth with the
+    next reading that has a newer message time, so this row is (rightly) not calculation
+    eligible. It must not be fed to the segment calculation: any ineligible point inside a
+    membership window holds the whole window, and one such row would block every wagon of
+    the train. Dropping it still leaves a valid, monotone sequence of readings.
+    """
+    return (
+        not row.calculation_eligible
+        and row.rejection_reason == COUNTER_ADVANCED_REASON
+    )
+
+
 def _held(reason: str, locomotive_id: UUID | None = None) -> SegmentDecision:
     return SegmentDecision("HELD", False, None, locomotive_id, (), reason)
 
@@ -163,6 +179,8 @@ async def _load_inputs(db: AsyncSession):
     latest_reading_at: dict[UUID, datetime] = {}
     for row in readings:
         if row.asset_id is None or row.observed_at is None:
+            continue
+        if is_superseded_same_time_reading(row):
             continue
         point = OdometerPoint(
             reading_id=row.id,

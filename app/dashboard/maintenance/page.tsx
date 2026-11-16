@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth-context"
 import {
   Calendar, Wrench, CheckCircle, Clock, AlertTriangle,
   BarChart3, List, ChevronLeft, ChevronRight, Info, Plus, X, ChevronDown,
-  Gauge, Wifi, WifiOff, Bell, Filter, Search, RotateCcw
+  Gauge, Bell, Filter, Search, RotateCcw
 } from "@/components/ui/icons"
 
 /* ═══════════════════════════════════════
@@ -278,6 +278,165 @@ function diffDays(a: Date, b: Date): number {
 }
 function durationDays(h: number): number {
   return Math.max(0.5, h / 24)
+}
+
+/* ═══════════════════════════════════════
+   ПРОБЕГ: СОРТИРОВКА И РЕКОМЕНДАЦИИ
+═══════════════════════════════════════ */
+type SortKey = "mileage" | "remaining" | "progress" | "date" | "unit" | "status" | "urgency"
+type RecLevel = "critical" | "warning" | "info" | "ok"
+type Recommendation = { level: RecLevel; text: string }
+type Enriched = {
+  item: ScheduleItem
+  mileage: number | null
+  remaining: number | null
+  threshold: number | null
+  progress: number | null // % of the next threshold already used
+  daysLeft: number | null
+  rec: Recommendation
+}
+
+// From this share of the threshold the unit counts as "close to maintenance".
+const NEAR_THRESHOLD_PCT = 90
+const TABLE_PAGE_SIZES = [25, 50, 100, 200]
+
+const SORT_LABELS: Record<SortKey, string> = {
+  mileage: "Пробег",
+  remaining: "Осталось до ТО",
+  progress: "Выработка порога",
+  date: "Дата ТО",
+  unit: "Название",
+  status: "Статус",
+  urgency: "Срочность",
+}
+
+// Numbers read best "largest first"; names, dates and "remaining" read best ascending.
+const defaultSortDir = (key: SortKey): "asc" | "desc" =>
+  key === "mileage" || key === "progress" ? "desc" : "asc"
+
+const STATUS_RANK: Record<Status, number> = { overdue: 0, in_progress: 1, upcoming: 2, completed: 3 }
+const URGENCY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 }
+
+const REC_CLS: Record<RecLevel, string> = {
+  critical: "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300",
+  warning: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300",
+  info: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300",
+  ok: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300",
+}
+
+const URGENCY_LABEL: Record<string, { label: string; cls: string }> = {
+  high: { label: "Высокая", cls: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" },
+  medium: { label: "Средняя", cls: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" },
+  low: { label: "Низкая", cls: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" },
+}
+
+const toNum = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === "") return null
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+const fmtNum = (n: number) => n.toLocaleString("ru-RU", { maximumFractionDigits: 1 })
+
+function recommend(
+  item: ScheduleItem,
+  mileage: number | null,
+  remaining: number | null,
+  progress: number | null,
+  daysLeft: number | null,
+): Recommendation {
+  if (item.entity_type === "work_order") {
+    if (item.status === "completed") return { level: "ok", text: "Работы выполнены" }
+    if (item.status === "overdue") return { level: "critical", text: "Наряд просрочен: уточните ход работ у исполнителя" }
+    if (item.status === "in_progress") return { level: "info", text: "Наряд выполняется" }
+    return { level: "info", text: "Наряд создан, ожидает начала работ" }
+  }
+  if (item.status === "in_progress") return { level: "info", text: "ТО выполняется" }
+  if (item.status === "completed") return { level: "ok", text: "ТО выполнено" }
+  if (mileage === null) {
+    return { level: "warning", text: "Нет данных о пробеге: проверьте привязку к Wialon и ГТК" }
+  }
+  if (remaining === null) {
+    return item.status === "overdue"
+      ? { level: "critical", text: "Срок ТО прошёл: создайте наряд" }
+      : { level: "info", text: `ТО по сроку, плановая дата ${dateToDdMmYyyy(item.startDate)}` }
+  }
+  const days = daysLeft !== null ? ` (≈ ${daysLeft} дн.)` : ""
+  if (remaining <= 0) {
+    return { level: "critical", text: `Порог превышен на ${fmtNum(Math.abs(remaining))} км: срочно создайте наряд` }
+  }
+  if (progress !== null && progress >= NEAR_THRESHOLD_PCT) {
+    return { level: "warning", text: `До ТО ${fmtNum(remaining)} км${days}: подготовьте наряд и запчасти` }
+  }
+  if (progress !== null && progress >= 70) {
+    return { level: "info", text: `Запланируйте ТО: осталось ${fmtNum(remaining)} км${days}` }
+  }
+  return { level: "ok", text: `Плановая эксплуатация, до порога ${fmtNum(remaining)} км${days}` }
+}
+
+function enrich(item: ScheduleItem, dailyKm: number | null): Enriched {
+  const mileage = toNum(item.mileage)
+  const remaining = toNum(item.remainingKm)
+  const threshold = toNum(item.nextThreshold)
+  const progress =
+    mileage !== null && threshold !== null && threshold > 0 ? (mileage / threshold) * 100 : null
+  const daysLeft =
+    remaining !== null && remaining > 0 && dailyKm !== null ? Math.ceil(remaining / dailyKm) : null
+  return { item, mileage, remaining, threshold, progress, daysLeft, rec: recommend(item, mileage, remaining, progress, daysLeft) }
+}
+
+function sortValue(e: Enriched, key: SortKey): number | string | null {
+  switch (key) {
+    case "mileage": return e.mileage
+    case "remaining": return e.remaining
+    case "progress": return e.progress
+    case "unit": return e.item.unit
+    case "status": return STATUS_RANK[e.item.status]
+    case "urgency": return e.item.urgency ? URGENCY_RANK[e.item.urgency] : null
+    case "date": {
+      try { return parseDate(e.item.startDate).getTime() } catch { return null }
+    }
+  }
+}
+
+// Empty values go last in BOTH directions, so a missing mileage never tops the list.
+function compareNullsLast(a: number | string | null, b: number | string | null, dir: "asc" | "desc"): number {
+  if (a === null && b === null) return 0
+  if (a === null) return 1
+  if (b === null) return -1
+  const cmp = typeof a === "string" ? a.localeCompare(String(b), "ru") : a - (b as number)
+  return dir === "asc" ? cmp : -cmp
+}
+
+function compareEnriched(a: Enriched, b: Enriched, key: SortKey, dir: "asc" | "desc"): number {
+  return (
+    compareNullsLast(sortValue(a, key), sortValue(b, key), dir) ||
+    compareNullsLast(a.remaining, b.remaining, "asc") ||
+    a.item.unit.localeCompare(b.item.unit, "ru") ||
+    a.item.type.localeCompare(b.item.type, "ru")
+  )
+}
+
+const TABLE_COLUMNS: { label: string; sort?: SortKey }[] = [
+  { label: "№" },
+  { label: "Ед.ТПС", sort: "unit" },
+  { label: "Пробег, км", sort: "mileage" },
+  { label: "Вид ТО" },
+  { label: "Порог ТО, км" },
+  { label: "До ТО", sort: "remaining" },
+  { label: "Выработка", sort: "progress" },
+  { label: "Срочность", sort: "urgency" },
+  { label: "Дата", sort: "date" },
+  { label: "Статус", sort: "status" },
+  { label: "Рекомендация" },
+  { label: "Действие" },
+]
+
+// Same spreadsheet-formula guard as the backend CSV export.
+const csvCell = (value: string | number | null): string => {
+  if (value === null) return ""
+  const text = String(value)
+  const safe = /^[=+\-@]/.test(text) ? `'${text}` : text
+  return `"${safe.replace(/"/g, '""')}"`
 }
 
 /* ═══════════════════════════════════════
@@ -938,6 +1097,16 @@ export default function MaintenancePage() {
   const [filterUrgency, setFilterUrgency] = useState<"all" | "high" | "medium" | "low">("all")
   const [filterAssetId, setFilterAssetId] = useState("")
   const [showFilters, setShowFilters] = useState(false)
+  // Сортировка: крупные пробеги сверху по умолчанию
+  const [sortKey, setSortKey] = useState<SortKey>("mileage")
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
+  const [filterDepot, setFilterDepot] = useState("")
+  const [filterMinMileage, setFilterMinMileage] = useState("")
+  const [filterMaxMileage, setFilterMaxMileage] = useState("")
+  const [onlyNear, setOnlyNear] = useState(false)
+  const [onlyWithMileage, setOnlyWithMileage] = useState(false)
+  const [tablePage, setTablePage] = useState(0)
+  const [tablePageSize, setTablePageSize] = useState(50)
   const canUpdatePlans = user?.role === "admin" || user?.role === "operator"
 
   // showToast = true — показать всплывающее уведомление, false — только в колокольчик
@@ -1153,28 +1322,119 @@ export default function MaintenancePage() {
     ...new Map(allSchedule.map((item) => [item.asset_id, item.unit] as const)).entries(),
   ]
   
+  const dailyKm = toNum(dailyAverageKm) !== null && Number(dailyAverageKm) > 0 ? Number(dailyAverageKm) : null
+  const depotOptions = [...new Set(allSchedule.map((item) => item.depot).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, "ru"),
+  )
+  const minMileage = toNum(filterMinMileage)
+  const maxMileage = toNum(filterMaxMileage)
+
   // Фильтрация — показываем элементы, пересекающиеся с диапазоном
-  const visible = allSchedule.filter(item => {
+  const filteredEnriched = allSchedule.map((item) => enrich(item, dailyKm)).filter((entry) => {
+    const item = entry.item
     if (!item.startDate) return false
     try {
       const s = parseDate(item.startDate)
       const e = addDays(s, durationDays(item.durationH))
       const inRange = s <= rangeEnd && e >= rangeStart
-      
+
       // Фильтр по статусу
       const statusMatch = filter === "all" || item.status === filter
       const urgencyMatch = filterUrgency === "all" || item.urgency === filterUrgency
       const assetMatch = !filterAssetId || item.asset_id === filterAssetId
-      
+
       // Фильтр по типу ТО
       const typeMatch = filterType === "all" || item.type === filterType
-      
+
       // Фильтр по названию оборудования (поиск)
       const unitMatch = !filterUnit || item.unit.toLowerCase().includes(filterUnit.toLowerCase())
-      
-      return inRange && statusMatch && urgencyMatch && assetMatch && typeMatch && unitMatch
+
+      const depotMatch = !filterDepot || item.depot === filterDepot
+      const mileageMatch =
+        (minMileage === null || (entry.mileage !== null && entry.mileage >= minMileage)) &&
+        (maxMileage === null || (entry.mileage !== null && entry.mileage <= maxMileage))
+      const withMileageMatch = !onlyWithMileage || entry.mileage !== null
+      const nearMatch =
+        !onlyNear || (entry.progress ?? 0) >= NEAR_THRESHOLD_PCT || entry.rec.level === "critical"
+
+      return (
+        inRange && statusMatch && urgencyMatch && assetMatch && typeMatch && unitMatch &&
+        depotMatch && mileageMatch && withMileageMatch && nearMatch
+      )
     } catch { return false }
   })
+  const sortedEnriched = [...filteredEnriched].sort((a, b) => compareEnriched(a, b, sortKey, sortDir))
+  // Gantt and the table both receive the same sorted list (largest mileage first by default).
+  const visible = sortedEnriched.map((entry) => entry.item)
+
+  const hasActiveFilters =
+    filterType !== "all" || !!filterUnit || filter !== "all" || filterUrgency !== "all" || !!filterAssetId ||
+    !!filterDepot || filterMinMileage !== "" || filterMaxMileage !== "" || onlyNear || onlyWithMileage
+
+  const withMileageRows = sortedEnriched.filter((entry) => entry.mileage !== null)
+  const topMileage = withMileageRows.reduce<Enriched | null>(
+    (best, entry) => (best === null || (entry.mileage ?? 0) > (best.mileage ?? 0) ? entry : best),
+    null,
+  )
+  const averageMileage = withMileageRows.length
+    ? withMileageRows.reduce((sum, entry) => sum + (entry.mileage ?? 0), 0) / withMileageRows.length
+    : null
+  const criticalCount = sortedEnriched.filter((entry) => entry.rec.level === "critical").length
+  const nearCount = sortedEnriched.filter((entry) => entry.rec.level === "warning").length
+
+  const totalTablePages = Math.max(1, Math.ceil(sortedEnriched.length / tablePageSize))
+  const safeTablePage = Math.min(tablePage, totalTablePages - 1)
+  const tableRows = sortedEnriched.slice(safeTablePage * tablePageSize, (safeTablePage + 1) * tablePageSize)
+
+  const toggleSort = (key: SortKey) => {
+    setTablePage(0)
+    if (sortKey === key) setSortDir((current) => (current === "asc" ? "desc" : "asc"))
+    else {
+      setSortKey(key)
+      setSortDir(defaultSortDir(key))
+    }
+  }
+
+  const resetAllFilters = () => {
+    setFilterType("all")
+    setFilterUnit("")
+    setFilter("all")
+    setFilterUrgency("all")
+    setFilterAssetId("")
+    setFilterDepot("")
+    setFilterMinMileage("")
+    setFilterMaxMileage("")
+    setOnlyNear(false)
+    setOnlyWithMileage(false)
+    setTablePage(0)
+  }
+
+  const exportCsv = () => {
+    const header = ["№", "Ед.ТПС", "Участок", "Исполнитель", "Пробег, км", "Вид ТО", "Порог ТО, км", "Осталось, км", "Осталось, дн.", "Выработка, %", "Срочность", "Дата", "Статус", "Рекомендация"]
+    const lines = sortedEnriched.map((entry, index) => [
+      index + 1,
+      entry.item.unit,
+      entry.item.depot || "",
+      entry.item.tech || "",
+      entry.mileage,
+      entry.item.type,
+      entry.threshold,
+      entry.remaining,
+      entry.daysLeft,
+      entry.progress === null ? null : Math.round(entry.progress),
+      entry.item.urgency ? URGENCY_LABEL[entry.item.urgency].label : "",
+      dateToDdMmYyyy(entry.item.startDate),
+      statusConfig[entry.item.status].label,
+      entry.rec.text,
+    ].map((cell) => csvCell(cell as string | number | null)).join(";"))
+    const blob = new Blob(["\ufeff" + [header.map(csvCell).join(";"), ...lines].join("\r\n")], { type: "text/csv;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `maintenance-${new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
 
   const counts = {
     all:         allSchedule.length,
@@ -1312,14 +1572,14 @@ export default function MaintenancePage() {
         >
           <div className="flex items-center gap-3">
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-              (filterType !== "all" || filterUnit || filter !== "all" || filterUrgency !== "all" || filterAssetId)
+              hasActiveFilters
                 ? "bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400"
                 : "bg-gray-100 dark:bg-gray-800 text-gray-500"
             }`}>
               <Filter className="w-4 h-4" />
             </div>
             <span className="text-sm font-semibold text-gray-900 dark:text-white">{"Фильтры"}</span>
-            {(filterType !== "all" || filterUnit || filter !== "all" || filterUrgency !== "all" || filterAssetId) && (
+            {hasActiveFilters && (
               <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
                 {"Активны"}
               </span>
@@ -1420,20 +1680,52 @@ export default function MaintenancePage() {
               {/* Кнопка сброса */}
               <div className="flex items-end">
                 <button
-                  onClick={() => {
-                    setFilterType("all")
-                    setFilterUnit("")
-                    setFilter("all")
-                    setFilterUrgency("all")
-                    setFilterAssetId("")
-                  }}
-                  disabled={filterType === "all" && !filterUnit && filter === "all" && filterUrgency === "all" && !filterAssetId}
+                  onClick={resetAllFilters}
+                  disabled={!hasActiveFilters}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   <RotateCcw className="w-4 h-4" />
                   {"Сбросить"}
                 </button>
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 pt-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wider">
+                  {"Участок"}
+                </label>
+                <select
+                  value={filterDepot}
+                  onChange={(event) => { setFilterDepot(event.target.value); setTablePage(0) }}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-900 dark:text-white"
+                >
+                  <option value="">{"Все участки"}</option>
+                  {depotOptions.map((depot) => <option key={depot} value={depot}>{depot}</option>)}
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wider">
+                  {"Пробег, км (от — до)"}
+                </label>
+                <div className="flex items-center gap-2">
+                  <input type="number" min="0" inputMode="decimal" placeholder={"от"} aria-label={"Пробег от"} value={filterMinMileage}
+                    onChange={(event) => { setFilterMinMileage(event.target.value); setTablePage(0) }}
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-900 dark:text-white" />
+                  <span className="text-gray-400">—</span>
+                  <input type="number" min="0" inputMode="decimal" placeholder={"до"} aria-label={"Пробег до"} value={filterMaxMileage}
+                    onChange={(event) => { setFilterMaxMileage(event.target.value); setTablePage(0) }}
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-900 dark:text-white" />
+                </div>
+              </div>
+              <label className="flex items-end gap-2 pb-2.5 text-sm text-gray-700 dark:text-gray-300 md:col-span-1 lg:col-span-1">
+                <input type="checkbox" checked={onlyNear} onChange={(event) => { setOnlyNear(event.target.checked); setTablePage(0) }} />
+                {`Близко к порогу (≥${NEAR_THRESHOLD_PCT}%)`}
+              </label>
+              <label className="flex items-end gap-2 pb-2.5 text-sm text-gray-700 dark:text-gray-300">
+                <input type="checkbox" checked={onlyWithMileage} onChange={(event) => { setOnlyWithMileage(event.target.checked); setTablePage(0) }} />
+                {"Только с данными о пробеге"}
+              </label>
             </div>
 
             {/* Быстрые фильтры по типу ТО */}
@@ -1479,7 +1771,7 @@ export default function MaintenancePage() {
               <span className="text-gray-500 dark:text-gray-400">
                 {"Найдено:"} <span className="font-bold text-gray-900 dark:text-white">{visible.length}</span> {"из"} {allSchedule.length}
               </span>
-              {visible.length === 0 && (filterType !== "all" || filterUnit || filter !== "all" || filterUrgency !== "all" || filterAssetId) && (
+              {visible.length === 0 && hasActiveFilters && (
                 <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">
                   <AlertTriangle className="w-4 h-4" />
                   {"Нет результатов по заданным фильтрам"}
@@ -1490,12 +1782,54 @@ export default function MaintenancePage() {
         )}
       </div>
 
+      {/* Сортировка и сводка по пробегу */}
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
+        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{"Сортировка:"}</span>
+        <select
+          aria-label={"Сортировать по"}
+          value={sortKey}
+          onChange={(event) => { const key = event.target.value as SortKey; setSortKey(key); setSortDir(defaultSortDir(key)); setTablePage(0) }}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+        >
+          {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => <option key={key} value={key}>{SORT_LABELS[key]}</option>)}
+        </select>
+        <button type="button" onClick={() => setSortDir((current) => (current === "asc" ? "desc" : "asc"))}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">
+          {sortDir === "desc" ? "▼ по убыванию" : "▲ по возрастанию"}
+        </button>
+        <span className="ml-auto text-xs text-gray-400">{"Записи без данных о пробеге всегда внизу списка"}</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+          <p className="text-xs font-semibold text-gray-500">{"Максимальный пробег"}</p>
+          <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{topMileage?.mileage != null ? `${fmtNum(topMileage.mileage)} км` : "—"}</p>
+          <p className="mt-1 truncate text-xs text-gray-400" title={topMileage?.item.unit}>{topMileage?.item.unit ?? "Нет данных"}</p>
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+          <p className="text-xs font-semibold text-gray-500">{"Средний пробег"}</p>
+          <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{averageMileage !== null ? `${fmtNum(averageMileage)} км` : "—"}</p>
+          <p className="mt-1 text-xs text-gray-400">{`по ${withMileageRows.length} позициям с пробегом`}</p>
+        </div>
+        <div className="rounded-2xl border border-red-200 bg-red-50/60 p-4 dark:border-red-900 dark:bg-red-950/20">
+          <p className="text-xs font-semibold text-red-700 dark:text-red-300">{"Нужны срочные действия"}</p>
+          <p className="mt-1 text-2xl font-bold text-red-700 dark:text-red-300">{criticalCount}</p>
+          <p className="mt-1 text-xs text-red-600/70 dark:text-red-300/70">{"порог превышен или наряд просрочен"}</p>
+        </div>
+        <button type="button" onClick={() => { setOnlyNear((current) => !current); setTablePage(0) }}
+          className={`rounded-2xl border p-4 text-left transition-colors ${onlyNear ? "border-amber-400 bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40" : "border-amber-200 bg-amber-50/60 hover:bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20"}`}>
+          <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">{`Близко к порогу (≥${NEAR_THRESHOLD_PCT}%)`}</p>
+          <p className="mt-1 text-2xl font-bold text-amber-800 dark:text-amber-300">{nearCount}</p>
+          <p className="mt-1 text-xs text-amber-700/70 dark:text-amber-300/70">{onlyNear ? "нажмите, чтобы снять фильтр" : "нажмите, чтобы показать только их"}</p>
+        </button>
+      </div>
+
       {/* KPI карточки */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
         {(["upcoming","in_progress","completed","overdue"] as Status[]).map(s => {
           const cfg = statusConfig[s]
           const count = counts[s]
-          const pct = Math.round((count / counts.all) * 100)
+          const pct = counts.all > 0 ? Math.round((count / counts.all) * 100) : 0
           return (
             <button key={s} onClick={() => setFilter(filter===s ? "all" : s)}
               className={`text-left p-5 rounded-2xl border-2 transition-all ${
@@ -1583,98 +1917,143 @@ export default function MaintenancePage() {
       {/* ТАБЛИЧНЫЙ ВИД */}
       {view === "table" && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex items-center gap-3">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex flex-wrap items-center gap-3">
             <List className="w-4 h-4 text-blue-500"/>
             <h2 className="text-sm font-bold text-gray-900 dark:text-white">{"Список работ"}</h2>
             <span className="text-xs text-gray-400">· {visible.length} позиций</span>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1.5 text-xs text-gray-500">
+                {"На странице"}
+                <select value={tablePageSize} onChange={(event) => { setTablePageSize(Number(event.target.value)); setTablePage(0) }}
+                  className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-800">
+                  {TABLE_PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+                </select>
+              </label>
+              <button type="button" onClick={exportCsv} disabled={sortedEnriched.length === 0}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">
+                {"Экспорт CSV"}
+              </button>
+            </div>
           </div>
-          <table className="w-full">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[1250px]">
             <thead>
               <tr className="border-b border-gray-200 dark:border-gray-800">
-                {["Ед.ТПС","Пробег","Вид ТО","До ТО","Дата","Статус","Источник","Действие"].map(h => (
-                  <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
-                ))}
+                {TABLE_COLUMNS.map((column) => {
+                  const active = column.sort !== undefined && sortKey === column.sort
+                  return (
+                    <th key={column.label} aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : undefined}
+                      className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                      {column.sort ? (
+                        <button type="button" onClick={() => toggleSort(column.sort as SortKey)} title={"Нажмите для сортировки"}
+                          className={`inline-flex items-center gap-1 uppercase tracking-wider hover:text-gray-900 dark:hover:text-white ${active ? "text-blue-600 dark:text-blue-400" : ""}`}>
+                          {column.label}
+                          <span aria-hidden="true" className={active ? "" : "opacity-30"}>{active ? (sortDir === "asc" ? "▲" : "▼") : "↕"}</span>
+                        </button>
+                      ) : column.label}
+                    </th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {visible.length === 0 && !scheduleError && (
-                <tr><td colSpan={8} className="px-5 py-10 text-center text-sm text-gray-400">{"Нет данных"}</td></tr>
+                <tr><td colSpan={TABLE_COLUMNS.length} className="px-5 py-10 text-center text-sm text-gray-400">{"Нет данных"}</td></tr>
               )}
               {visible.length === 0 && scheduleError && (
                 <tr>
-                  <td colSpan={8} className="px-5 py-10 text-center text-sm text-gray-400">
+                  <td colSpan={TABLE_COLUMNS.length} className="px-5 py-10 text-center text-sm text-gray-400">
                     <button type="button" onClick={() => void fetchSchedule(monthOffset)} className="text-blue-600 underline">
                       {"Повторить"}
                     </button>
                   </td>
                 </tr>
               )}
-              {visible.map(item => {
-                const st  = statusConfig[item.status]
+              {tableRows.map((entry, index) => {
+                const item = entry.item
+                const st = statusConfig[item.status]
                 const cfg = typeConfig[item.type] ?? typeConfig["ВНП"]
+                const urgency = item.urgency ? URGENCY_LABEL[item.urgency] : null
+                const progress = entry.progress
+                const barCls = progress === null ? "bg-gray-300" : progress >= 100 ? "bg-red-500" : progress >= NEAR_THRESHOLD_PCT ? "bg-amber-500" : progress >= 70 ? "bg-blue-500" : "bg-emerald-500"
                 return (
                   <tr key={item.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group ${
-                    item.status === "overdue" ? "bg-red-50/50 dark:bg-red-950/20" : ""
+                    item.status === "overdue" || entry.rec.level === "critical" ? "bg-red-50/50 dark:bg-red-950/20" : ""
                   }`}>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-2">
-                        {false && (
-                          false ? (
-                            <Wifi className="w-3 h-3 text-green-500" />
-                          ) : (
-                            <WifiOff className="w-3 h-3 text-gray-400" />
-                          )
-                        )}
-                        <span className="text-sm font-medium text-gray-900 dark:text-white">{item.unit}</span>
-                      </div>
+                    <td className="px-4 py-3 text-xs text-gray-400">{safeTablePage * tablePageSize + index + 1}</td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">{item.unit}</span>
+                      <p className="text-xs text-gray-400">
+                        {item.depot || "Участок не указан"}{item.tech ? ` · ${item.tech}` : ""}
+                      </p>
                     </td>
-                    <td className="px-5 py-3">
-                      {item.mileage !== null && item.mileage !== undefined ? (
-                        <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                          {Number(item.mileage).toLocaleString()} км
+                    <td className="px-4 py-3">
+                      {entry.mileage !== null ? (
+                        <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                          {fmtNum(entry.mileage)} км
                         </span>
                       ) : (
                         <span className="text-sm text-gray-400">—</span>
                       )}
                     </td>
-                    <td className="px-5 py-3">
+                    <td className="px-4 py-3">
                       <span className={`text-xs font-bold px-2 py-0.5 rounded border ${cfg.text} ${cfg.border} bg-white dark:bg-gray-900`}>
                         {item.type}
                       </span>
                     </td>
-                    <td className="px-5 py-3">
-                      {item.remainingKm !== null ? (
-                        <span className={`text-sm font-semibold ${
-                          Number(item.remainingKm) <= 0 
-                            ? "text-red-600 dark:text-red-400" 
-                            : Number(item.remainingKm) < 10 
-                              ? "text-amber-600 dark:text-amber-400"
-                              : "text-gray-600 dark:text-gray-300"
-                        }`}>
-                          {Number(item.remainingKm) <= 0 ? `−${Math.abs(Number(item.remainingKm))}` : item.remainingKm} км
-                        </span>
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                      {entry.threshold !== null ? fmtNum(entry.threshold) : "—"}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {entry.remaining !== null ? (
+                        <>
+                          <span className={`text-sm font-semibold ${
+                            entry.remaining <= 0
+                              ? "text-red-600 dark:text-red-400"
+                              : entry.remaining < 10
+                                ? "text-amber-600 dark:text-amber-400"
+                                : "text-gray-600 dark:text-gray-300"
+                          }`}>
+                            {entry.remaining <= 0 ? `−${fmtNum(Math.abs(entry.remaining))}` : fmtNum(entry.remaining)} км
+                          </span>
+                          {entry.daysLeft !== null && <p className="text-xs text-gray-400">{`≈ ${entry.daysLeft} дн.`}</p>}
+                        </>
                       ) : (
                         <span className="text-sm text-gray-400">—</span>
                       )}
                     </td>
-                    <td className="px-5 py-3 text-sm text-gray-600 dark:text-gray-300">{dateToDdMmYyyy(item.startDate)}</td>
-                    <td className="px-5 py-3">
+                    <td className="px-4 py-3 min-w-[110px]">
+                      {progress !== null ? (
+                        <div title={`${Math.round(progress)}% порога`}>
+                          <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                            <div className={`h-full rounded-full ${barCls}`} style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
+                          </div>
+                          <p className="mt-1 text-[10px] text-gray-400">{Math.round(progress)}%</p>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {urgency ? (
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${urgency.cls}`}>{urgency.label}</span>
+                      ) : (
+                        <span className="text-sm text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">{dateToDdMmYyyy(item.startDate)}</td>
+                    <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${st.cls}`}>
                         <st.icon className="w-3 h-3"/>
                         {st.label}
                       </span>
                     </td>
-                    <td className="px-5 py-3">
-                      {false ? (
-                        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
-                          <Gauge className="w-3 h-3" />
-                          —
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400">Наряд</span>
-                      )}
+                    <td className="px-4 py-3 min-w-[240px]">
+                      <span className={`inline-block rounded-lg border px-2.5 py-1.5 text-xs leading-snug ${REC_CLS[entry.rec.level]}`}>
+                        {entry.rec.text}
+                      </span>
                     </td>
-                    <td className="px-5 py-3">
+                    <td className="px-4 py-3">
                       {canUpdatePlans && item.entity_type === "maintenance_plan" && item.plan_id && (
                         <label className="sr-only" htmlFor={`plan-status-${item.plan_id}`}>{"Статус плана"}</label>
                       )}
@@ -1699,11 +2078,11 @@ export default function MaintenancePage() {
                       {item.entity_type !== "work_order" && <button
                         onClick={() => handleCreateOrder(item)}
                         className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors whitespace-nowrap border ${
-                          item.status === "overdue"
+                          item.status === "overdue" || entry.rec.level === "critical"
                             ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-950 border-red-200 dark:border-red-800"
                             : "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-950 border-blue-200 dark:border-blue-800"
                         }`}>
-                        <Plus className="w-3 h-3"/> 
+                        <Plus className="w-3 h-3"/>
                         {"Наряд"}
                       </button>}
                     </td>
@@ -1712,6 +2091,23 @@ export default function MaintenancePage() {
               })}
             </tbody>
           </table>
+          </div>
+
+          {totalTablePages > 1 && (
+            <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50 px-5 py-3 text-xs text-gray-500 dark:border-gray-800 dark:bg-gray-800/30">
+              <span>{`Страница ${safeTablePage + 1} из ${totalTablePages} · Записей: ${sortedEnriched.length}`}</span>
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => setTablePage(0)} disabled={safeTablePage === 0}
+                  className="rounded-lg border border-gray-300 px-2.5 py-1 disabled:opacity-40 dark:border-gray-700">{"«"}</button>
+                <button type="button" onClick={() => setTablePage(Math.max(0, safeTablePage - 1))} disabled={safeTablePage === 0}
+                  className="rounded-lg border border-gray-300 px-2.5 py-1 disabled:opacity-40 dark:border-gray-700">{"‹"}</button>
+                <button type="button" onClick={() => setTablePage(Math.min(totalTablePages - 1, safeTablePage + 1))} disabled={safeTablePage >= totalTablePages - 1}
+                  className="rounded-lg border border-gray-300 px-2.5 py-1 disabled:opacity-40 dark:border-gray-700">{"›"}</button>
+                <button type="button" onClick={() => setTablePage(totalTablePages - 1)} disabled={safeTablePage >= totalTablePages - 1}
+                  className="rounded-lg border border-gray-300 px-2.5 py-1 disabled:opacity-40 dark:border-gray-700">{"»"}</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
