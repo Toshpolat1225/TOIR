@@ -1500,6 +1500,7 @@ export default function OsPage() {
   // Keep the latest filters available to the realtime listener.
   const filtersRef = useRef({ page: 0, search: "", fType: "" as AssetType | "", fSource: "" as UnifiedAsset["source"] | "", fSection: "", fStatus: "" as AssetStatus | "", fBehavior: "", fWithoutOrgUnit: false })
   const realtimeRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const realtimeBurstStartedAtRef = useRef<number | null>(null)
 
   // Load counters and depot names once.
   const fetchCounts = useCallback(async () => {
@@ -1553,8 +1554,10 @@ export default function OsPage() {
     section = fSection,
     behavior = fBehavior,
     withoutOrgUnit = fWithoutOrgUnit,
+    silent = false,
   ) => {
-    setLoading(true)
+    // Background (realtime) refreshes must not flash the loading state or empty the table.
+    if (!silent) setLoading(true)
     try {
       const params: Parameters<typeof api.fixedAssets.unified>[0] = {
         limit: PAGE_SIZE,
@@ -1570,17 +1573,21 @@ export default function OsPage() {
       if (withoutOrgUnit) params.without_org_unit = true;
 
       const response = await api.fixedAssets.unified(params)
-      setAssets(response.items.map(fromUnified))
+      const next = response.items.map(fromUnified)
+      // Keep the same array when nothing changed so the table does not re-render.
+      setAssets((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next)
       setTotal(response.total);
       setLoadError("");
 
     } catch (e) {
       console.error("Ошибка загрузки ОС:", e)
-      setAssets([])
-      setTotal(0)
-      setLoadError("Не удалось загрузить основные средства. Попробуйте обновить страницу.");
+      if (!silent) {
+        setAssets([])
+        setTotal(0)
+        setLoadError("Не удалось загрузить основные средства. Попробуйте обновить страницу.");
+      }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [fSection, fBehavior, fWithoutOrgUnit])
 
@@ -1597,17 +1604,22 @@ export default function OsPage() {
     filtersRef.current = { page, search: debouncedSearch, fType, fSource, fSection, fStatus, fBehavior, fWithoutOrgUnit }
   }, [page, debouncedSearch, fType, fSource, fSection, fStatus, fBehavior, fWithoutOrgUnit])
 
-  // Coalesce bursts of row-level notifications into one refresh.
+  // A Wialon sync updates every linked asset within ~3 s (one NOTIFY per row), every 2 min.
+  // Wait for the burst to finish (trailing debounce, capped at 10 s) and refresh once, silently.
   useRealtime(useCallback((event) => {
     if (event.resource !== "fixed_assets") return
-    if (realtimeRefreshTimerRef.current) return
+    const now = Date.now()
+    if (realtimeBurstStartedAtRef.current === null) realtimeBurstStartedAtRef.current = now
+    const waited = now - realtimeBurstStartedAtRef.current
+    if (realtimeRefreshTimerRef.current) clearTimeout(realtimeRefreshTimerRef.current)
     realtimeRefreshTimerRef.current = setTimeout(() => {
       realtimeRefreshTimerRef.current = null
+      realtimeBurstStartedAtRef.current = null
       const filters = filtersRef.current
       const { fetchAssets: refreshAssets, fetchCounts: refreshCounts } = realtimeFetchersRef.current
-      void refreshAssets(filters.page, filters.search, filters.fType, filters.fSource, filters.fStatus, filters.fSection, filters.fBehavior, filters.fWithoutOrgUnit)
+      void refreshAssets(filters.page, filters.search, filters.fType, filters.fSource, filters.fStatus, filters.fSection, filters.fBehavior, filters.fWithoutOrgUnit, true)
       void refreshCounts()
-    }, 750)
+    }, Math.max(0, Math.min(2500, 10000 - waited)))
   }, []), ["fixed_assets"])
 
   useEffect(() => () => {
