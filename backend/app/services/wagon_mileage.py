@@ -273,6 +273,10 @@ def sum_wialon_sample_deltas(
             "missing_odometer_sample_bracket",
         )
 
+    if total_km == 0:
+        # D3: equal odometer is 0 km CONFIRMED over any interval; a partial
+        # sample overlap cannot change a zero distance.
+        estimated = False
     classification: MileageClass = "ESTIMATED" if estimated else "CONFIRMED"
     return SegmentDecision(
         classification,

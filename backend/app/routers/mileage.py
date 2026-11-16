@@ -8,12 +8,14 @@ from app.core.database import get_db
 from app.core.permissions import require_permission
 from app.models.identity import User
 from app.schemas.mileage import (
+    BulkOpeningApproveRequest,
+    BulkOpeningApproveResult,
     MileageOpeningCreate,
     MileageOpeningList,
     MileageOpeningRead,
     WagonMileageSummary,
 )
-from app.services import mileage_opening
+from app.services import mileage_opening, mileage_opening_bulk
 
 router = APIRouter(prefix="/wagon-mileage", tags=["wagon-mileage"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
@@ -89,6 +91,22 @@ async def approve_opening(
         db, opening_id, user=user
     )
     return MileageOpeningRead.model_validate(opening)
+
+
+@router.post("/openings/bulk-approve", response_model=BulkOpeningApproveResult)
+async def bulk_approve_openings(
+    payload: BulkOpeningApproveRequest,
+    user: AssetUpdater,
+    db: DatabaseSession,
+) -> BulkOpeningApproveResult:
+    result = await mileage_opening_bulk.bulk_approve_openings(
+        db,
+        user=user,
+        effective_at=payload.effective_at,
+        apply=not payload.dry_run,
+        include_zero=payload.include_zero,
+    )
+    return BulkOpeningApproveResult(**result)
 
 
 @router.get("/assets/{asset_id}", response_model=WagonMileageSummary)

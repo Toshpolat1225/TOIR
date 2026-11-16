@@ -6,7 +6,8 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, cast, func, select, String
+from sqlalchemy import and_, cast, func, select, String, update
+from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.asset_source_links import AssetSourceLink
@@ -34,6 +35,12 @@ from app.services.wagon_mileage_engine import (
 )
 
 ALGORITHM_VERSION = "wagon-mileage-p0.3"
+RUN_LOCK_KEY = "wagon-mileage-run"
+_OtherLedger = aliased(WagonMileageLedger)
+
+
+class WagonMileageInvariantError(RuntimeError):
+    """A run-level invariant failed: the run is FAILED and nothing is projected."""
 
 
 def _digest(value: Any) -> str:
@@ -201,16 +208,22 @@ def _candidate_decisions(
 ) -> tuple[SegmentDecision, str | None]:
     candidates: list[OdometerInterval] = []
     decisions: dict[UUID, SegmentDecision] = {}
+    locomotives_without_readings = 0
+    held_decisions: list[SegmentDecision] = []
     for member, _train_start, _train_end, asset_id in locomotive_rows:
         member_end = member.observed_to or end
         if member.observed_from > start or member_end < end:
             return _held("locomotive_handoff_time_unknown"), None
+        if not by_locomotive.get(asset_id):
+            locomotives_without_readings += 1
+            continue
         decision = sum_wialon_sample_deltas(
             by_locomotive.get(asset_id, ()),
             period_from=start,
             period_to=end,
         )
         if decision.classification == "HELD" or decision.km is None:
+            held_decisions.append(decision)
             continue
         points = by_locomotive.get(asset_id, ())
         if not points:
@@ -241,6 +254,11 @@ def _candidate_decisions(
     selection = select_main_locomotive(candidates)
     if selection.selected is None:
         if not candidates:
+            if locomotives_without_readings == len(locomotive_rows):
+                return _held("locomotive_has_no_wialon_readings"), None
+            if len(locomotive_rows) == 1 and len(held_decisions) == 1:
+                only = held_decisions[0]
+                return _held(only.reason, only.locomotive_asset_id), None
             return _held("no_eligible_locomotive_odometer"), None
         return _held(selection.reason), selection.reason
     decision = decisions[selection.selected.locomotive_asset_id]
@@ -278,6 +296,14 @@ async def _proposals(inputs):
             pending_assets.add(wagon_asset_id)
             continue
         start, end = bounds
+        opening = openings.get(wagon_asset_id)
+        if opening is not None:
+            # Decision: no backfill. Calculation starts at the approved
+            # effective_at; earlier periods are neither calculated nor HELD.
+            if end <= opening.effective_at:
+                continue
+            if start < opening.effective_at:
+                start = opening.effective_at
         if not train_locomotives:
             decision = _held("no_linked_locomotive")
             selection_reason = None
@@ -289,12 +315,9 @@ async def _proposals(inputs):
                 locomotive_rows=train_locomotives,
                 by_locomotive=by_locomotive,
             )
-        opening = openings.get(wagon_asset_id)
         if opening is None:
             pending_assets.add(wagon_asset_id)
             decision = _held("approved_opening_balance_missing")
-        elif start < opening.effective_at:
-            decision = _held("period_precedes_approved_opening_balance")
 
         boundaries_exact = (
             member.gtk_begin_time is not None
@@ -383,7 +406,12 @@ def _report(proposals, pending_assets: set[UUID]) -> dict[str, Any]:
         if decision.classification == "HELD":
             reasons[decision.reason] += 1
             conflicts += int("conflict" in decision.reason)
+    from app.services.wagon_mileage_reasons import describe
+
     return {
+        "held_reason_details": {
+            code: describe(code) for code in sorted(reasons)
+        },
         "status_counts": {key: counts[key] for key in ("CONFIRMED", "ESTIMATED", "HELD")},
         "status_km": {
             key: str(Decimal(kms[key]).quantize(Decimal("0.01")))
@@ -396,16 +424,92 @@ def _report(proposals, pending_assets: set[UUID]) -> dict[str, Any]:
     }
 
 
+async def _input_watermark(db: AsyncSession) -> dict[str, Any]:
+    gtk_synced = await db.scalar(select(func.max(GtkTrain.last_synced_at)))
+    last_reading = await db.scalar(
+        select(func.max(WialonOdometerReading.observed_at)).where(
+            WialonOdometerReading.calculation_eligible.is_(True)
+        )
+    )
+    return {
+        "gtk_last_synced_at": gtk_synced.isoformat() if gtk_synced else None,
+        "last_eligible_wialon_reading_at": (
+            last_reading.isoformat() if last_reading else None
+        ),
+    }
+
+
+async def _locomotive_checksum(db: AsyncSession) -> str:
+    total = await db.scalar(
+        select(func.coalesce(func.sum(FixedAsset.mileage), 0)).where(
+            FixedAsset.asset_type.in_(("locomotive", "diesel"))
+        )
+    )
+    return str(Decimal(str(total)).quantize(Decimal("0.01")))
+
+
 async def run_wagon_mileage(
     db: AsyncSession, *, dry_run: bool = False
 ) -> dict[str, Any]:
+    """Single entry point: lock -> inputs -> ledger -> invariants -> projection.
+
+    GTK membership and Wialon readings are produced by the periodic sync jobs;
+    the run reads them and reports their freshness in the watermark.
+    """
+    if dry_run:
+        inputs = await _load_inputs(db)
+        proposals, pending_assets, _readings = await _proposals(inputs)
+        report = _report(proposals, pending_assets)
+        report["dry_run"] = True
+        report["watermark"] = await _input_watermark(db)
+        await db.rollback()
+        return report
+
+    bind = db.bind
+    async with bind.connect() as lock_connection:
+        lock_connection = await lock_connection.execution_options(
+            isolation_level="AUTOCOMMIT"
+        )
+        lock_expression = func.hashtextextended(RUN_LOCK_KEY, 0)
+        acquired = await lock_connection.scalar(
+            select(func.pg_try_advisory_lock(lock_expression))
+        )
+        if not acquired:
+            return {"dry_run": False, "skipped": True, "reason": "run_in_progress"}
+        try:
+            return await _execute_run(db)
+        finally:
+            await lock_connection.scalar(
+                select(func.pg_advisory_unlock(lock_expression))
+            )
+
+
+async def _fail_run(db: AsyncSession, run_id: UUID, exc: Exception) -> None:
+    message = (
+        str(exc)[:300]
+        if isinstance(exc, WagonMileageInvariantError)
+        else type(exc).__name__
+    )
+    await db.rollback()
+    await db.execute(
+        update(MileageCalculationRun)
+        .where(MileageCalculationRun.id == run_id)
+        .values(
+            status="failed",
+            completed_at=datetime.now(timezone.utc),
+            error=message,
+        )
+    )
+    await db.commit()
+
+
+async def _execute_run(db: AsyncSession) -> dict[str, Any]:
     inputs = await _load_inputs(db)
     proposals, pending_assets, reading_rows = await _proposals(inputs)
     report = _report(proposals, pending_assets)
-    report["dry_run"] = dry_run
-    if dry_run:
-        await db.rollback()
-        return report
+    report["dry_run"] = False
+    watermark = await _input_watermark(db)
+    locomotive_before = await _locomotive_checksum(db)
 
     run = MileageCalculationRun(
         algorithm_version=ALGORITHM_VERSION,
@@ -413,10 +517,82 @@ async def run_wagon_mileage(
         input_watermark={
             "proposal_count": len(proposals),
             "reading_ids": sorted(reading_rows),
+            **watermark,
         },
     )
     db.add(run)
     await db.commit()
+    run_id = run.id
+    try:
+        return await _run_body(
+            db, run, proposals, report, watermark, locomotive_before
+        )
+    except Exception as exc:
+        await _fail_run(db, run_id, exc)
+        raise
+
+
+async def _assert_ledger_invariants(db: AsyncSession) -> None:
+    negative = await db.scalar(
+        select(func.count())
+        .select_from(WagonMileageLedger)
+        .where(WagonMileageLedger.distance_km < 0)
+    )
+    if negative:
+        raise WagonMileageInvariantError(
+            f"{negative} ledger rows have negative distance_km"
+        )
+    overlapping = await db.scalar(
+        select(func.count())
+        .select_from(WagonMileageLedger)
+        .join(
+            _OtherLedger,
+            and_(
+                _OtherLedger.wagon_asset_id == WagonMileageLedger.wagon_asset_id,
+                _OtherLedger.id > WagonMileageLedger.id,
+                _OtherLedger.status == "active",
+                _OtherLedger.calculation_eligible.is_(True),
+                _OtherLedger.period_from < WagonMileageLedger.period_to,
+                WagonMileageLedger.period_from < _OtherLedger.period_to,
+            ),
+        )
+        .where(
+            WagonMileageLedger.status == "active",
+            WagonMileageLedger.calculation_eligible.is_(True),
+        )
+    )
+    if overlapping:
+        raise WagonMileageInvariantError(
+            f"{overlapping} eligible active ledger periods overlap (double counting)"
+        )
+    duplicated = await db.scalar(
+        select(func.count()).select_from(
+            select(WagonMileageLedger.wagon_asset_id)
+            .where(WagonMileageLedger.status == "active")
+            .group_by(
+                WagonMileageLedger.wagon_asset_id,
+                WagonMileageLedger.train_gtk_id,
+                WagonMileageLedger.period_from,
+                WagonMileageLedger.period_to,
+            )
+            .having(func.count() > 1)
+            .subquery()
+        )
+    )
+    if duplicated:
+        raise WagonMileageInvariantError(
+            f"{duplicated} wagon periods have more than one active ledger row"
+        )
+
+
+async def _run_body(
+    db: AsyncSession,
+    run: MileageCalculationRun,
+    proposals: list[dict[str, Any]],
+    report: dict[str, Any],
+    watermark: dict[str, Any],
+    locomotive_before: str,
+) -> dict[str, Any]:
     by_train: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for proposal in proposals:
         by_train[proposal["train_gtk_id"]].append(proposal)
@@ -436,17 +612,27 @@ async def run_wagon_mileage(
                     .where(
                         WagonMileageLedger.wagon_asset_id == proposal["wagon_asset_id"],
                         WagonMileageLedger.train_gtk_id == train_id,
-                        WagonMileageLedger.period_from == proposal["period_from"],
-                        WagonMileageLedger.period_to == proposal["period_to"],
+                        # Overlap, not equality: an open membership grows every
+                        # run, and the new span replaces the older shorter one.
+                        WagonMileageLedger.period_from < proposal["period_to"],
+                        WagonMileageLedger.period_to > proposal["period_from"],
                         WagonMileageLedger.status == "active",
                     )
+                    .order_by(WagonMileageLedger.created_at.desc())
                     .with_for_update()
                 )
                 existing = list(existing_result.scalars().all())
-                if any(
-                    row.idempotency_key == proposal["idempotency_key"]
+                matched = [
+                    row
                     for row in existing
-                ):
+                    if row.idempotency_key == proposal["idempotency_key"]
+                ]
+                if matched:
+                    stale = [row for row in existing if row is not matched[0]]
+                    for row in stale:
+                        row.status = "superseded"
+                    if stale:
+                        changed_assets.add(proposal["wagon_asset_id"])
                     continue
                 previous = existing[0] if existing else None
                 for row in existing:
@@ -558,6 +744,44 @@ async def run_wagon_mileage(
                         idle_periods += 1
                 changed_assets.add(proposal["wagon_asset_id"])
 
+    async def _expected(asset: FixedAsset):
+        opening = await db.scalar(
+            select(WagonMileageOpeningBalance).where(
+                WagonMileageOpeningBalance.asset_id == asset.id,
+                WagonMileageOpeningBalance.status == "approved",
+            )
+        )
+        if opening is None:
+            return None
+        total = await db.scalar(
+            select(func.coalesce(func.sum(WagonMileageLedger.distance_km), 0)).where(
+                WagonMileageLedger.wagon_asset_id == asset.id,
+                WagonMileageLedger.status == "active",
+                WagonMileageLedger.calculation_eligible.is_(True),
+                WagonMileageLedger.classification.in_(("CONFIRMED", "ESTIMATED")),
+                WagonMileageLedger.period_from >= opening.effective_at,
+            )
+        )
+        total = Decimal(str(total or 0))
+        if total < 0:
+            raise WagonMileageInvariantError(
+                f"negative ledger total for wagon {asset.id}"
+            )
+        return calculate_wagon_projection(
+            asset.asset_type, opening.mileage_km, Decimal("0"), total
+        )
+
+    # Invariants are checked BEFORE any projection is written.
+    async with db.begin():
+        await _assert_ledger_invariants(db)
+        for asset_id in sorted(changed_assets, key=str):
+            asset = await db.get(FixedAsset, asset_id)
+            if asset is None or asset.asset_type != "wagon":
+                raise WagonMileageInvariantError(
+                    f"projection target {asset_id} is missing or not a wagon"
+                )
+            await _expected(asset)
+
     for asset_id in sorted(changed_assets, key=str):
         async with db.begin():
             lock_key = f"wagon-mileage-asset:{asset_id}"
@@ -568,44 +792,41 @@ async def run_wagon_mileage(
                 select(FixedAsset).where(FixedAsset.id == asset_id).with_for_update()
             )
             if asset is None:
-                raise RuntimeError(f"Wagon projection asset {asset_id} no longer exists")
+                raise WagonMileageInvariantError(
+                    f"Wagon projection asset {asset_id} no longer exists"
+                )
             if asset.asset_type != "wagon":
-                raise RuntimeError("Wagon mileage projection rejected a non-wagon asset")
-            opening = await db.scalar(
-                select(WagonMileageOpeningBalance).where(
-                    WagonMileageOpeningBalance.asset_id == asset.id,
-                    WagonMileageOpeningBalance.status == "approved",
+                raise WagonMileageInvariantError(
+                    "Wagon mileage projection rejected a non-wagon asset"
                 )
-            )
-            if opening is None:
+            projection = await _expected(asset)
+            if projection is None:
                 continue
-            total = await db.scalar(
-                select(func.coalesce(func.sum(WagonMileageLedger.distance_km), 0)).where(
-                    WagonMileageLedger.wagon_asset_id == asset.id,
-                    WagonMileageLedger.status == "active",
-                    WagonMileageLedger.calculation_eligible.is_(True),
-                    WagonMileageLedger.classification.in_(("CONFIRMED", "ESTIMATED")),
-                    WagonMileageLedger.period_from >= opening.effective_at,
-                )
-            )
-            projection = calculate_wagon_projection(
-                asset.asset_type,
-                opening.mileage_km,
-                Decimal("0"),
-                Decimal(str(total or 0)),
-            )
             if projection != asset.mileage:
                 asset.mileage = projection
                 asset.updated_at = datetime.now(timezone.utc)
                 await maintenance_service.reconcile_asset_plans(
                     db, asset, projection
                 )
+            if any(
+                isinstance(obj, FixedAsset) and obj.asset_type != "wagon"
+                for obj in db.dirty
+            ):
+                raise WagonMileageInvariantError(
+                    "projection would write a non-wagon asset"
+                )
 
+    locomotive_after = await _locomotive_checksum(db)
+    await db.rollback()
+    report["watermark"] = watermark
+    report["locomotive_checksum_before"] = locomotive_before
+    report["locomotive_checksum_after"] = locomotive_after
+    report["changed_assets"] = len(changed_assets)
+    report["idle_periods_added"] = idle_periods
     run.status = "completed"
     run.completed_at = datetime.now(timezone.utc)
     run.summary = report
+    db.add(run)
     await db.commit()
     report["run_id"] = str(run.id)
-    report["changed_assets"] = len(changed_assets)
-    report["idle_periods_added"] = idle_periods
     return report

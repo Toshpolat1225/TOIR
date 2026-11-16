@@ -75,3 +75,30 @@ class WagonMileageSummary(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class BulkOpeningApproveRequest(BaseModel):
+    effective_at: datetime | None = None
+    dry_run: bool = True
+    include_zero: bool = False
+
+    @field_validator("effective_at")
+    @classmethod
+    def require_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+            raise ValueError("effective_at must include a timezone")
+        return value
+
+
+class BulkOpeningApproveResult(BaseModel):
+    dry_run: bool
+    pending_bulk: int
+    needs_individual_review: int
+    skipped_maker_is_checker: int
+    skipped_already_approved: int
+    include_zero: bool
+    self_approval_allowed: bool
+    eligible_zero: int
+    eligible: int
+    approved: int
+    failed: int

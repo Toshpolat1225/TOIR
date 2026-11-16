@@ -630,3 +630,125 @@ class WialonAssetMappingTests(unittest.IsolatedAsyncioTestCase):
                 online=True,
             )
         self.assertEqual(asset.mileage, Decimal("1000"))
+
+
+class _NoopSavepoint:
+    async def __aenter__(self):
+        return None
+
+    async def __aexit__(self, *_):
+        return None
+
+
+class LocomotiveMileageWriterTests(unittest.IsolatedAsyncioTestCase):
+    def _asset(self, asset_type):
+        return SimpleNamespace(
+            id="asset-id",
+            asset_type=asset_type,
+            name="X",
+            mileage=Decimal("1000"),
+            wialon_speed=None,
+            wialon_online=True,
+            wialon_last_sync=None,
+            updated_at=None,
+        )
+
+    async def _receive(self, asset, delta, locked=Decimal("1000")):
+        with (
+            patch(
+                "app.services.assets.find_wialon_asset",
+                new=AsyncMock(return_value=asset),
+            ),
+            patch("app.services.assets._commit", new=AsyncMock()),
+            patch(
+                "app.services.assets.maintenance_repository.lock_asset_mileage",
+                new=AsyncMock(return_value=locked),
+            ),
+            patch(
+                "app.services.assets.repository.add_mileage_history",
+                new=AsyncMock(),
+            ) as history,
+            patch(
+                "app.services.assets.maintenance_service.reconcile_asset_plans",
+                new=AsyncMock(return_value=0),
+            ),
+        ):
+            await assets.receive_wialon_update(
+                SimpleNamespace(begin_nested=lambda: _NoopSavepoint()),
+                unit_id="w-1",
+                unit_name="X",
+                mileage=None,
+                speed=None,
+                mileage_delta=delta,
+            )
+        return history
+
+    async def test_accepted_delta_increases_locomotive_and_diesel_mileage(self):
+        for asset_type in ("locomotive", "diesel"):
+            asset = self._asset(asset_type)
+            history = await self._receive(asset, Decimal("5"))
+            self.assertEqual(asset.mileage, Decimal("1005"))
+            history.assert_awaited_once_with(
+                unittest.mock.ANY, "asset-id", Decimal("1005"), "wialon"
+            )
+
+    async def test_accepted_delta_reconciles_locomotive_plans_in_a_savepoint(self):
+        asset = self._asset("locomotive")
+        db = SimpleNamespace(begin_nested=lambda: _NoopSavepoint())
+        with (
+            patch(
+                "app.services.assets.find_wialon_asset",
+                new=AsyncMock(return_value=asset),
+            ),
+            patch("app.services.assets._commit", new=AsyncMock()),
+            patch(
+                "app.services.assets.maintenance_repository.lock_asset_mileage",
+                new=AsyncMock(return_value=Decimal("1000")),
+            ),
+            patch("app.services.assets.repository.add_mileage_history", new=AsyncMock()),
+            patch(
+                "app.services.assets.maintenance_service.reconcile_asset_plans",
+                new=AsyncMock(return_value=1),
+            ) as reconcile,
+        ):
+            await assets.receive_wialon_update(
+                db,
+                unit_id="w",
+                unit_name="X",
+                mileage=None,
+                speed=None,
+                mileage_delta=Decimal("5"),
+            )
+        reconcile.assert_awaited_once_with(db, asset, Decimal("1005"))
+
+    async def test_delta_never_changes_wagon_mileage(self):
+        asset = self._asset("wagon")
+        history = await self._receive(asset, Decimal("5"))
+        self.assertEqual(asset.mileage, Decimal("1000"))
+        history.assert_not_awaited()
+
+    async def test_no_delta_means_no_write(self):
+        asset = self._asset("locomotive")
+        history = await self._receive(asset, None)
+        self.assertEqual(asset.mileage, Decimal("1000"))
+        history.assert_not_awaited()
+
+    async def test_pull_sync_passes_gate_delta_not_absolute_odometer(self):
+        unit = WialonUnit(
+            "1", "T", datetime.now(timezone.utc), Decimal("8"), Decimal("999999")
+        )
+        with patch(
+            "app.services.wialon.ingest_wialon_reading",
+            new=AsyncMock(
+                return_value=SimpleNamespace(
+                    accepted=True,
+                    asset_id="a",
+                    mileage_verdict="accepted",
+                    mileage_delta=Decimal("7"),
+                )
+            ),
+        ):
+            delta = await wialon._gated_mileage(
+                object(), unit, now=datetime.now(timezone.utc), stats=__import__("collections").Counter()
+            )
+        self.assertEqual(delta, Decimal("7"))

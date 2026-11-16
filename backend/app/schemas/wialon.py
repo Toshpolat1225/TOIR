@@ -108,8 +108,13 @@ class WialonCreateAssetResponse(BaseModel):
     warning: str | None
 
 
+UnifiedSource = Literal[
+    "toir", "wialon", "gtk", "both", "toir_gtk", "toir_wialon_gtk"
+]
+
+
 class UnifiedAssetRead(BaseModel):
-    source: Literal["toir", "wialon", "both"]
+    source: UnifiedSource
     asset_id: UUID | None
     unit_id: str | None
     name: str
@@ -127,3 +132,5 @@ class UnifiedAssetRead(BaseModel):
     last_message_at: datetime | None
     is_online: bool
     suspect_absolute: bool
+    gtk_id: int | None = None
+    gtk_kind: Literal["carriage", "locomotive"] | None = None

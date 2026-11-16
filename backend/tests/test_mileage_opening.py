@@ -133,6 +133,54 @@ async def test_same_submitter_approval_remains_pending_until_policy_is_decided()
 
 
 @pytest.mark.asyncio
+async def test_same_submitter_may_approve_only_when_policy_flag_is_on():
+    from types import SimpleNamespace as NS
+
+    user = _user()
+    opening = WagonMileageOpeningBalance(
+        id=uuid4(),
+        asset_id=uuid4(),
+        mileage_km=Decimal("12"),
+        effective_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        created_by=user.id,
+        status="pending",
+        note="bulk-propose:ok",
+    )
+    asset = NS(id=opening.asset_id, asset_type="wagon")
+    db = _db()
+    with (
+        patch.object(
+            mileage_opening,
+            "settings",
+            NS(opening_balance_allow_self_approval=True),
+        ),
+        patch.object(mileage_opening, "set_audit_actor"),
+        patch.object(
+            mileage_opening.repository,
+            "get_opening_for_update",
+            new=AsyncMock(return_value=opening),
+        ),
+        patch.object(
+            mileage_opening.repository,
+            "get_asset_for_opening",
+            new=AsyncMock(return_value=asset),
+        ),
+        patch.object(
+            mileage_opening.repository,
+            "get_approved_opening_for_update",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        approved = await mileage_opening.approve_opening_balance(
+            db, opening.id, user=user
+        )
+    assert approved.status == "approved"
+    assert approved.approved_by == user.id
+    assert "[self-approved by policy]" in approved.note
+    assert approved.note.startswith("bulk-propose:ok")
+
+
+@pytest.mark.asyncio
 async def test_approval_supersedes_old_balance_and_records_actor_time():
     user = _user()
     previous = WagonMileageOpeningBalance(
@@ -253,11 +301,11 @@ async def test_only_admin_can_approve_opening():
 
 
 @pytest.mark.asyncio
-async def test_work_order_does_not_read_locomotive_fixed_asset_projection():
+async def test_work_order_reads_gated_wialon_mileage_for_locomotive_and_diesel():
     db = SimpleNamespace(execute=AsyncMock())
-    asset = SimpleNamespace(asset_type="locomotive", id=uuid4(), mileage=Decimal("900"))
-
-    assert await work_orders_repository.get_known_asset_mileage(db, asset) is None
+    for asset_type in ("locomotive", "diesel"):
+        asset = SimpleNamespace(asset_type=asset_type, id=uuid4(), mileage=Decimal("900"))
+        assert await work_orders_repository.get_known_asset_mileage(db, asset) == Decimal("900")
     db.execute.assert_not_awaited()
 
 

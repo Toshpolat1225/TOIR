@@ -48,7 +48,7 @@ from app.services import asset_passport_import
 from app.services import asset_links as asset_links_service
 from app.services import gtk as gtk_service
 from app.services import unified_assets as unified_service
-from app.schemas.wialon import UnifiedAssetRead
+from app.schemas.wialon import UnifiedAssetRead, UnifiedSource
 
 router = APIRouter(prefix="/fixed-assets", tags=["fixed assets"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
@@ -145,7 +145,7 @@ async def get_fixed_assets(
 async def get_unified_fixed_assets(
     user: AuthenticatedUser,
     db: DatabaseSession,
-    source: Literal["toir", "wialon", "both"] | None = None,
+    source: UnifiedSource | None = None,
     asset_type: AssetType | None = None,
     status_filter: Annotated[
         AssetStatus | None, Query(alias="status")

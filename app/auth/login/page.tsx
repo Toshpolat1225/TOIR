@@ -62,15 +62,17 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
 
             <div>
-              <label htmlFor="login-email" className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-gray-300">Email</label>
+              <label htmlFor="login-email" className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-gray-300">{"Логин или Email"}</label>
               <input
                 id="login-email"
-                type="email"
+                type="text"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="user@company.uz"
+                placeholder="t.turakulov"
                 required
-                autoComplete="email"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
                 className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-600"
               />
             </div>

@@ -257,6 +257,17 @@ export class ApiHttpError extends Error {
   }
 }
 
+function formatErrorDetail(detail: unknown, status: number): string {
+  if (typeof detail === "string" && detail) return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => (item && typeof item === "object" && "msg" in item ? String((item as { msg: unknown }).msg) : ""))
+      .filter(Boolean);
+    if (messages.length > 0) return messages.join("; ");
+  }
+  return `HTTP error! status: ${status}`;
+}
+
 async function request<T>(options: ApiRequestOptions): Promise<T> {
   const { method, path, body, params, isPublic = false, responseType = "json", suppress404Log = false, suppressNetworkLog = false } = options;
 
@@ -316,7 +327,7 @@ async function request<T>(options: ApiRequestOptions): Promise<T> {
           throw refreshError; // If refresh fails, propagate the error
         }
       }
-      throw new ApiHttpError(errorData.detail || `HTTP error! status: ${response.status}`, response.status);
+      throw new ApiHttpError(formatErrorDetail(errorData.detail, response.status), response.status);
     }
 
     // Handle cases with no content in response body (e.g., 204 No Content)
@@ -354,6 +365,9 @@ export type CurrentUser = {
   section_id: string | null;
   org_unit_id: string | null;
   section?: string | null;
+  auth_source?: "local" | "ad";
+  ad_username?: string | null;
+  ad_object_guid?: string | null;
 };
 
 const auth = {
@@ -450,6 +464,12 @@ type UserCreate = {
   role: UserRole;
   section_id: string | null;
 };
+type AdUserCreate = {
+  ad_username: string;
+  full_name: string;
+  role: UserRole;
+  section_id: string | null;
+};
 type UserUpdate = {
   full_name?: string;
   role?: UserRole;
@@ -468,6 +488,18 @@ const users = {
 
   async create(data: UserCreate): Promise<CurrentUser> {
     return request<CurrentUser>({ method: "POST", path: "/users", body: data });
+  },
+
+  async createAd(data: AdUserCreate): Promise<CurrentUser> {
+    return request<CurrentUser>({ method: "POST", path: "/users/ad", body: data });
+  },
+
+  async convertToAd(id: string, ad_username: string): Promise<CurrentUser> {
+    return request<CurrentUser>({
+      method: "POST",
+      path: `/users/${id}/convert-to-ad`,
+      body: { ad_username },
+    });
   },
 
   async update(id: string, data: UserUpdate): Promise<CurrentUser> {
@@ -863,6 +895,31 @@ export type AssetFieldChange = {
   resolved_at: string | null;
 };
 
+export type AssetConflictRow = AssetFieldChange & {
+  asset_inv_number: string;
+  asset_serial_number: string | null;
+  asset_type: string;
+};
+
+export type WialonCounterBlock = {
+  asset_id: string;
+  inv_number: string;
+  serial_number: string | null;
+  asset_type: string;
+  section_id: string | null;
+  wialon_id: string | null;
+  blocked_since: string;
+  last_cnm: number | null;
+  last_cnm_at: string | null;
+  blocked_readings_24h: number;
+  affected_wagons: number;
+};
+
+export type WialonCounterBlockList = Paginated<WialonCounterBlock> & {
+  blocked_locomotives: number;
+  affected_wagons: number;
+};
+
 export type FixedAssetBulkOrgUnitUpdate = {
   asset_ids: string[];
   org_unit_id: string | null;
@@ -950,8 +1007,10 @@ export type FixedAssetListParams = ListParams & {
   depot?: string;
 };
 
+export type UnifiedSource = "toir" | "wialon" | "gtk" | "both" | "toir_gtk" | "toir_wialon_gtk";
+
 export type UnifiedAsset = {
-  source: "toir" | "wialon" | "both";
+  source: UnifiedSource;
   asset_id: string | null;
   unit_id: string | null;
   name: string;
@@ -969,6 +1028,8 @@ export type UnifiedAsset = {
   last_message_at: string | null;
   is_online: boolean;
   suspect_absolute: boolean;
+  gtk_id?: number | null;
+  gtk_kind?: "carriage" | "locomotive" | null;
 };
 
 export type WialonUnitListParams = ListParams & {
@@ -1322,8 +1383,14 @@ const wagonMileage = {
 const assetConflicts = {
   async list(params: ListParams & {
     status?: AssetFieldChange["status"];
-  } = {}): Promise<Paginated<AssetFieldChange>> {
-    return request<Paginated<AssetFieldChange>>({ method: "GET", path: "/asset-conflicts", params });
+    source?: string;
+    field?: string;
+    q?: string;
+  } = {}): Promise<Paginated<AssetConflictRow>> {
+    return request<Paginated<AssetConflictRow>>({ method: "GET", path: "/asset-conflicts", params });
+  },
+  async wialonCounters(params: ListParams & { q?: string } = {}): Promise<WialonCounterBlockList> {
+    return request<WialonCounterBlockList>({ method: "GET", path: "/asset-conflicts/wialon-counters", params });
   },
   async accept(id: number): Promise<AssetFieldChange> {
     return request<AssetFieldChange>({ method: "POST", path: `/asset-conflicts/${id}/accept` });

@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, func, or_, select, text
 from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,14 +54,28 @@ def _wialon_links():
     )
 
 
+def _gtk_linked_expression():
+    return (
+        select(AssetSourceLink.id)
+        .where(
+            AssetSourceLink.asset_id == FixedAsset.id,
+            AssetSourceLink.source == "gtk",
+            AssetSourceLink.status == "active",
+        )
+        .exists()
+    )
+
+
 def _source_expression(unit):
+    """Which systems know the asset: TOIR is the base, Wialon and GTK are links."""
+    has_gtk = _gtk_linked_expression()
+    has_unit = unit.unit_id.is_not(None)
     return case(
-        (
-            FixedAsset.id.is_not(None) & unit.unit_id.is_not(None),
-            "both",
-        ),
-        (FixedAsset.id.is_not(None), "toir"),
-        else_="wialon",
+        (FixedAsset.id.is_(None), "wialon"),
+        (has_unit & has_gtk, "toir_wialon_gtk"),
+        (has_unit, "both"),
+        (has_gtk, "toir_gtk"),
+        else_="toir",
     )
 
 
@@ -127,6 +141,19 @@ async def list_unified_assets(
 ):
     if sort_by not in UNIFIED_SORT_FIELDS:
         raise ValueError("Unsupported sort field")
+    if source == "gtk":
+        return await _list_gtk_only(
+            db,
+            asset_type=asset_type,
+            status=status,
+            section_id=section_id,
+            without_org_unit=without_org_unit,
+            master_section_id=master_section_id,
+            q=q,
+            limit=limit,
+            offset=offset,
+            descending=sort_order == "desc",
+        )
 
     filters: list[Any] = []
     unit_links = _wialon_links()
@@ -164,6 +191,7 @@ async def list_unified_assets(
         Section,
         fixed_asset_name_expression(),
         AssetModel.series,
+        _gtk_linked_expression().label("has_gtk"),
     ).select_from(joined)
     if filters:
         count_query = count_query.where(*filters)
@@ -181,3 +209,75 @@ async def list_unified_assets(
         .offset(offset)
     )
     return list(result.all()), total
+
+
+_GTK_ONLY_FROM = """
+FROM (
+    SELECT 'carriage' AS kind, c.gtk_id, coalesce(c.name, c.reg_number, c.gtk_id::text) AS name,
+           c.inventory_number AS inventory_number, c.reg_number AS extra
+    FROM gtk_carriages c
+    UNION ALL
+    SELECT 'locomotive', l.gtk_id, coalesce(l.name, l.garage_number, l.gtk_id::text),
+           l.inventory_number, l.garage_number
+    FROM gtk_locomotives l
+) g
+WHERE NOT EXISTS (
+    SELECT 1 FROM asset_source_links s
+    WHERE s.source = 'gtk' AND s.status = 'active'
+      AND s.external_id = g.gtk_id::text
+)
+"""
+_GTK_KIND_BY_TYPE = {"wagon": "carriage", "locomotive": "locomotive"}
+
+
+def _like_pattern(value: str) -> str:
+    escaped = value.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+async def _list_gtk_only(
+    db: AsyncSession,
+    *,
+    asset_type: str | None,
+    status: str | None,
+    section_id: UUID | None,
+    without_org_unit: bool,
+    master_section_id: UUID | None,
+    q: str | None,
+    limit: int,
+    offset: int,
+    descending: bool,
+):
+    """GTK objects that have no TOIR asset yet. They carry no TOIR status or section,
+    so any filter on those (or a master's section scope) leaves nothing to show."""
+    if (
+        status is not None
+        or section_id is not None
+        or without_org_unit
+        or master_section_id is not None
+        or (asset_type is not None and asset_type not in _GTK_KIND_BY_TYPE)
+    ):
+        return [], 0
+    where = ""
+    params: dict[str, Any] = {"limit": limit, "offset": offset}
+    if asset_type is not None:
+        where += " AND g.kind = :kind"
+        params["kind"] = _GTK_KIND_BY_TYPE[asset_type]
+    if q:
+        where += (
+            " AND (g.name ILIKE :q ESCAPE '\\' OR g.inventory_number ILIKE :q ESCAPE '\\'"
+            " OR g.extra ILIKE :q ESCAPE '\\')"
+        )
+        params["q"] = _like_pattern(q)
+    total = (
+        await db.execute(text(f"SELECT count(*) {_GTK_ONLY_FROM} {where}"), params)
+    ).scalar_one()
+    direction = "DESC" if descending else "ASC"
+    rows = await db.execute(
+        text(
+            f"SELECT g.kind, g.gtk_id, g.name, g.inventory_number {_GTK_ONLY_FROM} {where} "
+            f"ORDER BY g.name {direction}, g.gtk_id LIMIT :limit OFFSET :offset"
+        ),
+        params,
+    )
+    return [dict(row._mapping) for row in rows.all()], total

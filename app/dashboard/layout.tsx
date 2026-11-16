@@ -34,6 +34,7 @@ const ROLE_BADGE: Record<string, { label: string; cls: string }> = {
   admin:    { label: "Администратор", cls: "bg-purple-100 text-purple-700 dark:bg-purple-900/60 dark:text-purple-300" },
   operator: { label: "Оператор",      cls: "bg-blue-100   text-blue-700   dark:bg-blue-900/60   dark:text-blue-300"   },
   master:   { label: "Мастер",        cls: "bg-amber-100  text-amber-700  dark:bg-amber-900/60  dark:text-amber-300"  },
+  management: { label: "Руководство", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300" },
 }
 
 function UserBlockWithSection({
@@ -179,7 +180,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     !(n.href === "/dashboard/os/wialon" && role === "master") &&
     !(n.href === "/dashboard/os/gtk" && role === "master")
   )
-  const badge    = ROLE_BADGE[role]
+  const badge    = ROLE_BADGE[role] ?? ROLE_BADGE.operator
   const isAdmin  = role === "admin"
   const currentPage = navItems.find((item) =>
     item.exact ? pathname === item.href : pathname.startsWith(item.href)

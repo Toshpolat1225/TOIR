@@ -81,6 +81,7 @@ async def _record_failure(
 
 
 async def _gated_mileage(db, unit, *, now: datetime, stats: Counter) -> Decimal | None:
+    """Returns the gate-accepted odometer DELTA (km) for the pull path, else None."""
     result = await ingest_wialon_reading(
         db,
         unit_id=unit.unit_id,
@@ -98,7 +99,7 @@ async def _gated_mileage(db, unit, *, now: datetime, stats: Counter) -> Decimal 
     stats[f"mileage_{getattr(result, 'mileage_verdict', None) or 'no_data'}"] += 1
     if not result.accepted:
         stats["raw_rejected"] += 1
-    return None
+    return getattr(result, "mileage_delta", None)
 
 
 async def sync_wialon_assets(db: AsyncSession) -> WialonSyncResult:
@@ -132,14 +133,15 @@ async def sync_wialon_assets(db: AsyncSession) -> WialonSyncResult:
                 is_online = is_wialon_unit_online(
                     unit.last_message_at, now=synced_at
                 )
-                safe_mileage = await _gated_mileage(
+                mileage_delta = await _gated_mileage(
                     db, unit, now=synced_at, stats=gate_stats
                 )
                 result = await assets_service.receive_wialon_update(
                     db,
                     unit_id=unit.unit_id,
                     unit_name=unit.name,
-                    mileage=safe_mileage,
+                    mileage=None,
+                    mileage_delta=mileage_delta,
                     speed=unit.speed,
                     online=is_online,
                     allow_zero_mileage=True,

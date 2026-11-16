@@ -17,20 +17,31 @@ const ROLE_CFG: Record<"admin" | "operator" | "master" | "management", { label: 
   management: { label: "Руководство",  cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300", Icon: ShieldCheck },
 }
 
-/* ─── Модал создания пользователя ─── */
+/* ─── Модал выдачи доступа ─── */
 function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void; onCreated: () => void; sections: SectionData[] }) {
-  const [fullName, setFullName] = useState("")
-  const [email,    setEmail]    = useState("")
-  const [password, setPassword] = useState("")
-  const [showPwd,  setShowPwd]  = useState(false)
-  const [role,     setRole]     = useState<UserRole>("master")
-  const [section,  setSection]  = useState("")
-  const [busy,     setBusy]     = useState(false)
-  const [error,    setError]    = useState("")
+  const [fullName,   setFullName]   = useState("")
+  const [adUsername, setAdUsername] = useState("")
+  const [role,       setRole]       = useState<UserRole>("master")
+  const [section,    setSection]    = useState("")
+  const [emergency,  setEmergency]  = useState(false)
+  const [email,      setEmail]      = useState("")
+  const [password,   setPassword]   = useState("")
+  const [showPwd,    setShowPwd]    = useState(false)
+  const [busy,       setBusy]       = useState(false)
+  const [error,      setError]      = useState("")
 
   const handleCreate = async () => {
-    if (!fullName.trim() || !email.trim() || password.length < 6) {
-      setError("Заполните все поля. Пароль — минимум 6 символов.")
+    if (!fullName.trim()) {
+      setError("Укажите ФИО.")
+      return
+    }
+    if (emergency) {
+      if (!email.trim() || password.length < 6) {
+        setError("Для аварийной записи укажите email и пароль (минимум 6 символов).")
+        return
+      }
+    } else if (!/^[A-Za-z0-9._-]{1,64}$/.test(adUsername.trim().replace(/@agmk\.uz$/i, ""))) {
+      setError("Укажите доменный логин, например t.turakulov.")
       return
     }
     if (role === "master" && !section) {
@@ -40,17 +51,26 @@ function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void
     setBusy(true)
     setError("")
     try {
-      await api.users.create({
-        email: email.trim(),
-        full_name: fullName.trim(),
-        password,
-        role,
-        section_id: section || null,
-      })
+      if (emergency) {
+        await api.users.create({
+          email: email.trim(),
+          full_name: fullName.trim(),
+          password,
+          role,
+          section_id: section || null,
+        })
+      } else {
+        await api.users.createAd({
+          ad_username: adUsername.trim(),
+          full_name: fullName.trim(),
+          role,
+          section_id: section || null,
+        })
+      }
       onCreated()
       onClose()
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Не удалось создать пользователя.")
+      setError(error instanceof Error ? error.message : "Не удалось выдать доступ.")
       setBusy(false)
     }
   }
@@ -60,36 +80,31 @@ function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700">
+      <div className="w-full max-w-md max-h-[90vh] overflow-y-auto bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700">
 
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
-          <h2 className="text-base font-bold text-gray-900 dark:text-white">Создать пользователя</h2>
+          <h2 className="text-base font-bold text-gray-900 dark:text-white">Выдать доступ пользователю домена</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"><X className="w-4 h-4"/></button>
         </div>
 
         <div className="px-6 py-5 space-y-4">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Пароль не задаётся: пользователь входит доменным паролем. Наличие учётной записи в домене проверяется при первом успешном входе.
+          </p>
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">ФИО</label>
             <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Иванов Иван Иванович" className={inp}/>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Email</label>
-            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="user@company.uz" className={inp}/>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Пароль</label>
-            <div className="relative">
-              <input type={showPwd?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Минимум 6 символов" className={inp + " pr-10"}/>
-              <button type="button" onClick={()=>setShowPwd(v=>!v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                {showPwd ? <EyeOff className="w-4 h-4"/> : <Eye className="w-4 h-4"/>}
-              </button>
+          {!emergency && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Доменный логин</label>
+              <input value={adUsername} onChange={e=>setAdUsername(e.target.value)} placeholder="t.turakulov" autoComplete="off" className={inp}/>
             </div>
-          </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Роль</label>
               <select value={role} onChange={e=>setRole(e.target.value as UserRole)} className={sel}>
-                <option value="admin">Администратор</option>
                 <option value="operator">Оператор</option>
                 <option value="master">Мастер</option>
                 <option value="management">Руководство</option>
@@ -104,6 +119,31 @@ function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void
             </div>
           </div>
 
+          <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
+            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input type="checkbox" checked={emergency} onChange={e=>setEmergency(e.target.checked)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"/>
+              Аварийная локальная запись (логин и пароль, только для администратора)
+            </label>
+            {emergency && (
+              <div className="mt-3 space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/60 dark:bg-amber-950/30">
+                <p className="text-xs text-amber-800 dark:text-amber-300">Используйте только если домен недоступен. Такая запись входит локальным паролем, а не через AD.</p>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Email</label>
+                  <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="user@company.uz" autoComplete="off" className={inp}/>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Пароль</label>
+                  <div className="relative">
+                    <input type={showPwd?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Минимум 6 символов" autoComplete="new-password" className={inp + " pr-10"}/>
+                    <button type="button" onClick={()=>setShowPwd(v=>!v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showPwd ? <EyeOff className="w-4 h-4"/> : <Eye className="w-4 h-4"/>}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {error && <p className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{error}</p>}
         </div>
 
@@ -111,7 +151,7 @@ function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void
           <Button variant="outline" onClick={onClose}>Отмена</Button>
           <Button onClick={handleCreate} disabled={busy} className="gap-2 bg-blue-600 hover:bg-blue-700">
             {busy ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/> : <Plus className="w-4 h-4"/>}
-            Создать
+            {emergency ? "Создать аварийную запись" : "Выдать доступ"}
           </Button>
         </div>
       </div>
@@ -120,8 +160,9 @@ function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void
 }
 
 /* ─── Модал редактирования пользователя ─── */
-function EditUserModal({ profile, onClose, onSaved, sections }: {
+function EditUserModal({ profile, isMe, onClose, onSaved, sections }: {
   profile: Profile
+  isMe: boolean
   onClose: () => void
   onSaved: () => void
   sections: SectionData[]
@@ -135,6 +176,9 @@ function EditUserModal({ profile, onClose, onSaved, sections }: {
   const [resetBusy, setResetBusy] = useState(false)
   const [error,    setError]    = useState("")
   const [resetSuccess, setResetSuccess] = useState(false)
+  const [adLogin, setAdLogin] = useState("")
+  const [convertBusy, setConvertBusy] = useState(false)
+  const isAd = profile.auth_source === "ad"
 
   const handleSave = async () => {
     if (role === "master" && !section) {
@@ -178,12 +222,30 @@ function EditUserModal({ profile, onClose, onSaved, sections }: {
     }
   }
 
+  const handleConvert = async () => {
+    if (!/^[A-Za-z0-9._-]{1,64}$/.test(adLogin.trim().replace(/@agmk\.uz$/i, ""))) {
+      setError("Укажите доменный логин, например t.turakulov.")
+      return
+    }
+    if (!window.confirm(`Перевести «${profile.full_name}» на вход через домен? Локальный пароль будет удалён, сессии завершены. Действие записывается в журнал.`)) return
+    setConvertBusy(true)
+    setError("")
+    try {
+      await api.users.convertToAd(profile.id, adLogin.trim())
+      onSaved()
+      onClose()
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Не удалось перевести пользователя на AD.")
+      setConvertBusy(false)
+    }
+  }
+
   const inp = "w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
   const sel = "w-full appearance-none border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700">
+      <div className="w-full max-w-md max-h-[90vh] overflow-y-auto bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700">
 
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
           <h2 className="text-base font-bold text-gray-900 dark:text-white">Редактировать пользователя</h2>
@@ -226,22 +288,42 @@ function EditUserModal({ profile, onClose, onSaved, sections }: {
             />
             Активная учетная запись
           </label>
-          <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Сбросить пароль</label>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={newPassword}
-                onChange={e=>setNewPassword(e.target.value)}
-                placeholder="Новый пароль (минимум 6 символов)"
-                className={inp}
-                autoComplete="new-password"
-              />
-              <Button variant="outline" onClick={handlePasswordReset} disabled={resetBusy || !newPassword}>
-                {resetBusy ? "..." : "Сбросить"}
-              </Button>
-            </div>
+          <div className="border-t border-gray-200 dark:border-gray-800 pt-4 text-sm text-gray-600 dark:text-gray-300">
+            Вход: <b>{isAd ? "через домен (AD)" : "локальный пароль"}</b>
+            {isAd && (
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Логин: {profile.ad_username}. {profile.ad_object_guid ? "Учётная запись подтверждена в домене." : "Ещё не входил: подтверждение в домене произойдёт при первом входе."}
+              </p>
+            )}
           </div>
+          {!isAd && (
+<div className="border-t border-gray-200 dark:border-gray-800 pt-4">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Сбросить пароль</label>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={e=>setNewPassword(e.target.value)}
+                  placeholder="Новый пароль (минимум 6 символов)"
+                  className={inp}
+                  autoComplete="new-password"
+                />
+                <Button variant="outline" onClick={handlePasswordReset} disabled={resetBusy || !newPassword}>
+                  {resetBusy ? "..." : "Сбросить"}
+                </Button>
+              </div>
+            </div>
+          )}
+          {!isAd && !isMe && (
+            <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Перевести на вход через домен</label>
+              <div className="flex gap-2">
+                <input value={adLogin} onChange={e=>setAdLogin(e.target.value)} placeholder="Доменный логин" autoComplete="off" className={inp}/>
+                <Button variant="outline" onClick={handleConvert} disabled={convertBusy || !adLogin}>{convertBusy ? "..." : "Перевести"}</Button>
+              </div>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Локальный пароль будет удалён безвозвратно.</p>
+            </div>
+          )}
           {resetSuccess && <p role="status" className="text-emerald-700 text-sm dark:text-emerald-400">Пароль успешно обновлён.</p>}
           {error && <p className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{error}</p>}
         </div>
@@ -339,7 +421,7 @@ export default function AdminUsersPage() {
   return (
     <div className="p-8 space-y-6">
       {showCreate && <CreateUserModal onClose={()=>setShowCreate(false)} onCreated={fetchUsers} sections={sectionsData}/>}
-      {editing    && <EditUserModal   profile={editing} onClose={()=>setEditing(null)} onSaved={fetchUsers} sections={sectionsData}/>}
+      {editing    && <EditUserModal   profile={editing} isMe={editing.id === myProfile?.id} onClose={()=>setEditing(null)} onSaved={fetchUsers} sections={sectionsData}/>}
 
       {/* Заголовок */}
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -352,7 +434,7 @@ export default function AdminUsersPage() {
             <ShieldCheck className="w-4 h-4"/> Права доступа
           </Link>
           <Button className="gap-2 bg-blue-600 hover:bg-blue-700" onClick={()=>setShowCreate(true)}>
-            <Plus className="w-4 h-4"/> Создать пользователя
+            <Plus className="w-4 h-4"/> Выдать доступ
           </Button>
         </div>
       </div>
@@ -409,6 +491,7 @@ export default function AdminUsersPage() {
               <tr>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">ФИО</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Email</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Вход</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Роль</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Участок</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Статус</th>
@@ -418,7 +501,7 @@ export default function AdminUsersPage() {
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center text-gray-400 py-10">Нет пользователей</td>
+                  <td colSpan={7} className="text-center text-gray-400 py-10">Нет пользователей</td>
                 </tr>
               ) : filtered.map(u => {
                 const cfg = ROLE_CFG[u.role]
@@ -439,6 +522,11 @@ export default function AdminUsersPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{u.email || "—"}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${u.auth_source === "ad" ? "bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-300" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"}`}>
+                        {u.auth_source === "ad" ? "AD" : "Локальный"}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded-full ${cfg.cls}`}>
                         <cfg.Icon className="w-3 h-3"/>
@@ -475,7 +563,7 @@ export default function AdminUsersPage() {
       </div>
 
       <p className="text-xs text-gray-400 dark:text-gray-600">
-        Управление учетными записями выполняется через локальный API.
+        Пользователи домена входят доменным паролем; локальные записи предназначены для аварийного доступа.
       </p>
     </div>
   )

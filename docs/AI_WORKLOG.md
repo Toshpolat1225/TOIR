@@ -287,3 +287,33 @@ Task: remove dead/duplicate/backup files from the project folder (user approved 
 Changed: 36 tracked deletions + untracked junk removed (see HANDOFF). No code, schema or migration edited.
 Tested: `npx tsc --noEmit` exit 0, `npm run build` exit 0. Backend tests not run.
 Next: user commits; then rehearse migration 0029 on `toir_rehearse`.
+
+## 2026-11-13 — Vagon probegi: (a)–(e), Faza 3, Faza 5
+Task: lokomotiv yozuvchisini tiklash, CLI bayrog'i, yagona run, boshlang'ich taklif/tasdiq, HELD sabablari, hisobot, hujjat.
+Changed: `services/{assets,wialon,wialon_ingestion,wagon_mileage_run,mileage_opening}.py`, yangi `mileage_opening_bulk.py`, `wagon_mileage_reasons.py`, `wagon_mileage_report.py`, `cli.py`, `routers|schemas/mileage.py`, testlar, `docs/WAGON_MILEAGE_{AUDIT,RUNBOOK}.md`, `.gitignore`.
+Tested: pytest 340 o'tdi (pg 11), alembic up/down/up, tsc/lint/build exit 0. Faza 4 (real run) va UI bajarilmadi.
+Next: foydalanuvchi backend'ni qayta quradi, so'ng Faza 4.
+
+## 2026-11-15 — Faza 4 (mahalliy real run)
+Task: boshlang'ich taklif/tasdiq, real run, invariantlar, hisobot. Superadmin rejimi (`OPENING_BALANCE_ALLOW_SELF_APPROVAL`), `include-zero`, MissingGreenlet tuzatildi, D3 nol-km, hisobot yorlig'i.
+Tested: pytest 350 o'tdi; real run completed, invariantlar 0 xato, ikkinchi run farqsiz. Brauzer/UI tekshirilmagan; 2.5 boshlanmagan.
+Next: foydalanuvchi backend'ni qayta quradi va run'ni takrorlaydi; 16 bloklangan lokomotivni operator hal qiladi.
+
+## 2026-11-15 — AD (LDAPS) login
+Task: domen paroli bilan kirish (instruksiya bo'yicha). Changed: ad_auth.py, auth.py, schemas/auth.py, config, compose, requirements, login page, certs, docs/AD_LOGIN.md.
+Tested: pytest 375 o'tdi, tsc/build 0. Jonli domen kirishi tekshirilmagan.
+Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan sinaydi.
+
+## 2026-11-16: AD kirish qayta loyihalandi (auth_source)
+- Migratsiya `0030_user_auth_source`: `users.auth_source` (local|ad), `ad_username` (unique), `ad_object_guid` (unique), `hashed_password` NULL bo'la oladi, CHECK `ck_users_auth_credentials`. pg_rehearse'da up/down/up, AD user bor holatda downgrade va `schema.sql` bilan `users` parity tekshirildi.
+- Kirish manbasi `auth_source` bo'yicha (login shakli bo'yicha emas). AD user: domen, parol saqlanmaydi, domen ishlamasa 503 (lokal fallback olib tashlandi). Local user: domenga murojaat yo'q.
+- Servis akkaunti yo'q (variant B): AD user kiritilganda domenda tekshirilmaydi; `objectGUID` birinchi muvaffaqiyatli kirishda yoziladi, keyin boshqa GUID rad etiladi.
+- Yangi: `POST /users/ad` (parolsiz), `POST /users/{id}/convert-to-ad` (admin, o'zini emas), CLI `user-convert-to-ad`. `POST /users` (lokal) faqat admin roli. AD userda parol reset 409.
+- Audit: kirishda `details.auth_source`; o'tkazish `action=other, details.event=convert_to_ad`.
+- UI: «Выдать доступ» (AD), aварийная lokal yozuv alohida, «Вход» ustuni, tahrirda AD ma'lumoti va «Перевести на вход через домен». Hujjat: docs/AD_LOGIN.md.
+
+## 2026-11-16: Konfliktlar (probeg va pasport raqami)
+- Tashxis: 50 ta bloklangan hisoblagichning sababi bir xil (668/668 juftda keyingi qiymat kattaroq). 279 pasport to'qnashuvidan 275 tasi faqat nolli raqam farqi, 4 tasi haqiqiy.
+- Kod: `is_counter_advance` (blok o'rniga benign HELD), `wialon_counter_release` servisi + CLI `wialon-counter-release` (replay, dry-run, --inv-number, audit), `propose_field` nolli raqamni teng deb biladi, CLI `asset-conflicts-clean`. Sahifa matni yangilandi.
+- Haqiqiy ma'lumotda oflayn tekshiruv (faqat o'qish): 49/49 lokomotiv xavfsiz ochiladi, 15320 o'qish tiklanadi, 323 benign HELD, 360 darvoza tomonidan ushlanadi (259 eski xabar, 101 katta qadam).
+- Alohida topilma (tuzatilmadi): `audit_logs` da wialon_raw_receipts 438k, fixed_assets 300k, wialon_odometer_readings 44k qator; `_OPERATIONAL_TABLES` da `wialon_counter_states` (ko'plik) yozilgan, jadval esa `wialon_counter_state`.

@@ -57,3 +57,8 @@ assets_import.json
 *.dump
 
 *.dump
+
+# wagon mileage reports and local backups
+reports/
+backups/
+*.dump

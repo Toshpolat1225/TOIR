@@ -12,7 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.mileage import WialonOdometerReading, WialonRawReceipt
 from app.repositories import wialon_counters as counters_repository
-from app.services.wialon_quality import Reading, Verdict, evaluate
+from app.services.wialon_quality import (
+    COUNTER_ADVANCED_REASON,
+    Reading,
+    Verdict,
+    evaluate,
+    is_counter_advance,
+)
 
 
 @dataclass(frozen=True)
@@ -24,6 +30,7 @@ class WialonIngestionResult:
     classification: str
     reason: str | None
     mileage_verdict: str | None
+    mileage_delta: Decimal | None = None
 
 
 def _safe_payload(
@@ -121,7 +128,9 @@ async def ingest_wialon_reading(
     calculation_eligible = False
     classification = "HELD"
     mileage_verdict = None
+    mileage_delta: Decimal | None = None
     conflict = False
+    counter_advanced = False
     if unit_id and valid_odometer:
         measurement_key = _measurement_key(
             unit_id=unit_id,
@@ -186,9 +195,18 @@ async def ingest_wialon_reading(
                 .with_for_update()
             )
             same_time_readings = list(result.scalars().all())
-            conflict = any(
-                row.odometer_km != odometer_km for row in same_time_readings
+            differing = [
+                row for row in same_time_readings if row.odometer_km != odometer_km
+            ]
+            counter_advanced = bool(differing) and is_counter_advance(
+                [
+                    (row.odometer_km, getattr(row, "received_at", None))
+                    for row in differing
+                ],
+                odometer_km,
+                received_at,
             )
+            conflict = bool(differing) and not counter_advanced
             if conflict:
                 reason = "same_time_different_odometer"
                 for row in same_time_readings:
@@ -216,6 +234,12 @@ async def ingest_wialon_reading(
                 reading.calculation_eligible = False
                 reading.classification = "HELD"
                 reading.rejection_reason = "same_time_different_odometer"
+        elif counter_advanced:
+            # The earlier reading with this message time stays the representative;
+            # the growth is counted by the next reading with a newer message time.
+            calculation_eligible = False
+            reason = COUNTER_ADVANCED_REASON
+            mileage_verdict = Verdict.UNCHANGED.value
         elif (
             asset is not None
             and reading_at is not None
@@ -237,6 +261,12 @@ async def ingest_wialon_reading(
                     now=received_at,
                 )
                 mileage_verdict = gate.mileage.verdict.value
+                if (
+                    gate.mileage.verdict is Verdict.ACCEPTED
+                    and gate.mileage.delta is not None
+                    and gate.mileage.delta > 0
+                ):
+                    mileage_delta = gate.mileage.delta
                 calculation_eligible = gate.mileage.verdict in {
                     Verdict.BASELINE,
                     Verdict.ACCEPTED,
@@ -284,4 +314,5 @@ async def ingest_wialon_reading(
             else None
         ),
         mileage_verdict,
+        mileage_delta,
     )

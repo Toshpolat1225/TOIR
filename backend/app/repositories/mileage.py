@@ -179,17 +179,17 @@ async def summarize_active_ledger(
         classification: Decimal(str(km))
         for classification, km in result.all()
     }
+    # One labeled expression: two separate ["reason"] expressions bind different
+    # parameters and PostgreSQL rejects the GROUP BY.
+    reason_column = WagonMileageLedger.calculation_details["reason"].astext.label("reason")
     reasons_result = await db.execute(
-        select(
-            WagonMileageLedger.calculation_details["reason"].astext,
-            func.count(),
-        )
+        select(reason_column, func.count())
         .where(
             WagonMileageLedger.wagon_asset_id == asset_id,
             WagonMileageLedger.status == "active",
             WagonMileageLedger.classification == "HELD",
         )
-        .group_by(WagonMileageLedger.calculation_details["reason"].astext)
+        .group_by(reason_column)
     )
     reasons = {
         str(reason or "unknown"): int(count)

@@ -48,18 +48,46 @@ async def list_unified_assets(
         ) from exc
 
     items: list[UnifiedAssetRead] = []
+    if source == "gtk":
+        for row in rows:
+            items.append(
+                UnifiedAssetRead(
+                    source="gtk",
+                    asset_id=None,
+                    unit_id=None,
+                    name=row["name"],
+                    asset_type="wagon" if row["kind"] == "carriage" else "locomotive",
+                    series=None,
+                    inv_number=row["inventory_number"],
+                    status=None,
+                    section=None,
+                    section_id=None,
+                    mileage=None,
+                    wialon_cnm=None,
+                    wialon_cneh=None,
+                    speed=None,
+                    last_message_at=None,
+                    is_online=False,
+                    suspect_absolute=False,
+                    gtk_id=row["gtk_id"],
+                    gtk_kind=row["kind"],
+                )
+            )
+        return items, total
     for row in rows:
+        has_gtk = bool(row[5]) if len(row) > 5 else False
         if len(row) == 3:
             asset, unit, section = row
             asset_name = getattr(asset, "name", None)
             asset_series = getattr(asset, "series", None)
         else:
-            asset, unit, section, asset_name, asset_series = row
-        source_value = (
-            "both" if asset is not None and unit is not None
-            else "toir" if asset is not None
-            else "wialon"
-        )
+            asset, unit, section, asset_name, asset_series = row[:5]
+        if asset is None:
+            source_value = "wialon"
+        elif unit is not None:
+            source_value = "toir_wialon_gtk" if has_gtk else "both"
+        else:
+            source_value = "toir_gtk" if has_gtk else "toir"
         items.append(
             UnifiedAssetRead(
                 source=source_value,

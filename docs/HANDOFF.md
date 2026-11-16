@@ -1168,3 +1168,46 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### NOT TESTED
 
 - Backend tests, docker image build, 0029 on the rehearsal DB, browser.
+
+## Vagon probegi yakunlash (2026-11-13, shoxcha `wagon-mileage-final`)
+
+### Verified (buyruq natijasi ko'rilgan; test bazasi `pg_rehearse`)
+
+- `pytest tests`: 340 o'tdi; `pytest -m pg`: 11 o'tdi; `alembic downgrade -1` va `upgrade head`: `0029_wagon_mileage_ledger (head)`; `npx tsc --noEmit`, `npm run lint` (0 xato, 2 eski ogohlantirish), `npm run build`: chiqish kodi 0.
+- Qaror 1: lokomotiv/teplovoz probegini faqat Wialon pull gate delta yozadi (`services/assets.py`, `services/wialon.py`, `services/wialon_ingestion.py`). Sabab: `5e435f7` ("p02") yozuvchini olib tashlagan. Testlar: delta oshiradi, vagonga yozmaydi, 10^9 rad, push o'zgartirmaydi.
+- Qaror 3: hisob `effective_at` dan boshlanadi, oldingi davr hisoblanmaydi va HELD emas (pg test).
+- Qaror 4: `wagon-mileage-run` real run bayroqsiz rad (kod 3), `--dry-run` doim ruxsat. Bayroq konteynerga yetishi: `docker compose run -e ...` bilan `True`, bayroqsiz `False` (natija ko'rilgan).
+- Faza 2.1: yagona run (advisory lock, `FAILED`, invariantlar yozishdan oldin), 2.2: `wagon-opening-propose/approve` + API `bulk-approve` (maker≠checker, admin), 2.3: HELD sabab kodlari, 2.4: `wagon-mileage-report`. Hammasiga test bor.
+- Mahalliy baza zaxirasi: `p03_20261113_153306.dump` (138 438 762 bayt, 61 jadval ma'lumoti; repo ildizida, gitignore'da, ichida Wialon token bor).
+
+### Next task
+
+1. Mahalliy Docker'da backend'ni qayta qurish (`docker compose up -d --build backend`): AI uchun ruxsat berilmadi, foydalanuvchi bajaradi.
+2. Faza 4: dry-run, ikkita admin bilan boshlang'ich taklif/tasdiq, real run, ikkinchi run, hisobot. Tafsilot: `docs/WAGON_MILEAGE_RUNBOOK.md`.
+3. Faza 2.5 (UI) boshlanmagan.
+
+### NOT TESTED
+
+- Mahalliy Docker'da real run (Faza 4), brauzer/UI, jonli GTK/Wialon, server. Commit qilinmagan (AI'ga ruxsat berilmadi).
+- Lokomotiv `reconcile_asset_plans` hali 0 qaytaradi (lokomotiv ТО-reja qarori PENDING).
+
+### Faza 4 natijasi (mahalliy Docker, 2026-11-15; buyruq natijasi ko'rilgan)
+
+- Zaxira: `p03_20261113_153306.dump`. Boshlang'ich: 563 taklif (560 nol + 3 ok), `--include-zero` va `OPENING_BALANCE_ALLOW_SELF_APPROVAL=true` bilan bitta superadmin tasdiqladi; hammasida `[self-approved by policy]`.
+- Real run `completed`: ledger 265 ESTIMATED (43.50 km) + 200 HELD; vagon yig'indisi 384.00 -> 427.50 (= 384 + 43.50). Invariantlar: projection mos kelmasligi 0, manfiy km 0, takroriy faol davr 0. Lokomotiv yig'indisi run oldin/keyin 11990.00. Ikkinchi run: `changed_assets: 0`, ledger o'zgarmadi.
+- 200 HELD: 16 poyezdning lokomotivlarida hisoblagich `counter_state_blocked_by_unresolved_conflict` (same_time_different_odometer'dan keyin operator rebaseline qilmaguncha bloklangan). Operator qarori kerak.
+- Hisobot (835 vagon): HELD 570 (gtk_link_missing 272, no_eligible_locomotive_odometer 200, no_gtk_membership 66, no_calculated_period_yet 32), ESTIMATED 24, CONFIRMED 241 (0 km). Eslatma: hisobot yorlig'i va 241 ta 0-km davr ESTIMATED deb yozilgan edi; kod tuzatildi (350 test o'tdi), konteyner qayta qurilmagan va qayta run qilinmagan.
+- Xato: `docker compose run` da `--entrypoint python` shart (aks holda butun ilova ishga tushadi). `MissingGreenlet` (ommaviy tasdiq) tuzatilgan.
+
+### Ikki qo'shimcha tuzatish va konflikt sahifasi (2026-11-15)
+
+- **Ikki marta hisoblash xatosi:** ochiq a'zoliklarda har run yangi davr `[boshi, hozir)` yaratardi, eskisi faol qolardi (tekshirilgan: bazada 252 ustma-ust juft, vagon yig'indisi 700.00 edi). Tuzatildi: ustma-ust tushadigan faol qatorlar `superseded` bo'ladi, yangi invariant (ustma-ust tushish bo'lsa run FAILED), pg regressiya testlari (eski kodda yiqiladi). Mahalliy baza hali tuzatilmagan: backend qayta qurilib, run takrorlansa tozalanadi.
+- **D3:** harakatsiz (0 km) davr ESTIMATED emas, CONFIRMED (241 ta qator shunday yozilgan edi; qayta run bilan yangilanadi).
+- **Konflikt sahifasi** (`/dashboard/directories/conflicts`): tushuntirish bloki, 3 ta ko'rsatkich, ikki yorliq. «Счётчики Wialon» (16 bloklangan lokomotiv, ta'sirlangan vagonlar, qaror savoli, faqat o'qish) va «Расхождения паспорта» (filtrlar: status/manba/maydon/qidiruv, aktiv nomi). Yangi API: `GET /asset-conflicts/wialon-counters`; `GET /asset-conflicts` ga `source`, `field`, `q`. Master faqat o'z uchastkasini ko'radi (serverda).
+- Tekshirilgan: pytest 355 o'tdi (pg 3 ta yangi), `tsc` 0, eslint toza, `npm run build` 0. **Tekshirilmagan:** brauzerda ko'rinishi, frontend konteyneri qayta qurilmagan.
+
+## AD (LDAPS) orqali kirish (2026-11-15)
+
+- Qo'shildi: `backend/app/services/ad_auth.py`, `services/auth.py` oqimi, `ad_*` sozlamalar (standart o'chiq), CA sertifikati `backend/app/certs/`, `ldap3==2.9.1`, login formasida «Логин или Email», compose'da `AD_AUTH_ENABLED`. Tafsilot: `docs/AD_LOGIN.md`.
+- Tekshirilgan: pytest 375 o'tdi (yangi 19 ta: AD unit va PG oqim testlari), `tsc`, build 0. PC'dan: sertifikat barmoq izi mos, 636 ochiq, TLS `Verify return code: 0 (ok)`.
+- **Tekshirilmagan:** haqiqiy domen paroli bilan kirish (foydalanuvchi o'zi sinaydi), konteyner ichidan DNS/636, brauzer.

@@ -406,3 +406,69 @@ async def test_push_absolute_odometer_does_not_change_fixed_asset_mileage():
     assert asset.mileage == Decimal("1250")
     assert result["found"] is True
     commit.assert_awaited_once()
+
+
+async def _ingest_with_state(odometer: Decimal):
+    observed_at = datetime(2026, 11, 11, 12, 2, tzinfo=timezone.utc)
+    reading = SimpleNamespace(
+        id=31,
+        odometer_km=odometer,
+        calculation_eligible=False,
+        classification="HELD",
+        rejection_reason=None,
+    )
+    calls = 0
+
+    async def execute(_statement):
+        nonlocal calls
+        calls += 1
+        if calls < 4:
+            return _Result(reading if calls == 3 else None)
+        return _Result(rows=[reading])
+
+    db = SimpleNamespace(
+        add=Mock(), execute=AsyncMock(side_effect=execute), flush=AsyncMock()
+    )
+    state = CounterState(
+        baseline_cnm=Decimal("100"),
+        last_cnm=Decimal("100"),
+        last_cnm_at=observed_at - timedelta(minutes=2),
+    )
+    with (
+        patch.object(
+            wialon_ingestion.counters_repository,
+            "get_asset_by_wialon_id",
+            new=AsyncMock(return_value=SimpleNamespace(id="asset-1")),
+        ),
+        patch.object(
+            wialon_ingestion.counters_repository,
+            "get_state_row",
+            new=AsyncMock(return_value=state),
+        ),
+        patch.object(
+            wialon_ingestion.counters_repository, "save_decision", new=AsyncMock()
+        ),
+    ):
+        return await wialon_ingestion.ingest_wialon_reading(
+            db,
+            unit_id="wialon-42",
+            odometer_km=odometer,
+            reading_at=observed_at,
+            received_at=observed_at,
+            transport="pull",
+            source_time_verified=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_accepted_gate_delta_is_returned_for_locomotive_projection():
+    result = await _ingest_with_state(Decimal("105"))
+    assert result.mileage_verdict == "accepted"
+    assert result.mileage_delta == Decimal("5")
+
+
+@pytest.mark.asyncio
+async def test_rejected_gate_delta_is_not_returned():
+    result = await _ingest_with_state(Decimal("1000000000"))
+    assert result.mileage_verdict == "rejected"
+    assert result.mileage_delta is None

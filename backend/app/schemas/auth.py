@@ -1,3 +1,4 @@
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -11,14 +12,13 @@ class LoginRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email_field(cls, value: str) -> str:
-        return validate_email(value)
-
-    @field_validator("password")
-    @classmethod
-    def ensure_bcrypt_password_length(cls, value: str) -> str:
-        if len(value.encode("utf-8")) > 72:
-            raise ValueError("Password must not exceed 72 UTF-8 bytes")
-        return value
+        """An email, or a bare directory login such as ``t.turakulov``."""
+        normalized = value.strip()
+        if "@" in normalized:
+            return validate_email(normalized)
+        if re.fullmatch(r"[A-Za-z0-9._-]{1,64}", normalized) is None:
+            raise ValueError("A valid login or email address is required")
+        return normalized.lower()
 
 
 class RefreshRequest(BaseModel):

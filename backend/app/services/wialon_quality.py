@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
+from typing import Sequence
 
 MAX_SPEED_KMH = Decimal("150")
 JUMP_SLACK_KM = Decimal("10")
@@ -69,6 +70,34 @@ class GateResult:
 
 def _hours(a: datetime, b: datetime) -> Decimal:
     return Decimal(str((b - a).total_seconds())) / Decimal("3600")
+
+
+COUNTER_ADVANCED_REASON = "counter_advanced_same_message_time"
+
+
+def is_counter_advance(
+    previous: Sequence[tuple[Decimal, datetime | None]],
+    new_km: Decimal,
+    observed_at: datetime,
+) -> bool:
+    """A reading with the SAME message time but a higher odometer is benign.
+
+    Wialon keeps advancing the counter while the last message time stands still
+    (2026-11 data: 668 such pairs, the later value was higher in all of them).
+    It is a conflict only if the value did not grow, a receipt time is unknown,
+    or the growth is faster than MAX_SPEED_KMH since the first observation.
+    ``previous`` holds (odometer, received_at) of the earlier same-time readings.
+    """
+    if not previous or any(received is None for _, received in previous):
+        return False
+    if any(km >= new_km for km, _ in previous):
+        return False
+    first_seen = min(received for _, received in previous if received is not None)
+    hours = _hours(first_seen, observed_at)
+    if hours < 0:
+        return False
+    growth = new_km - min(km for km, _ in previous)
+    return growth <= MAX_SPEED_KMH * hours + JUMP_SLACK_KM
 
 
 def suspect_absolute(cnm: Decimal | None, cneh: Decimal | None) -> bool:

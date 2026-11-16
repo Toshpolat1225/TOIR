@@ -100,12 +100,16 @@ async def update_settings(
     return MaintenanceSettingsRead(daily_average_km=result.daily_average_km)
 
 
+LOCOMOTIVE_TYPES = frozenset({"locomotive", "diesel"})
+KM_PLANNED_TYPES = LOCOMOTIVE_TYPES | {"wagon"}
+
 async def reconcile_asset_plans(
     db: AsyncSession, asset: FixedAsset, mileage: Decimal
 ) -> int:
-    if (
-        asset.asset_type != "wagon"
-        or not await mileage_repository.has_confirmed_projection(db, asset.id)
+    # Wagons need an approved projection. Locomotive/diesel mileage comes from
+    # the gated Wialon pull (D10) and is trusted as is.
+    if asset.asset_type == "wagon" and not await mileage_repository.has_confirmed_projection(
+        db, asset.id
     ):
         return 0
     today = date.today()
@@ -281,7 +285,7 @@ async def _interval_target(
 ) -> tuple[Decimal | None, date]:
     plans = plans_by_key.get((asset.id, interval.id), [])
     if interval.interval_km is not None:
-        if asset.asset_type != "wagon":
+        if asset.asset_type not in KM_PLANNED_TYPES:
             return None, today
         if daily_average_km is None:
             return None, today
@@ -418,7 +422,7 @@ async def get_schedule(
         has_wagon_projection = (
             asset.asset_type == "wagon"
             and await mileage_repository.has_confirmed_projection(db, asset.id)
-        )
+        ) or asset.asset_type in LOCOMOTIVE_TYPES
         intervals = await repository.list_active_intervals(db, asset.asset_type)
         for interval in intervals:
             if interval.interval_km is not None and not has_wagon_projection:

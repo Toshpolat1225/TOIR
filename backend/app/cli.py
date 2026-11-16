@@ -25,6 +25,8 @@ from app.models.maintenance import MaintenanceInterval, WorkType
 from app.models.organization import Department, Section
 from app.services.auth import create_initial_admin
 from app.services import maintenance as maintenance_service
+from app.models.identity import User
+from app.services import mileage_opening_bulk, wagon_mileage_report
 from app.services.wagon_mileage_run import run_wagon_mileage
 
 logger = logging.getLogger(__name__)
@@ -296,11 +298,178 @@ async def _recalculate_plans() -> int:
 
 
 async def _wagon_mileage_run(*, dry_run: bool) -> int:
+    if not dry_run and not settings.wagon_mileage_engine_enabled:
+        print(
+            "Rad etildi: real ishga tushirish uchun WAGON_MILEAGE_ENGINE_ENABLED=true "
+            "kerak. --dry-run har doim ruxsat etiladi.",
+            file=sys.stderr,
+        )
+        return 3
     try:
         async with SessionFactory() as db:
             report = await run_wagon_mileage(db, dry_run=dry_run)
     except SQLAlchemyError as exc:
         logger.error("Wagon mileage calculation failed (%s)", type(exc).__name__)
+        return 2
+    finally:
+        await engine.dispose()
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0
+
+
+async def _wagon_mileage_report(csv_path: str | None) -> int:
+    from pathlib import Path
+
+    try:
+        async with SessionFactory() as db:
+            report = await wagon_mileage_report.build_report(db)
+            await db.rollback()
+    except SQLAlchemyError as exc:
+        logger.error("Wagon mileage report failed (%s)", type(exc).__name__)
+        return 2
+    finally:
+        await engine.dispose()
+    rows = report.pop("rows")
+    if csv_path:
+        wagon_mileage_report.write_csv(rows, Path(csv_path))
+        report["csv"] = csv_path
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _parse_effective_at(value: str | None) -> datetime | None:
+    if value is None:
+        return None
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("--effective-at must include a timezone, e.g. 2026-11-13T00:00:00+05:00")
+    return parsed
+
+
+async def _wagon_opening_bulk(
+    *,
+    mode: str,
+    actor_email: str,
+    effective_at: str | None,
+    apply: bool,
+    include_zero: bool = False,
+) -> int:
+    try:
+        effective = _parse_effective_at(effective_at)
+        async with SessionFactory() as db:
+            user = await db.scalar(select(User).where(User.email == actor_email))
+            if user is None:
+                print("Foydalanuvchi topilmadi (--actor-email).", file=sys.stderr)
+                return 2
+            if mode == "propose":
+                report = await mileage_opening_bulk.propose_openings(
+                    db, user=user, effective_at=effective, apply=apply
+                )
+            else:
+                report = await mileage_opening_bulk.bulk_approve_openings(
+                    db,
+                    user=user,
+                    effective_at=effective,
+                    apply=apply,
+                    include_zero=include_zero,
+                )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        detail = getattr(exc, "detail", None) or type(exc).__name__
+        print(f"Bajarilmadi: {detail}", file=sys.stderr)
+        return 2
+    finally:
+        await engine.dispose()
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0
+
+
+async def _user_convert_to_ad(email: str, ad_username: str, apply: bool) -> int:
+    from app.schemas.users import ConvertToAd
+    from app.services import users as users_service
+
+    try:
+        payload = ConvertToAd(ad_username=ad_username)
+        async with SessionFactory() as db:
+            user = await db.scalar(select(User).where(User.email == email.strip()))
+            if user is None:
+                print("Foydalanuvchi topilmadi (--email).", file=sys.stderr)
+                return 2
+            report = {
+                "user": user.email,
+                "role": user.role,
+                "from": user.auth_source,
+                "ad_username": payload.ad_username,
+                "applied": False,
+            }
+            if apply:
+                await users_service.convert_user_to_ad(db, user.id, payload, actor=None)
+                report["applied"] = True
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        detail = getattr(exc, "detail", None) or type(exc).__name__
+        print(f"Bajarilmadi: {detail}", file=sys.stderr)
+        return 2
+    finally:
+        await engine.dispose()
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0
+
+
+async def _actor_for_cli(db: AsyncSession, actor_email: str | None, apply: bool) -> User | None:
+    if actor_email is None:
+        if apply:
+            raise ValueError("--actor-email majburiy (--apply bilan)")
+        return None
+    user = await db.scalar(select(User).where(User.email == actor_email.strip()))
+    if user is None:
+        raise ValueError("Foydalanuvchi topilmadi (--actor-email).")
+    return user
+
+
+async def _wialon_counter_release(
+    actor_email: str | None, apply: bool, inv_numbers: list[str] | None
+) -> int:
+    from app.services import wialon_counter_release
+
+    try:
+        async with SessionFactory() as db:
+            actor = await _actor_for_cli(db, actor_email, apply)
+            report = await wialon_counter_release.release_blocked_counters(
+                db, actor=actor, apply=apply, inv_numbers=inv_numbers
+            )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        detail = getattr(exc, "detail", None) or type(exc).__name__
+        print(f"Bajarilmadi: {detail}", file=sys.stderr)
+        return 2
+    finally:
+        await engine.dispose()
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0
+
+
+async def _asset_conflicts_clean(actor_email: str | None, apply: bool) -> int:
+    from app.services import asset_field_changes as field_changes_service
+
+    try:
+        async with SessionFactory() as db:
+            actor = await _actor_for_cli(db, actor_email, apply)
+            report = await field_changes_service.reject_equivalent_number_conflicts(
+                db, actor_id=actor.id if actor else None, apply=apply
+            )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        detail = getattr(exc, "detail", None) or type(exc).__name__
+        print(f"Bajarilmadi: {detail}", file=sys.stderr)
         return 2
     finally:
         await engine.dispose()
@@ -418,7 +587,69 @@ def main() -> int:
         help="Calculate and report wagon mileage",
     )
     mileage_parser.add_argument("--dry-run", action="store_true")
+    report_parser = subparsers.add_parser(
+        "wagon-mileage-report", help="Read-only per-wagon mileage coverage report"
+    )
+    report_parser.add_argument("--csv", default=None)
+    for name, text in (
+        ("wagon-opening-propose", "Propose opening balances from current wagon mileage (dry-run by default)"),
+        ("wagon-opening-approve", "Bulk-approve proposed opening balances (admin, maker != checker; dry-run by default)"),
+    ):
+        opening_parser = subparsers.add_parser(name, help=text)
+        opening_parser.add_argument("--actor-email", required=True)
+        opening_parser.add_argument("--effective-at", default=None)
+        opening_parser.add_argument("--apply", action="store_true")
+        if name == "wagon-opening-approve":
+            opening_parser.add_argument(
+                "--include-zero",
+                action="store_true",
+                help="Also approve zero-km proposals (admin confirms they start from 0)",
+            )
+    convert_parser = subparsers.add_parser(
+        "user-convert-to-ad",
+        help="Turn a local TOIR account into an Active Directory account (erases the local password; dry-run by default)",
+    )
+    convert_parser.add_argument("--email", required=True)
+    convert_parser.add_argument("--ad-username", required=True)
+    convert_parser.add_argument("--apply", action="store_true")
+    for name, text in (
+        ("wialon-counter-release", "Release Wialon counters blocked by same-time odometer differences, only when the data prove them healthy (dry-run by default)"),
+        ("asset-conflicts-clean", "Reject pending GTK number conflicts that differ only by leading zeros (dry-run by default)"),
+    ):
+        clean_parser = subparsers.add_parser(name, help=text)
+        clean_parser.add_argument("--actor-email", default=None)
+        clean_parser.add_argument("--apply", action="store_true")
+        if name == "wialon-counter-release":
+            clean_parser.add_argument(
+                "--inv-number",
+                action="append",
+                help="Limit to this locomotive inventory number (repeatable); use it for a first trial",
+            )
     arguments = parser.parse_args()
+    if arguments.command == "wialon-counter-release":
+        return asyncio.run(
+            _wialon_counter_release(
+                arguments.actor_email, arguments.apply, arguments.inv_number or None
+            )
+        )
+    if arguments.command == "asset-conflicts-clean":
+        return asyncio.run(_asset_conflicts_clean(arguments.actor_email, arguments.apply))
+    if arguments.command == "user-convert-to-ad":
+        return asyncio.run(
+            _user_convert_to_ad(arguments.email, arguments.ad_username, arguments.apply)
+        )
+    if arguments.command == "wagon-mileage-report":
+        return asyncio.run(_wagon_mileage_report(arguments.csv))
+    if arguments.command in ("wagon-opening-propose", "wagon-opening-approve"):
+        return asyncio.run(
+            _wagon_opening_bulk(
+                mode="propose" if arguments.command == "wagon-opening-propose" else "approve",
+                actor_email=arguments.actor_email,
+                effective_at=arguments.effective_at,
+                apply=arguments.apply,
+                include_zero=getattr(arguments, "include_zero", False),
+            )
+        )
     if arguments.command == "create-admin":
         return asyncio.run(_create_admin())
     if arguments.command == "seed-reference":

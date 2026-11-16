@@ -31,6 +31,8 @@ async def get_asset(db: AsyncSession, asset_id: UUID, *, lock: bool = False) -> 
 
 
 async def get_known_asset_mileage(db: AsyncSession, asset: FixedAsset) -> Decimal | None:
+    if asset.asset_type in ("locomotive", "diesel"):
+        return asset.mileage
     if asset.asset_type != "wagon" or not await mileage_repository.has_confirmed_projection(
         db, asset.id
     ):

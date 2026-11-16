@@ -27,9 +27,62 @@ class UserRead(BaseModel):
     role: UserRole
     section_id: UUID | None
     is_active: bool
+    auth_source: Literal["local", "ad"] = "local"
+    ad_username: str | None = None
+    ad_object_guid: UUID | None = None
     last_login_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+AD_LOGIN_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,64}")
+
+
+def validate_ad_username(value: str) -> str:
+    normalized = value.strip()
+    if "@" in normalized:
+        normalized = normalized.rpartition("@")[0]
+    if AD_LOGIN_PATTERN.fullmatch(normalized) is None:
+        raise ValueError("A valid Active Directory login is required")
+    return normalized.lower()
+
+
+class AdUserCreate(BaseModel):
+    """Grant access to a directory account. There is no password field."""
+
+    ad_username: str = Field(min_length=1, max_length=320)
+    full_name: str = Field(min_length=1, max_length=300)
+    role: UserRole
+    section_id: UUID | None = None
+    is_active: bool = True
+
+    @field_validator("ad_username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        return validate_ad_username(value)
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Full name must not be empty")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_master_section(self) -> "AdUserCreate":
+        if self.role == "master" and self.section_id is None:
+            raise ValueError("Master users must be assigned to a section")
+        return self
+
+
+class ConvertToAd(BaseModel):
+    ad_username: str = Field(min_length=1, max_length=320)
+
+    @field_validator("ad_username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        return validate_ad_username(value)
 
 
 class UserCreate(BaseModel):

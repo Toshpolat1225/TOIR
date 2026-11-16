@@ -24,8 +24,8 @@ def _point(reading_id, locomotive_id, km, at, *, eligible=True):
     )
 
 
-def test_wialon_maximum_bracket_gap_defaults_to_thirty_minutes():
-    assert MAX_WIALON_SAMPLE_GAP == timedelta(minutes=30)
+def test_wialon_maximum_bracket_gap_defaults_to_four_hours():
+    assert MAX_WIALON_SAMPLE_GAP == timedelta(minutes=240)
 
 
 def test_exact_same_locomotive_bracket_is_confirmed_and_half_open():
@@ -101,9 +101,9 @@ def test_four_minute_moving_bracket_is_estimated():
     assert decision.reason == "sample_interval_proportional_estimate"
 
 
-def test_45_minute_movement_gap_is_held():
+def test_five_hour_movement_gap_is_held():
     start = datetime(2026, 11, 1, tzinfo=timezone.utc)
-    end = start + timedelta(minutes=45)
+    end = start + timedelta(minutes=300)
     locomotive = uuid4()
 
     decision = decide_wialon_segment(
@@ -119,12 +119,28 @@ def test_45_minute_movement_gap_is_held():
     assert decision.reason == "odometer_sample_gap_exceeded"
 
 
+def test_three_hour_sparse_gap_is_estimated_not_held():
+    start = datetime(2026, 11, 1, tzinfo=timezone.utc)
+    end = start + timedelta(minutes=180)
+    locomotive = uuid4()
+
+    decision = decide_wialon_segment(
+        _point(1, locomotive, "100", start),
+        _point(2, locomotive, "190", end),
+        period_from=start,
+        period_to=end,
+    )
+
+    assert decision.classification == "ESTIMATED"
+    assert decision.km == Decimal("90.00")
+
+
 def test_held_if_wagon_segment_falls_inside_long_gap_even_when_ends_are_close():
     start = datetime(2026, 11, 1, tzinfo=timezone.utc)
     locomotive = uuid4()
     decision = decide_wialon_segment(
         _point(1, locomotive, "100", start),
-        _point(2, locomotive, "140", start + timedelta(minutes=45)),
+        _point(2, locomotive, "140", start + timedelta(minutes=300)),
         period_from=start + timedelta(minutes=10),
         period_to=start + timedelta(minutes=11),
     )

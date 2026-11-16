@@ -100,13 +100,27 @@ class MaintenancePlanningTests(unittest.TestCase):
         self.assertEqual(maintenance_urgency(Decimal("8"), Decimal("10")), "low")
         self.assertIsNone(maintenance_urgency(Decimal("11"), Decimal("10")))
 
-    def test_locomotive_fixed_asset_mileage_is_not_used_for_maintenance_target(self):
+    def test_locomotive_mileage_from_wialon_is_used_for_maintenance_target(self):
         today = date.today()
         asset = SimpleNamespace(
-            id=uuid4(), asset_type="locomotive", mileage=Decimal("90000")
+            id=uuid4(), asset_type="locomotive", mileage=Decimal("90500")
         )
         interval = SimpleNamespace(id=uuid4(), interval_km=Decimal("10000"))
 
+        trigger, scheduled = asyncio.run(
+            maintenance_service._interval_target(
+                asset, interval, {}, Decimal("200"), today
+            )
+        )
+        self.assertEqual(trigger, Decimal("100000"))
+        self.assertEqual(scheduled, today + timedelta(days=48))
+
+    def test_non_km_planned_asset_types_have_no_km_target(self):
+        today = date.today()
+        asset = SimpleNamespace(
+            id=uuid4(), asset_type="platform", mileage=Decimal("90500")
+        )
+        interval = SimpleNamespace(id=uuid4(), interval_km=Decimal("10000"))
         self.assertEqual(
             asyncio.run(
                 maintenance_service._interval_target(
@@ -163,15 +177,62 @@ class MaintenancePlanPersistenceTests(unittest.IsolatedAsyncioTestCase):
             scheduled_date=today + timedelta(days=5),
         )
 
-    async def test_reconcile_does_not_use_locomotive_fixed_asset_mileage(self):
+    async def test_reconcile_creates_plans_for_locomotive_without_projection_gate(self):
+        today = date.today()
         asset = SimpleNamespace(
             id=uuid4(), asset_type="locomotive", mileage=Decimal("199000")
         )
-        with patch.object(
-            maintenance_service.repository,
-            "list_active_intervals",
-            new=AsyncMock(),
-        ) as list_intervals:
+        interval = SimpleNamespace(
+            id=uuid4(),
+            asset_types=["locomotive", "diesel"],
+            interval_km=Decimal("200000"),
+            warn_percent=Decimal("10"),
+            is_active=True,
+        )
+        with (
+            patch.object(maintenance_service.settings, "daily_km_estimate", 200),
+            patch.object(
+                maintenance_service.repository,
+                "list_active_intervals",
+                new=AsyncMock(return_value=[interval]),
+            ),
+            patch.object(
+                maintenance_service.mileage_repository,
+                "has_confirmed_projection",
+                new=AsyncMock(return_value=False),
+            ) as projection,
+            patch.object(
+                maintenance_service.repository,
+                "upsert_scheduled_plan_with_created",
+                new=AsyncMock(return_value=(SimpleNamespace(), True)),
+            ) as upsert,
+        ):
+            created = await maintenance_service.reconcile_asset_plans(
+                db=Mock(), asset=asset, mileage=asset.mileage
+            )
+        self.assertEqual(created, 1)
+        projection.assert_not_awaited()
+        upsert.assert_awaited_once()
+        self.assertEqual(
+            upsert.await_args.kwargs["scheduled_date"], today + timedelta(days=5)
+        )
+
+    async def test_reconcile_still_skips_wagon_without_confirmed_projection(self):
+        asset = SimpleNamespace(
+            id=uuid4(), asset_type="wagon", mileage=Decimal("199000")
+        )
+        with (
+            patch.object(
+                maintenance_service.mileage_repository,
+                "has_confirmed_projection",
+                new=AsyncMock(return_value=False),
+            ),
+            patch.object(
+                maintenance_service.repository,
+                "list_active_intervals",
+                new=AsyncMock(),
+            ) as list_intervals,
+        ):
             created = await maintenance_service.reconcile_asset_plans(
                 db=Mock(), asset=asset, mileage=asset.mileage
             )

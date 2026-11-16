@@ -1,3 +1,4 @@
+from pathlib import Path
 from functools import cached_property
 from typing import Self
 from urllib.parse import urlsplit
@@ -39,9 +40,23 @@ class Settings(BaseSettings):
     gtk_page_query: str = "EnterprisesControlRB=1"
     gtk_sync_enabled: bool = False
     gtk_sync_interval_minutes: int = Field(default=10, ge=5, le=1440)
-    wagon_mileage_max_bracket_gap_min: int = Field(default=30, ge=1)
+    # Wialon units report as rarely as every ~3 h; 30 min held 363 of 491 segments.
+    wagon_mileage_max_bracket_gap_min: int = Field(default=240, ge=1)
     wagon_mileage_idle_min_minutes: int = Field(default=30, ge=1)
     wagon_mileage_engine_enabled: bool = False
+    # D8 policy: when true, the same administrator may propose and approve an
+    # opening balance. Default false (maker != checker).
+    opening_balance_allow_self_approval: bool = False
+    # Active Directory (LDAPS) login. Off by default.
+    ad_auth_enabled: bool = False
+    ad_servers: str = "dc-r.agmk.uz,dc.agmk.uz"
+    ad_domain: str = "agmk.uz"
+    ad_base_dn: str = "DC=agmk,DC=uz"
+    ad_ca_file: str = str(
+        Path(__file__).resolve().parents[1] / "certs" / "agmk-DC-R-CA-3.crt"
+    )
+    ad_connect_timeout: int = Field(default=5, ge=1, le=30)
+    ad_receive_timeout: int = Field(default=10, ge=1, le=60)
     daily_km_estimate: int = Field(default=200, gt=0)
 
     @field_validator("wialon_host", mode="before")

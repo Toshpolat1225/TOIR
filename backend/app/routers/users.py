@@ -9,8 +9,17 @@ from app.core.permissions import require_permission
 from app.core.permissions import user_has_permission
 from app.models.identity import User
 from app.schemas.common import PaginatedResponse
-from app.schemas.users import PasswordReset, UserCreate, UserRead, UserUpdate
+from app.schemas.users import (
+    AdUserCreate,
+    ConvertToAd,
+    PasswordReset,
+    UserCreate,
+    UserRead,
+    UserUpdate,
+)
 from app.services.users import (
+    convert_user_to_ad,
+    create_ad_user,
     create_user,
     list_users_page,
     reset_user_password,
@@ -20,6 +29,11 @@ from app.services.users import (
 router = APIRouter(prefix="/users", tags=["users"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
 AdminUser = Annotated[User, Depends(require_permission("users.manage_users"))]
+
+
+def _require_admin_role(actor: User) -> None:
+    if actor.role != "admin":
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
 
 
 @router.get("", response_model=PaginatedResponse[UserRead])
@@ -57,10 +71,36 @@ async def get_users(
 )
 async def post_user(
     payload: UserCreate,
+    actor: AdminUser,
+    db: DatabaseSession,
+) -> User:
+    """Emergency local account (login + password). Administrators only."""
+    _require_admin_role(actor)
+    return await create_user(db, payload)
+
+
+@router.post(
+    "/ad",
+    response_model=UserRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def post_ad_user(
+    payload: AdUserCreate,
     _: AdminUser,
     db: DatabaseSession,
 ) -> User:
-    return await create_user(db, payload)
+    return await create_ad_user(db, payload)
+
+
+@router.post("/{user_id}/convert-to-ad", response_model=UserRead)
+async def post_convert_to_ad(
+    user_id: UUID,
+    payload: ConvertToAd,
+    actor: AdminUser,
+    db: DatabaseSession,
+) -> User:
+    _require_admin_role(actor)
+    return await convert_user_to_ad(db, user_id, payload, actor)
 
 
 @router.patch("/{user_id}", response_model=UserRead)

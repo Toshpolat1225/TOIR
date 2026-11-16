@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.identity import User
 from app.models.mileage import WagonMileageOpeningBalance
 from app.repositories import mileage as repository
@@ -76,6 +77,7 @@ async def approve_opening_balance(
     opening_id: UUID,
     *,
     user: User,
+    effective_at: datetime | None = None,
 ) -> WagonMileageOpeningBalance:
     opening = await repository.get_opening_for_update(db, opening_id)
     if opening is None:
@@ -85,10 +87,20 @@ async def approve_opening_balance(
             status_code=status.HTTP_409_CONFLICT,
             detail="Opening balance is not pending",
         )
-    if opening.created_by == user.id:
+    self_approved = opening.created_by == user.id
+    if self_approved and not settings.opening_balance_allow_self_approval:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Submitter and approver policy is pending approval",
+        )
+    if self_approved:
+        # Policy allows it; keep a visible trail in the record itself.
+        marker = "[self-approved by policy]"
+        if marker not in (opening.note or ""):
+            opening.note = f"{opening.note or ''} {marker}".strip()
+        logger.warning(
+            "Opening balance %s approved by its own submitter (policy flag on)",
+            opening.id,
         )
 
     asset = await repository.get_asset_for_opening(db, opening.asset_id, lock=True)
@@ -112,6 +124,8 @@ async def approve_opening_balance(
         actor_type="user",
         route="/api/v1/wagon-mileage/openings/approve",
     )
+    if effective_at is not None:
+        opening.effective_at = effective_at.astimezone(timezone.utc)
     opening.status = "approved"
     opening.approved_by = user.id
     opening.approved_at = datetime.now(timezone.utc)

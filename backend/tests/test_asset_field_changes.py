@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
 import pytest
+from decimal import Decimal
 from fastapi import HTTPException
 
 from app.core.asset_field_policy import ASSET_FIELD_POLICY
@@ -116,14 +117,17 @@ async def test_conflict_list_returns_paginated_shape():
         resolved_at=None,
     )
     with patch.object(
-        service,
-        "list_conflicts",
-        new=AsyncMock(return_value=([row], 1)),
-    ):
+        router.conflict_views,
+        "list_field_conflicts",
+        new=AsyncMock(return_value=([(row, "INV-1", "S-1", "wagon")], 1)),
+    ) as listing:
         response = await router.list_asset_conflicts(
             SimpleNamespace(role="operator"),
             object(),
             "pending",
+            "onec",
+            "year_built",
+            "INV",
             25,
             10,
         )
@@ -131,6 +135,10 @@ async def test_conflict_list_returns_paginated_shape():
     assert response.limit == 25
     assert response.offset == 10
     assert response.items[0].field == "year_built"
+    assert response.items[0].asset_inv_number == "INV-1"
+    assert response.items[0].asset_type == "wagon"
+    assert listing.await_args.kwargs["source"] == "onec"
+    assert listing.await_args.kwargs["q"] == "INV"
 
 
 @pytest.mark.asyncio
@@ -423,3 +431,44 @@ async def test_gtk_sync_proposes_only_for_active_linked_carriages():
         value="R-11",
         source="gtk",
     )
+
+
+@pytest.mark.asyncio
+async def test_wialon_counter_blocks_are_scoped_for_master_and_reject_unassigned():
+    from fastapi import HTTPException
+
+    asset_id = uuid4()
+    section_id = uuid4()
+    row = {
+        "asset_id": asset_id,
+        "inv_number": "L-1",
+        "serial_number": "S",
+        "asset_type": "locomotive",
+        "section_id": section_id,
+        "wialon_id": "w1",
+        "blocked_since": datetime.now(timezone.utc),
+        "last_cnm": Decimal("10.5"),
+        "last_cnm_at": None,
+        "blocked_readings_24h": 4,
+        "affected_wagons": 7,
+    }
+    summary = {"blocked_locomotives": 1, "affected_wagons": 7}
+    with patch.object(
+        router.conflict_views,
+        "list_blocked_counters",
+        new=AsyncMock(return_value=([row], 1, summary)),
+    ) as listing:
+        master = SimpleNamespace(role="master", section_id=section_id)
+        response = await router.list_wialon_counter_blocks(master, object(), None, 50, 0)
+        assert listing.await_args.kwargs["section_id"] == section_id
+        assert response.affected_wagons == 7 and response.items[0].blocked_readings_24h == 4
+
+        admin = SimpleNamespace(role="admin", section_id=None)
+        await router.list_wialon_counter_blocks(admin, object(), None, 50, 0)
+        assert listing.await_args.kwargs["section_id"] is None
+
+        with pytest.raises(HTTPException) as denied:
+            await router.list_wialon_counter_blocks(
+                SimpleNamespace(role="master", section_id=None), object(), None, 50, 0
+            )
+        assert denied.value.status_code == 403

@@ -139,7 +139,10 @@ CREATE TABLE users (
     id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     email            citext NOT NULL UNIQUE,
     full_name        text NOT NULL,
-    hashed_password  text NOT NULL,
+    hashed_password  text,
+    auth_source      text NOT NULL DEFAULT 'local',
+    ad_username      citext UNIQUE,
+    ad_object_guid   uuid UNIQUE,
     role             text NOT NULL CHECK (role IN ('admin','operator','master','management')),
     section_id       uuid REFERENCES sections(id) ON DELETE SET NULL,
     is_active        boolean NOT NULL DEFAULT true,
@@ -147,7 +150,14 @@ CREATE TABLE users (
     created_at       timestamptz NOT NULL DEFAULT now(),
     updated_at       timestamptz NOT NULL DEFAULT now(),
     -- master uchastkasiz bo'lishi mumkin emas
-    CONSTRAINT ck_master_has_section CHECK (role <> 'master' OR section_id IS NOT NULL)
+    CONSTRAINT ck_master_has_section CHECK (role <> 'master' OR section_id IS NOT NULL),
+    CONSTRAINT users_auth_source_check CHECK (auth_source IN ('local','ad')),
+    -- local: parol bor, AD maydonlari yo'q; ad: parol yo'q, ad_username majburiy
+    CONSTRAINT ck_users_auth_credentials CHECK (
+        (auth_source = 'local' AND hashed_password IS NOT NULL
+            AND ad_username IS NULL AND ad_object_guid IS NULL)
+        OR (auth_source = 'ad' AND hashed_password IS NULL AND ad_username IS NOT NULL)
+    )
 );
 
 -- Refresh tokenlar (xeshi saqlanadi, tokenning o'zi emas) — logout/revoke uchun

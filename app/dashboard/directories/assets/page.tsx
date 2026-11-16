@@ -1367,9 +1367,37 @@ function apiDate(value: string): string | null {
   return match ? `${match[3]}-${match[2]}-${match[1]}` : normalized
 }
 
+const SOURCE_LABELS: Record<UnifiedAsset["source"], string> = {
+  toir: "ТОИР",
+  wialon: "Wialon",
+  gtk: "ГТК",
+  both: "ТОИР + Wialon",
+  toir_gtk: "ТОИР + ГТК",
+  toir_wialon_gtk: "ТОИР + Wialon + ГТК",
+}
+
+const SOURCE_BADGES: Record<UnifiedAsset["source"], string> = {
+  toir: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+  wialon: "bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300",
+  gtk: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+  both: "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300",
+  toir_gtk: "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300",
+  toir_wialon_gtk: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+}
+
+// Rows that exist only in an external system have no TOIR asset to open or select.
+const isExternalOnly = (source: UnifiedAsset["source"]) => source === "wialon" || source === "gtk"
+
+// Real odometer value, or "—" when the source has none (empty / non-numeric).
+const formatKm = (value: string | number | null | undefined): string => {
+  if (value === null || value === undefined || value === "") return "—"
+  const n = Number(value)
+  return Number.isFinite(n) ? n.toLocaleString("ru-RU", { maximumFractionDigits: 2 }) : "—"
+}
+
 function fromUnified(r: UnifiedAsset): FixedAsset {
   return {
-    id:               r.asset_id ?? `wialon:${r.unit_id ?? r.name}`,
+    id:               r.asset_id ?? (r.gtk_id != null ? `gtk:${r.gtk_kind ?? "obj"}:${r.gtk_id}` : `wialon:${r.unit_id ?? r.name}`),
     name:             r.name,
     assetType:        r.asset_type ?? "",
     series:           r.series ?? "",
@@ -1627,7 +1655,7 @@ export default function OsPage() {
   const selectedStatus = fBehavior || fStatus
   const filtered      = assets  // Filtering is performed by the server.
   const selectableAssetIds = filtered
-    .filter((asset) => asset.source !== "wialon" && !asset.id.startsWith("wialon:"))
+    .filter((asset) => !isExternalOnly(asset.source) && !asset.id.startsWith("wialon:") && !asset.id.startsWith("gtk:"))
     .map((asset) => asset.id)
   const allPageSelected = selectableAssetIds.length > 0
     && selectableAssetIds.every((assetId) => selectedAssetIds.includes(assetId))
@@ -2146,7 +2174,10 @@ export default function OsPage() {
               <option value="">Все источники</option>
               <option value="toir">ТОИР</option>
               <option value="wialon">Wialon</option>
+              <option value="gtk">ГТК</option>
               <option value="both">ТОИР + Wialon</option>
+              <option value="toir_gtk">ТОИР + ГТК</option>
+              <option value="toir_wialon_gtk">ТОИР + Wialon + ГТК</option>
             </select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
           </div>
@@ -2203,7 +2234,7 @@ export default function OsPage() {
               const tc = typeConfig[a.assetType] || { label: assetTypes.find((item) => item.code === a.assetType)?.names.ru || a.assetTypeLabel || a.assetType || "—", cls: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300", Icon: Container }
               const stale = !a.lastMessageAt || Date.now() - new Date(a.lastMessageAt).getTime() > 24 * 60 * 60 * 1000
               const connection = stale ? "Давно" : a.wialonOnline ? "Онлайн" : "Нет связи"
-              const sourceLabel = a.source === "both" ? "ТОИР + Wialon" : a.source === "wialon" ? "Wialon" : "ТОИР"
+              const sourceLabel = SOURCE_LABELS[a.source] ?? "ТОИР"
               const orgUnit = sectionsData.find((section) => section.id === a.orgUnitId)
               const rowUnit: WialonUnit | null = a.unitId ? {
                 unit_id: a.unitId,
@@ -2218,13 +2249,14 @@ export default function OsPage() {
                 counter_state: null,
                 rejected_count: 0,
               } : null
-              const isSelectable = canWrite && a.source !== "wialon" && !a.id.startsWith("wialon:")
+              const externalOnly = isExternalOnly(a.source)
+              const isSelectable = canWrite && !externalOnly && !a.id.startsWith("wialon:") && !a.id.startsWith("gtk:")
               return (
-                <tr key={a.id} onClick={a.source !== "wialon" ? () => setSelected(a) : undefined}
-                  className={`hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors ${a.source !== "wialon" ? "cursor-pointer" : ""}`}>
+                <tr key={a.id} onClick={!externalOnly ? () => setSelected(a) : undefined}
+                  className={`hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors ${!externalOnly ? "cursor-pointer" : ""}`}>
                   {canWrite && <td className="px-3 py-3.5" onClick={(event) => event.stopPropagation()}>{isSelectable ? <input type="checkbox" aria-label={`Выбрать ${a.name}`} checked={selectedAssetIds.includes(a.id)} onChange={(event) => setSelectedAssetIds((current) => event.target.checked ? [...current, a.id] : current.filter((id) => id !== a.id))} /> : "—"}</td>}
                   <td className="px-4 py-3.5">
-                    <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${a.source === "both" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" : a.source === "wialon" ? "bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"}`}>{sourceLabel}</span>
+                    <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${SOURCE_BADGES[a.source] ?? SOURCE_BADGES.toir}`}>{sourceLabel}</span>
                   </td>
                   <td className="px-4 py-3.5"><span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-md ${tc.cls}`}><tc.Icon className="w-3 h-3"/>{tc.label}</span></td>
                   <td className="px-4 py-3.5">
@@ -2232,15 +2264,17 @@ export default function OsPage() {
                     {(a.invNumber || a.unitId) && <p className="text-xs text-gray-400 truncate max-w-[220px]">{a.invNumber ? `Инв. № ${a.invNumber}` : `ID ${a.unitId}`}</p>}
                   </td>
                   <td className="px-4 py-3.5 text-xs text-gray-600 dark:text-gray-300">{orgUnit?.name || a.depot || "—"}</td>
-                  <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">—</td>
-                  <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.unitId ? a.wialonMileage || "—" : "—"}</td>
+                  <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{formatKm(a.mileage)}</td>
+                  <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.unitId ? formatKm(a.wialonMileage) : "—"}</td>
                   <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.unitId ? a.engineHours || "—" : "—"}</td>
                   <td className="px-4 py-3.5 text-sm text-gray-700 dark:text-gray-200">{a.unitId ? `${a.speed || "0"} км/ч` : "—"}</td>
                   <td className="px-4 py-3.5">
                     {a.unitId ? <span className={`inline-flex items-center gap-1 text-xs font-medium ${a.wialonOnline ? "text-emerald-600 dark:text-emerald-400" : stale ? "text-amber-600 dark:text-amber-400" : "text-gray-500 dark:text-gray-400"}`}><Radio className="w-3 h-3"/>{connection}</span> : "—"}
                   </td>
                   <td className="px-4 py-3.5">
-                    {a.source === "wialon" ? (
+                    {a.source === "gtk" ? (
+                      <span className="text-xs font-medium text-amber-700 dark:text-amber-400 whitespace-nowrap">Нет в ТОИР</span>
+                    ) : a.source === "wialon" ? (
                       canWrite && rowUnit ? <Button size="sm" className="whitespace-nowrap" onClick={(event) => { event.stopPropagation(); setSelectedUnit(rowUnit); setShowAdd(true) }}>Создать ОС</Button> : "—"
                     ) : (
                       <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${st.cls}`}><st.icon className="w-3 h-3"/>{a.statusLabel || st.label}</span>

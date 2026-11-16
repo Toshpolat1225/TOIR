@@ -14,7 +14,9 @@ from app.repositories import references as references_repository
 from app.repositories import wialon_counters as wialon_counters_repository
 from app.repositories import wialon_units as wialon_units_repository
 from app.repositories import gtk as gtk_repository
+from app.repositories import maintenance as maintenance_repository
 from app.services import asset_links as asset_links_service
+from app.services import maintenance as maintenance_service
 from app.services import asset_passport
 from app.services import asset_field_changes as field_changes_service
 from app.repositories import asset_models as asset_models_repository
@@ -506,6 +508,9 @@ async def _validate_gtk_link(
         )
 
 
+LOCOMOTIVE_MILEAGE_TYPES = frozenset({"locomotive", "diesel"})
+
+
 async def set_fixed_asset_mileage(
     db: AsyncSession,
     asset_id: UUID,
@@ -609,6 +614,7 @@ async def receive_wialon_update(
     speed: Decimal | None,
     online: bool = True,
     allow_zero_mileage: bool = False,
+    mileage_delta: Decimal | None = None,
 ) -> dict[str, object]:
     asset = await find_wialon_asset(db, unit_id=unit_id, unit_name=unit_name)
     if asset is None:
@@ -622,9 +628,33 @@ async def receive_wialon_update(
     asset.wialon_online = online
     if mileage is not None and (mileage > 0 or allow_zero_mileage):
         logger.warning(
-            "Wialon odometer input was not projected for fixed asset %s",
+            "Wialon absolute odometer is never projected to fixed asset %s",
             asset.id,
         )
+    # D10: only the gated Wialon pull delta may move locomotive/diesel mileage.
+    # Wagon mileage is written solely by the wagon projection.
+    if (
+        mileage_delta is not None
+        and mileage_delta > 0
+        and asset.asset_type in LOCOMOTIVE_MILEAGE_TYPES
+    ):
+        previous = await maintenance_repository.lock_asset_mileage(db, asset.id)
+        if previous is not None:
+            new_mileage = previous + mileage_delta
+            asset.mileage = new_mileage
+            await repository.add_mileage_history(
+                db, asset.id, new_mileage, "wialon"
+            )
+            try:
+                async with db.begin_nested():
+                    await maintenance_service.reconcile_asset_plans(
+                        db, asset, new_mileage
+                    )
+            except Exception:
+                logger.exception(
+                    "Could not reconcile maintenance plans for fixed asset %s",
+                    asset.id,
+                )
     await _commit(db, "Could not save Wialon update")
     return {
         "found": True,

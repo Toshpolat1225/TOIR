@@ -5,6 +5,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +33,18 @@ def _same_value(left: Any, right: Any) -> bool:
 
 def _is_empty(value: Any) -> bool:
     return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _same_number(left: Any, right: Any) -> bool:
+    """Wagon numbers: GTK pads to 8 digits (``00000069``), the passport keeps ``69``."""
+    if not (isinstance(left, str) and isinstance(right, str)):
+        return False
+    a, b = normalize_token(left), normalize_token(right)
+    return bool(a) and a.isdigit() and b.isdigit() and int(a) == int(b)
+
+
+def _same_field_value(field: str, left: Any, right: Any) -> bool:
+    return _same_value(left, right) or (field == "number" and _same_number(left, right))
 
 
 def record_changes(
@@ -124,7 +137,7 @@ async def propose_field(
             )
             return "rejected"
     current = getattr(asset, field)
-    if not _is_empty(current) and _same_value(current, value):
+    if not _is_empty(current) and _same_field_value(field, current, value):
         return "unchanged"
     if policy.mode == "auto_fill_if_empty" and _is_empty(current):
         setattr(asset, field, value)
@@ -146,7 +159,7 @@ async def propose_field(
         return "applied"
 
     pending = await repository.list_pending_for_field(db, asset.id, field)
-    if any(_same_value(change.new_value, value) for change in pending):
+    if any(_same_field_value(field, change.new_value, value) for change in pending):
         return "duplicate"
     await repository.add(
         db,
@@ -248,6 +261,48 @@ async def _resolve_conflict(
         ) from exc
     await db.refresh(change)
     return change
+
+
+async def reject_equivalent_number_conflicts(
+    db: AsyncSession, *, actor_id: UUID | None, apply: bool
+) -> dict[str, Any]:
+    """Reject pending number conflicts that differ from the passport only by leading
+    zeros. Rejecting keeps the passport value, so no asset data changes."""
+    rows = (
+        await db.execute(
+            select(AssetFieldChange, FixedAsset.serial_number, FixedAsset.inv_number)
+            .join(FixedAsset, FixedAsset.id == AssetFieldChange.asset_id)
+            .where(
+                AssetFieldChange.status == "pending",
+                AssetFieldChange.kind == "conflict",
+                AssetFieldChange.field == "number",
+            )
+        )
+    ).all()
+    equivalent = [change for change, number, _inv in rows if _same_number(number, change.new_value)]
+    remaining = [
+        {"inv_number": inv, "passport": number, "gtk": change.new_value}
+        for change, number, inv in rows
+        if not _same_number(number, change.new_value)
+    ]
+    if apply and equivalent:
+        if actor_id is None:
+            raise ValueError("actor is required to apply")
+        now = datetime.now(timezone.utc)
+        for change in equivalent:
+            change.status = "rejected"
+            change.resolved_by = actor_id
+            change.resolved_at = now
+        await db.commit()
+    else:
+        await db.rollback()
+    return {
+        "applied": apply,
+        "pending_number_conflicts": len(rows),
+        "rejected_leading_zero_only": len(equivalent) if apply else 0,
+        "would_reject_leading_zero_only": 0 if apply else len(equivalent),
+        "remaining_for_manual_review": remaining,
+    }
 
 
 async def accept_conflict(

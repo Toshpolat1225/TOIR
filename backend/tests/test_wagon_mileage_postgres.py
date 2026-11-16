@@ -147,7 +147,10 @@ async def test_parallel_runs_create_one_idempotent_ledger_set():
             _run_once(),
             _run_once(),
         )
-        run_ids = [result["run_id"] for result in results]
+        run_ids = [result["run_id"] for result in results if "run_id" in result]
+        skipped = [result for result in results if result.get("skipped")]
+        assert run_ids, "at least one parallel run must execute"
+        assert all(r["reason"] == "run_in_progress" for r in skipped)
         async with SessionFactory() as db:
             ledger_count = await db.scalar(
                 select(func.count()).select_from(WagonMileageLedger).where(

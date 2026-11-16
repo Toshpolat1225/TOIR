@@ -48,6 +48,7 @@ services:
       GTK_SYNC_ENABLED: ${GTK_SYNC_ENABLED:-false}
       GTK_SYNC_INTERVAL_MINUTES: ${GTK_SYNC_INTERVAL_MINUTES:-10}
       DAILY_KM_ESTIMATE: ${DAILY_KM_ESTIMATE:-200}
+      AD_AUTH_ENABLED: ${AD_AUTH_ENABLED:-false}
     networks: [internal]
     depends_on:
       postgres:

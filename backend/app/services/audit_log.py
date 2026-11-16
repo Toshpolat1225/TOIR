@@ -127,7 +127,14 @@ def add_auth_audit_event(
     actor_name: str | None,
     route: str,
     status_code: int,
+    auth_source: str | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> None:
+    details: dict[str, Any] = {"status_code": status_code}
+    if auth_source is not None:
+        details["auth_source"] = auth_source
+    if extra:
+        details.update(_safe_fields(extra))
     session.add(
         AuditLog(
             action=action,
@@ -136,7 +143,7 @@ def add_auth_audit_event(
             actor_name=actor_name,
             module="auth",
             route=route,
-            details={"status_code": status_code},
+            details=details,
         )
     )
 

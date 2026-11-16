@@ -28,6 +28,15 @@ class User(Base):
             "role <> 'master' OR section_id IS NOT NULL",
             name="ck_master_has_section",
         ),
+        CheckConstraint(
+            "auth_source IN ('local','ad')", name="users_auth_source_check"
+        ),
+        CheckConstraint(
+            "(auth_source = 'local' AND hashed_password IS NOT NULL"
+            " AND ad_username IS NULL AND ad_object_guid IS NULL)"
+            " OR (auth_source = 'ad' AND hashed_password IS NULL AND ad_username IS NOT NULL)",
+            name="ck_users_auth_credentials",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -35,7 +44,14 @@ class User(Base):
     )
     email: Mapped[str] = mapped_column(CITEXT, nullable=False, unique=True)
     full_name: Mapped[str] = mapped_column(Text, nullable=False)
-    hashed_password: Mapped[str] = mapped_column(Text, nullable=False)
+    hashed_password: Mapped[str | None] = mapped_column(Text, nullable=True)
+    auth_source: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'local'")
+    )
+    ad_username: Mapped[str | None] = mapped_column(CITEXT, unique=True)
+    ad_object_guid: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), unique=True
+    )
     role: Mapped[str] = mapped_column(Text, nullable=False)
     section_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("sections.id", ondelete="SET NULL")
