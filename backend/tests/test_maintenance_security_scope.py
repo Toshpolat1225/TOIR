@@ -83,12 +83,15 @@ class MaintenanceScopeTests(unittest.IsolatedAsyncioTestCase):
             patch.object(maintenance.repository, "list_schedule_plans", new=AsyncMock(return_value=[])) as plans,
             patch.object(maintenance.repository, "list_asset_interval_plans", new=AsyncMock(return_value={})) as interval_plans,
             patch.object(maintenance.repository, "list_schedule_assets", new=AsyncMock(return_value=[])) as assets,
+            patch.object(maintenance.repository, "list_asset_display_info", new=AsyncMock(return_value={})) as display_info,
         ):
             await maintenance.get_schedule(Mock(), user, "2026-10")
         self.assertEqual(orders.await_args.kwargs["master_section_id"], section_id)
         self.assertEqual(plans.await_args.kwargs["master_section_id"], section_id)
         self.assertEqual(interval_plans.await_args.kwargs["master_section_id"], section_id)
         self.assertEqual(assets.await_args.kwargs["master_section_id"], section_id)
+        # the joined names (section, model, status) must not leak assets of other sections either
+        self.assertEqual(display_info.await_args.kwargs["master_section_id"], section_id)
 
     async def test_cross_section_plan_update_is_404_before_status_checks(self):
         user = SimpleNamespace(role="master", section_id=uuid4())

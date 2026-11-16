@@ -17,6 +17,7 @@ from app.models.maintenance import MaintenanceInterval, MaintenancePlan
 from app.repositories import maintenance as repository
 from app.repositories import mileage as mileage_repository
 from app.schemas.maintenance import (
+    MaintenancePlanFromForecast,
     MaintenancePlanRead,
     MaintenancePlanUpdate,
     MaintenanceScheduleItem,
@@ -156,6 +157,9 @@ def _plan_read(row: dict[str, Any]) -> MaintenancePlanRead:
         scheduled_date=plan.scheduled_date,
         completed_date=plan.completed_date,
         work_order_id=plan.work_order_id,
+        scheduled_date_manual=plan.scheduled_date_manual,
+        recommended_date=plan.recommended_date,
+        reschedule_reason=plan.reschedule_reason,
     )
 
 
@@ -258,6 +262,7 @@ async def update_plan(
             raise _conflict(
                 f"Invalid maintenance plan status transition: {plan.status} -> {requested_status}"
             )
+    await _apply_reschedule(db, plan, values)
     if requested_status == "completed" and "completed_date" not in values:
         values["completed_date"] = date.today()
     for field, value in values.items():
@@ -270,6 +275,160 @@ async def update_plan(
         raise _conflict("Maintenance plan references an invalid record") from exc
     row = await repository.get_plan_read_row(
         db, plan_id, master_section_id=master_section_id
+    )
+    if row is None:
+        raise _not_found()
+    return _plan_read(row)
+
+
+MAX_RESCHEDULE_DAYS = 366
+
+
+def _validate_reschedule_date(new_date: date, today: date) -> None:
+    if new_date < today:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Maintenance cannot be rescheduled to a past date",
+        )
+    if new_date > today + timedelta(days=MAX_RESCHEDULE_DAYS):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Maintenance cannot be rescheduled more than {MAX_RESCHEDULE_DAYS} days ahead",
+        )
+
+
+def _clean_reason(reason: str | None) -> str | None:
+    cleaned = (reason or "").strip()
+    return cleaned or None
+
+
+async def _recommended_date_now(
+    db: AsyncSession, plan: MaintenancePlan, today: date
+) -> date | None:
+    """The date the system would plan today for this plan's threshold, if it can tell."""
+    asset = await db.get(FixedAsset, plan.asset_id)
+    if asset is None or plan.trigger_mileage is None or asset.mileage is None:
+        return None
+    remaining = plan.trigger_mileage - asset.mileage
+    return estimate_date(today, remaining, Decimal(settings.daily_km_estimate))
+
+
+async def _apply_reschedule(
+    db: AsyncSession, plan: MaintenancePlan, values: dict[str, Any]
+) -> None:
+    """Handle `scheduled_date` / `reset_schedule` of a plan update (mutates `plan` and `values`)."""
+    reset = bool(values.pop("reset_schedule", False))
+    moving = "scheduled_date" in values
+    new_date = values.pop("scheduled_date", None)
+    reason = values.pop("reschedule_reason", None)
+    if not moving and not reset:
+        if reason is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="reschedule_reason is only valid together with scheduled_date",
+            )
+        return
+    if moving and reset:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Send either scheduled_date or reset_schedule, not both",
+        )
+    if values:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Rescheduling cannot be combined with other plan changes",
+        )
+    if plan.status != "scheduled":
+        raise _conflict("Only scheduled maintenance plans can be rescheduled")
+    today = date.today()
+    if moving:
+        if new_date is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="scheduled_date must be a date (use reset_schedule to return to the recommendation)",
+            )
+        _validate_reschedule_date(new_date, today)
+        if not plan.scheduled_date_manual:
+            plan.recommended_date = plan.scheduled_date
+        plan.scheduled_date = new_date
+        plan.scheduled_date_manual = True
+        plan.reschedule_reason = _clean_reason(reason)
+        return
+    if not plan.scheduled_date_manual:
+        raise _conflict("The plan already uses the recommended date")
+    recommended = (
+        await _recommended_date_now(db, plan, today) or plan.recommended_date or plan.scheduled_date
+    )
+    plan.scheduled_date = recommended
+    plan.scheduled_date_manual = False
+    plan.recommended_date = None
+    plan.reschedule_reason = None
+
+
+async def create_plan_from_forecast(
+    db: AsyncSession, user: User, payload: MaintenancePlanFromForecast
+) -> MaintenancePlanRead:
+    """Create a real plan for a forecast row on the date the planner chose."""
+    master_section_id = _master_section_scope(user)
+    asset = await db.get(FixedAsset, payload.asset_id)
+    if asset is None or (
+        master_section_id is not None and asset.section_id != master_section_id
+    ):
+        raise _not_found()
+    interval = await db.get(MaintenanceInterval, payload.interval_id)
+    if (
+        interval is None
+        or not interval.is_active
+        or asset.asset_type not in interval.asset_types
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="This maintenance interval does not apply to the asset",
+        )
+    today = date.today()
+    _validate_reschedule_date(payload.scheduled_date, today)
+    has_trusted_mileage = asset.asset_type in LOCOMOTIVE_TYPES or (
+        asset.asset_type == "wagon"
+        and await mileage_repository.has_confirmed_projection(db, asset.id)
+    )
+    if interval.interval_km is not None and not has_trusted_mileage:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="The mileage of this asset is not trusted yet, so a km-based plan cannot be created",
+        )
+    plans_by_key = await repository.list_asset_interval_plans(
+        db, master_section_id=master_section_id
+    )
+    trigger, recommended = await _interval_target(
+        asset, interval, plans_by_key, Decimal(settings.daily_km_estimate), today
+    )
+    for existing in plans_by_key.get((asset.id, interval.id), []):
+        if (trigger is not None and existing.trigger_mileage == trigger) or (
+            trigger is None
+            and existing.trigger_mileage is None
+            and existing.status in {"scheduled", "in_progress"}
+        ):
+            raise _conflict(
+                "A plan for this threshold already exists; reschedule that plan instead"
+            )
+    plan = MaintenancePlan(
+        asset_id=asset.id,
+        interval_id=interval.id,
+        status="scheduled",
+        trigger_mileage=trigger,
+        scheduled_date=payload.scheduled_date,
+        scheduled_date_manual=True,
+        recommended_date=recommended,
+        reschedule_reason=_clean_reason(payload.reschedule_reason),
+    )
+    db.add(plan)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise _conflict("A plan for this threshold already exists") from exc
+    row = await repository.get_plan_read_row(
+        db, plan.id, master_section_id=master_section_id
     )
     if row is None:
         raise _not_found()
@@ -311,6 +470,35 @@ async def _interval_target(
         )
         return None, target
     return None, today
+
+
+def _with_asset_display(
+    item: MaintenanceScheduleItem, info: dict[str, Any] | None
+) -> MaintenanceScheduleItem:
+    """Attach joined names to a schedule item and make `unit` identical for all of an asset's items.
+
+    Forecast items used the raw type code ("diesel") and an empty section, because the ORM
+    `name`/`depot` properties are only filled by other loaders; plans and work orders used
+    the translated name. One source of truth removes the mismatch.
+    """
+    if info is None:
+        return item
+    type_label = info["type_name"] or info["asset_type"]
+    inv_number = info["inv_number"]
+    return item.model_copy(
+        update={
+            "unit": f"{type_label} {info['serial_number'] or ''}-{inv_number} · {inv_number}",
+            "depot": item.depot or info["section_name"] or "",
+            "asset_type": info["asset_type"],
+            "asset_type_name": info["type_name"],
+            "asset_model": info["model_name"],
+            "asset_serial": info["serial_number"],
+            "asset_inv_number": inv_number,
+            "asset_status": info["status"],
+            "asset_status_name": info["status_name"],
+            "asset_online": info["wialon_online"],
+        }
+    )
 
 
 async def get_schedule(
@@ -404,6 +592,7 @@ async def get_schedule(
                     else None
                 ),
                 nextThreshold=plan.trigger_mileage,
+                intervalKm=row.get("interval_km"),
                 asset_id=plan.asset_id,
                 section_id=row["section_id"],
                 interval_id=plan.interval_id,
@@ -411,6 +600,9 @@ async def get_schedule(
                 urgency=_plan_urgency(row),
                 plan_id=plan.id,
                 work_order_id=plan.work_order_id,
+                dateManual=plan.scheduled_date_manual,
+                recommendedDate=plan.recommended_date,
+                rescheduleReason=plan.reschedule_reason,
             )
         )
 
@@ -471,12 +663,17 @@ async def get_schedule(
                     mileage=asset.mileage if has_wagon_projection else None,
                     remainingKm=remaining,
                     nextThreshold=trigger,
+                    intervalKm=interval.interval_km,
                     asset_id=asset.id,
                     section_id=asset.section_id,
                     interval_id=interval.id,
                     work_type_id=interval.work_type_id,
                 )
             )
+    asset_info = await repository.list_asset_display_info(
+        db, master_section_id=master_section_id
+    )
+    schedule = [_with_asset_display(item, asset_info.get(item.asset_id)) for item in schedule]
     schedule.sort(key=lambda item: (item.startDate, item.unit, item.type))
     return MaintenanceScheduleRead(
         schedule=schedule, daily_average_km=daily_average_km

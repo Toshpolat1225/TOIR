@@ -1505,6 +1505,11 @@ export default function OsPage() {
   const [showAdd,   setShowAdd]   = useState(false)
   const [search,    setSearch]    = useState("")
   const debouncedSearch = useDebouncedValue(search.trim())
+  // Deep link from other pages, e.g. /dashboard/directories/assets?q=<inventory number>
+  useEffect(() => {
+    const initialQuery = new URLSearchParams(window.location.search).get("q")
+    if (initialQuery) setSearch(initialQuery)
+  }, [])
   const [fType,     setFType]     = useState<AssetType | "">("")
   const [fSource,   setFSource]   = useState<UnifiedAsset["source"] | "">("")
   const [fSection,  setFSection]  = useState("")

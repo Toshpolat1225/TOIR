@@ -24,6 +24,31 @@ class MaintenancePlanningTests(unittest.TestCase):
             Decimal("200000"),
         )
 
+    def test_zero_mileage_first_threshold_is_one_interval_not_zero(self):
+        self.assertEqual(
+            next_mileage_threshold(Decimal("0"), Decimal("5000")), Decimal("5000")
+        )
+        # a unit that has just reached a threshold is due now (remaining 0), not a full interval away
+        self.assertEqual(
+            next_mileage_threshold(Decimal("5000"), Decimal("5000")), Decimal("5000")
+        )
+        self.assertEqual(
+            next_mileage_threshold(Decimal("5001"), Decimal("5000")), Decimal("10000")
+        )
+
+    def test_new_unit_with_zero_mileage_is_not_due_for_maintenance(self):
+        target = calculate_maintenance_target(
+            asset_type="locomotive",
+            interval_asset_types=["locomotive", "diesel"],
+            mileage=Decimal("0"),
+            interval_km=Decimal("5000"),
+            warn_percent=Decimal("10"),
+            daily_km_estimate=200,
+            today=date(2026, 11, 2),
+        )
+
+        self.assertIsNone(target)
+
     def test_warning_percent_excludes_distance_above_warning_window(self):
         target = calculate_maintenance_target(
             asset_type="locomotive",

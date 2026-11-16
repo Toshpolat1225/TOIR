@@ -26,7 +26,9 @@ def next_mileage_threshold(
     interval_count = (mileage / interval_km).to_integral_value(
         rounding=ROUND_CEILING
     )
-    return interval_count * interval_km
+    # A unit at exactly 0 km has not reached any interval yet: its first threshold is one
+    # interval, not 0 (ceil(0) = 0 would report every interval as due immediately).
+    return max(interval_count, Decimal(1)) * interval_km
 
 
 def calculate_maintenance_target(

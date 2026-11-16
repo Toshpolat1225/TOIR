@@ -10,6 +10,7 @@ from app.core.security import get_current_user
 from app.models.identity import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.maintenance import (
+    MaintenancePlanFromForecast,
     MaintenancePlanRead,
     MaintenancePlanUpdate,
     MaintenanceScheduleRead,
@@ -76,6 +77,24 @@ async def read_maintenance_plans(
         offset=offset,
     )
     return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.post(
+    "/maintenance-plan/from-forecast",
+    response_model=MaintenancePlanRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_maintenance_plan_from_forecast(
+    payload: MaintenancePlanFromForecast,
+    current_user: MaintenanceConfigurator,
+    db: DatabaseSession,
+) -> MaintenancePlanRead:
+    if current_user.role not in {"admin", "operator"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators and operators can plan maintenance",
+        )
+    return await service.create_plan_from_forecast(db, current_user, payload)
 
 
 @router.patch(

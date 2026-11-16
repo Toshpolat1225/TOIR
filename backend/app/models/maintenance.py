@@ -117,6 +117,14 @@ class MaintenancePlan(Base):
             name="maintenance_plan_asset_id_interval_id_trigger_mileage_key",
         ),
         Index("ix_plan_status_date", "status", "scheduled_date"),
+        CheckConstraint(
+            "reschedule_reason IS NULL OR char_length(reschedule_reason) <= 500",
+            name="ck_maintenance_plan_reschedule_reason_len",
+        ),
+        CheckConstraint(
+            "scheduled_date_manual OR (recommended_date IS NULL AND reschedule_reason IS NULL)",
+            name="ck_maintenance_plan_manual_consistency",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -139,6 +147,13 @@ class MaintenancePlan(Base):
     work_order_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("work_orders.id", ondelete="SET NULL")
     )
+    # True once a planner moved the date by hand; the automatic forecast then leaves it alone.
+    scheduled_date_manual: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    # What the system recommended (kept fresh while the date is manual) and why it was moved.
+    recommended_date: Mapped[date | None] = mapped_column(Date)
+    reschedule_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         nullable=False, server_default=text("now()")
     )

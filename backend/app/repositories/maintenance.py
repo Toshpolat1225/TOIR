@@ -80,6 +80,56 @@ async def get_interval(
     return await db.get(MaintenanceInterval, interval_id)
 
 
+async def list_asset_display_info(
+    db: AsyncSession, *, master_section_id: UUID | None = None
+) -> dict[UUID, dict[str, Any]]:
+    """Names (not codes) of every asset: type, status, model, section. One joined query."""
+    from app.models.asset_models import AssetModel
+    from app.models.localization import (
+        FixedAssetStatusTranslation,
+        FixedAssetTypeTranslation,
+    )
+
+    type_name = (
+        select(FixedAssetTypeTranslation.name)
+        .where(
+            FixedAssetTypeTranslation.type_code == FixedAsset.asset_type,
+            FixedAssetTypeTranslation.locale == "ru",
+        )
+        .limit(1)
+        .scalar_subquery()
+    )
+    status_name = (
+        select(FixedAssetStatusTranslation.name)
+        .where(
+            FixedAssetStatusTranslation.status_code == FixedAsset.status,
+            FixedAssetStatusTranslation.locale == "ru",
+        )
+        .limit(1)
+        .scalar_subquery()
+    )
+    statement = (
+        select(
+            FixedAsset.id,
+            FixedAsset.asset_type,
+            type_name.label("type_name"),
+            FixedAsset.serial_number,
+            FixedAsset.inv_number,
+            FixedAsset.status,
+            status_name.label("status_name"),
+            AssetModel.name.label("model_name"),
+            Section.name.label("section_name"),
+            FixedAsset.wialon_online,
+        )
+        .outerjoin(AssetModel, FixedAsset.model_id == AssetModel.id)
+        .outerjoin(Section, FixedAsset.section_id == Section.id)
+    )
+    if master_section_id is not None:
+        statement = statement.where(FixedAsset.section_id == master_section_id)
+    result = await db.execute(statement)
+    return {row.id: dict(row._mapping) for row in result.all()}
+
+
 async def list_schedule_assets(
     db: AsyncSession, *, master_section_id: UUID | None = None
 ) -> list[FixedAsset]:
@@ -203,7 +253,11 @@ async def upsert_scheduled_plan_with_created(
     if existing is None:
         raise RuntimeError("Maintenance plan upsert did not return a persisted plan")
     if existing.status == "scheduled":
-        existing.scheduled_date = scheduled_date
+        if existing.scheduled_date_manual:
+            # The planner chose this day. Keep it, but keep showing the CURRENT recommendation.
+            existing.recommended_date = scheduled_date
+        else:
+            existing.scheduled_date = scheduled_date
         existing.updated_at = datetime.now(timezone.utc)
         await db.flush()
     return existing, False

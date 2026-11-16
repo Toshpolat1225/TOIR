@@ -1649,12 +1649,26 @@ export type MaintenanceScheduleItem = {
   mileage: number | string | null;
   remainingKm: number | string | null;
   nextThreshold: number | string | null;
+  intervalKm?: number | string | null;
   asset_id: string;
   section_id: string | null;
   interval_id: string | null;
   work_type_id: string | null;
   plan_id: string | null;
   work_order_id: string | null;
+  // Joined names of the asset (always present for assets known to the server).
+  asset_type?: string | null;
+  asset_type_name?: string | null;
+  asset_model?: string | null;
+  asset_serial?: string | null;
+  asset_inv_number?: string | null;
+  asset_status?: string | null;
+  asset_status_name?: string | null;
+  asset_online?: boolean | null;
+  // Manual rescheduling (absent on a backend that predates the feature, which also disables dragging).
+  dateManual?: boolean;
+  recommendedDate?: string | null;
+  rescheduleReason?: string | null;
 };
 
 export type MaintenanceScheduleResponse = {
@@ -1682,13 +1696,26 @@ export type MaintenancePlan = {
   scheduled_date: string | null;
   completed_date: string | null;
   work_order_id: string | null;
+  scheduled_date_manual?: boolean;
+  recommended_date?: string | null;
+  reschedule_reason?: string | null;
 };
 
 export type MaintenancePlanUpdate = Partial<{
   status: MaintenancePlan["status"];
   completed_date: string | null;
   work_order_id: string | null;
+  scheduled_date: string;
+  reschedule_reason: string | null;
+  reset_schedule: boolean;
 }>;
+
+export type MaintenancePlanFromForecast = {
+  asset_id: string;
+  interval_id: string;
+  scheduled_date: string;
+  reschedule_reason?: string | null;
+};
 
 const maintenanceSchedule = {
   async get(params: { month: string }): Promise<MaintenanceScheduleResponse> {
@@ -1715,6 +1742,13 @@ const maintenancePlans = {
     return request<MaintenancePlan>({
       method: "PATCH",
       path: `/maintenance-plan/${id}`,
+      body: data,
+    });
+  },
+  async createFromForecast(data: MaintenancePlanFromForecast): Promise<MaintenancePlan> {
+    return request<MaintenancePlan>({
+      method: "POST",
+      path: "/maintenance-plan/from-forecast",
       body: data,
     });
   },

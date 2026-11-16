@@ -26,6 +26,20 @@ class MaintenancePlanUpdate(BaseModel):
     status: MaintenancePlanStatus | None = None
     completed_date: date | None = None
     work_order_id: UUID | None = None
+    # Manual rescheduling. `scheduled_date` moves the planned day; `reset_schedule` returns to the
+    # system recommendation. Neither can be combined with the fields above.
+    scheduled_date: date | None = None
+    reschedule_reason: str | None = Field(default=None, max_length=500)
+    reset_schedule: bool = False
+
+
+class MaintenancePlanFromForecast(BaseModel):
+    """Turn a forecast row into a real plan on a date chosen by the planner."""
+
+    asset_id: UUID
+    interval_id: UUID
+    scheduled_date: date
+    reschedule_reason: str | None = Field(default=None, max_length=500)
 
 
 class MaintenancePlanRead(BaseModel):
@@ -46,6 +60,9 @@ class MaintenancePlanRead(BaseModel):
     scheduled_date: date | None
     completed_date: date | None
     work_order_id: UUID | None
+    scheduled_date_manual: bool = False
+    recommended_date: date | None = None
+    reschedule_reason: str | None = None
 
 
 class MaintenanceScheduleItem(BaseModel):
@@ -62,6 +79,9 @@ class MaintenanceScheduleItem(BaseModel):
     mileage: Decimal | None = None
     remainingKm: Decimal | None = None
     nextThreshold: Decimal | None = None
+    # Length of the interval (km) the threshold belongs to; lets the UI show progress
+    # inside the CURRENT interval instead of against the absolute odometer value.
+    intervalKm: Decimal | None = None
     urgency: MaintenanceUrgency | None = None
     asset_id: UUID
     section_id: UUID | None = None
@@ -69,6 +89,19 @@ class MaintenanceScheduleItem(BaseModel):
     work_type_id: UUID | None = None
     plan_id: UUID | None = None
     work_order_id: UUID | None = None
+    # Joined display data of the asset (names instead of codes); the same for every item of one asset.
+    asset_type: str | None = None
+    asset_type_name: str | None = None
+    asset_model: str | None = None
+    asset_serial: str | None = None
+    asset_inv_number: str | None = None
+    asset_status: str | None = None
+    asset_status_name: str | None = None
+    asset_online: bool | None = None
+    # Manual rescheduling state of a plan (always False/None for forecasts and work orders).
+    dateManual: bool = False
+    recommendedDate: date | None = None
+    rescheduleReason: str | None = None
 
 
 class MaintenanceScheduleRead(BaseModel):

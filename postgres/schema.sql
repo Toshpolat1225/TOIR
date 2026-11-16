@@ -729,9 +729,16 @@ CREATE TABLE maintenance_plan (
     scheduled_date    date,
     completed_date    date,
     work_order_id     uuid REFERENCES work_orders(id) ON DELETE SET NULL,
+    scheduled_date_manual boolean NOT NULL DEFAULT false,
+    recommended_date  date,
+    reschedule_reason text,
     created_at        timestamptz NOT NULL DEFAULT now(),
     updated_at        timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (asset_id, interval_id, trigger_mileage)
+    UNIQUE (asset_id, interval_id, trigger_mileage),
+    CONSTRAINT ck_maintenance_plan_reschedule_reason_len
+        CHECK (reschedule_reason IS NULL OR char_length(reschedule_reason) <= 500),
+    CONSTRAINT ck_maintenance_plan_manual_consistency
+        CHECK (scheduled_date_manual OR (recommended_date IS NULL AND reschedule_reason IS NULL))
 );
 CREATE INDEX ix_plan_status_date ON maintenance_plan(status, scheduled_date);
 

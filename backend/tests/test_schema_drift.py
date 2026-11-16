@@ -181,6 +181,7 @@ def test_alembic_head_and_offline_contract_render(monkeypatch) -> None:
     assert len({revision for revision in revision_ids}) == len(revision_ids)
     assert "0029_wagon_mileage_ledger" in revision_ids
     assert "0030_user_auth_source" in revision_ids
+    assert "0031_plan_manual_date" in revision_ids
     assert "0024_asset_column_contract" in revision_ids
     assert "0025_russian_only" in revision_ids
     assert "0026_audit_logs" in revision_ids
