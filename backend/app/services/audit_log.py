@@ -40,6 +40,12 @@ _OPERATIONAL_TABLES = {
     "gtk_membership_observations",
     "gtk_wagon_mileage_log",
     "gtk_locomotive_mileage_checkpoints",
+    # weighing-scale feed (re-derived on every pull; operator corrections `scale_corrections` ARE audited)
+    "scale_posts",
+    "scale_cargo",
+    "scale_trains",
+    "scale_weighings",
+    "scale_train_carriages",
 }
 # Columns a Wialon pull rewrites constantly: an update that touches nothing else is not an event worth auditing.
 _SYNC_ONLY_COLUMNS = {

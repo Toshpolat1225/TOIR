@@ -32,3 +32,7 @@ docker compose exec -T postgres psql -U toir_local -d toir_local < zz_leftovers.
 `dq.sql` va `wagons.sql` — faqat o'qiydigan ma'lumot sifati tekshiruvlari.
 
 `python t11_map_verify.py` endi `/map/unplaced` ni ham tekshiradi (faqat GET); brauzer: `node browser/b05_map.mjs` (xarita) va `node browser/b06_unplaced.mjs` («Без координат» sahifasi).
+
+`python t12_scales_verify.py` (faqat GET): tarozi endpointlari va vagonlar daftari (jami = reyslar yig'indisi, CSV, ruxsatlar); brauzer: `node browser/b07_scales.mjs` («Весовая» sahifasi, vagon → reyslar → CSV, telefon kengligi).
+
+`node browser/b08_scales_cards.mjs`: boshqaruv markazidan vagon → sostav → lokomotiv kartochkalariga yurish, davr tugmalari, bog'lanmagan vagon, telefon kengligi. `t12` ga overview/kartochka izchillik tekshiruvlari qo'shilgan (yig'indilar daftar va holat bilan mos).

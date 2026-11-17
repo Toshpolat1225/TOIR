@@ -1303,3 +1303,38 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 
 ### NOT TESTED
 - Docker image qurish (`npm ci` konteynerda), jonli joylash, brauzer E2E. O'zgarishlar commit qilinmagan.
+
+## Vesovoy (tarozi) bazasi o'rganildi (2026-11-17)
+- `docs/VESOVOY_ANALYSIS.md`: jadvallar, mantiq, TOIR bilan bog'lash algoritmi, savollar. Asosiy: `Номер состава` = bosh lokomotiv garaj raqami (GTK bilan 88% mos), 15 birlik = 2 tortuvchi agregat + 13 dumpkar, `Вагон` ustuni vagon raqami emas, sostav `Вес` ~12–16% ko'p. `.mdb` fayllar git'dan ignor qilindi.
+- Next task: egasi 7-bo'lim savollariga javob beradi; keyin import usuli va tonna/reys intervali rejasi (migratsiya faqat tasdiq bilan). NOT TESTED: vagon darajasida bog'lash.
+
+## Vesovoy (tarozi) arxitekturasi qurildi va joylandi (2026-11-17)
+
+### Verified (buyruq natijasi ko'rilgan)
+- Migratsiya `0034_scales` jonli bazada (`alembic current` = head); oldin tekshirilgan zaxira `backups/pre_scales_20261117_1512.dump`. Backend/frontend healthy; jonli `/api/v1/scales/*` tokensiz va kirishsiz 401.
+- Haqiqiy ikki tarozidan (93, 97) 55 249 sostav va 595 734 vagon sinov bazasiga yuklandi (jonli baza o'zgarmadi): GTK oynasida 88% sostav taniladi, tarkib soni 98% mos; offset 189 t ikkala tarozida. Testlar: `test_scales.py` 14, backend toza bazada 595 o'tdi (+1 eski sanaga bog'liq xato), tsc/eslint 0 xato, 80 unit, build OK.
+
+### Next task (foydalanuvchi, [PC] / [SERVER] — `scripts/scales_collector/README.md`)
+1. `.env` ga `SCALES_INGEST_TOKEN` qo'yish va foydalanuvchi muhit o'zgaruvchisiga yozish (README dagi blok), backend ni qayta ishga tushirish (`docker compose up -d --no-deps backend`).
+2. `python scripts\scales_collector\collector.py --check`, `--backfill-archives`, `--backfill-live`, so'ng `install_task.ps1`.
+3. `/dashboard/scales` da tekshirish: ikki tarozi kartasi, «Не распознано» (taklif + «Это он»).
+4. Keyingi qaror: ТО intervaliga `interval_trips`/`interval_tons` (sxema o'zgaradi), vagon ichida aniq tonna uchun pozitsiya→GTK tartibi.
+- Xavfsizlik: tarozi akkaunti paroli chatda yozilgan edi: o'zgartirish va ulashma uchun faqat o'qish huquqli alohida akkaunt tavsiya etiladi.
+
+### NOT TESTED
+- UI ma'lumot bilan jonli tizimda, kollektorning doimiy rejimi va Task Scheduler vazifalari, jonli bazaga yuklash. O'zgarishlar commit qilinmagan.
+
+### Vesovoy: jonli ishga tushirildi (2026-11-17 16:00)
+- Verified: token backendda (`docker-compose.yml` ga `SCALES_INGEST_TOKEN` qo'shildi), kollektor https orqali jonli tizimga yukladi: 55 252 sostav, 595 779 vagon qatori; GTK oynasida (05.11 dan) 964 ok / 131 no_gtk_train / 1 no_loco; 12 998/13 232 vagon qatorida o'z tonnasi (GTK tartibi bo'yicha). Barqaror o'tish ~60–80 sostav o'qiydi, 78 ta qayta moslanadi. Migratsiya `0035_scale_car_net` jonli, zaxira `backups/pre_scale_net_20261117_1552.dump`.
+- Next task (foydalanuvchi): doimiy ishlash uchun `powershell -ExecutionPolicy Bypass -File scripts\scales_collector\install_task.ps1`; `/dashboard/scales` ni brauzerda ko'rish.
+- NOT TESTED: UI jonli ma'lumot bilan (brauzer), Task Scheduler vazifalari.
+
+### Vagonlar daftari joylandi (2026-11-17)
+- Verified: jonli API (`t12`): vagonlar reytingi, vagon reyslari, jami tonna reyslar yig'indisiga teng, CSV; ruxsatlar (master 403); Edge `b07` 11/11. Joylandi (migratsiya yo'q).
+- Next task: `powershell -ExecutionPolicy Bypass -File scripts\scales_collector\install_task.ps1` (kollektor hozir faqat qo'lda ishga tushirilgan, shuning uchun «сборщик не отвечает»); 401 bog'lanmagan vagonni GTK ga bog'lash daftarda ularni ОС bilan ko'rsatadi.
+- NOT TESTED: Task Scheduler vazifalari; yirik hajmda (yillik) daftar tezligi (30 kunlik 0,1 s).
+
+### Весовая qayta dizayn qilindi (2026-11-17, kech)
+- Verified: jonli API (57 PASS), Edge `b07` 11/11 va `b08` 11/11; yangi sahifalar: `/dashboard/scales/{train,wagon,loco}/...`. Tafsilot: `docs/SCALES_ARCHITECTURE.md` 6b.
+- Next task: `install_task.ps1` (kollektor doimiy); vagon/lokomotivlarni ОС ga bog'lash, shunda kartochkalarda ТО va naryadlar to'liq chiqadi; keyin ТО intervaliga tonna/reys (qaror).
+- NOT TESTED: Task Scheduler; yirik yillik davr (365 kun) da vagon kartochkasi tezligi; ОС bilan bog'langan vagon kartochkasida ТО/naryad bloklari jonli ma'lumot bilan (hozir jonli bazada bog'langan vagonlarning ТО rejasi/naryadi yo'q).

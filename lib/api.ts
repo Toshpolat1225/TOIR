@@ -1873,6 +1873,63 @@ const assetMap = {
   },
 };
 
+const scales = {
+  async status(): Promise<import("./scales-view").ScalesStatus> {
+    return request({ method: "GET", path: "/scales/status", suppressNetworkLog: true });
+  },
+  async trains(
+    params: { post?: string; match_status?: string; flag?: string; q?: string; date_from?: string; date_to?: string; sort_by?: string; sort_dir?: "asc" | "desc"; limit?: number; offset?: number } = {},
+  ): Promise<import("./scales-view").Page<import("./scales-view").ScaleTrain>> {
+    const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== "")) as Record<string, string | number>;
+    return request({ method: "GET", path: "/scales/trains", params: clean, suppressNetworkLog: true });
+  },
+  async unmatched(params: { limit?: number; offset?: number } = {}): Promise<import("./scales-view").Page<import("./scales-view").UnmatchedTrain>> {
+    return request({ method: "GET", path: "/scales/unmatched", params: params as Record<string, number>, suppressNetworkLog: true });
+  },
+  async corrections(): Promise<import("./scales-view").Correction[]> {
+    return request({ method: "GET", path: "/scales/corrections", suppressNetworkLog: true });
+  },
+  async createCorrection(body: { kind: "loco_alias" | "train_exclude" | "train_gtk"; loco_number?: string; train_id?: string; asset_id?: string; gtk_train_id?: number; note?: string }): Promise<import("./scales-view").Correction> {
+    return request({ method: "POST", path: "/scales/corrections", body });
+  },
+  async endCorrection(id: string): Promise<void> {
+    await request<null>({ method: "DELETE", path: `/scales/corrections/${id}` });
+  },
+  async rematch(): Promise<{ rematched: number }> {
+    return request({ method: "POST", path: "/scales/rematch" });
+  },
+  async wagonTotals(params: WagonLedgerParams = {}): Promise<import("./scales-view").WagonTotalPage> {
+    return request({ method: "GET", path: "/scales/wagons", params: cleanParams(params), suppressNetworkLog: true });
+  },
+  async wagonTrips(params: WagonLedgerParams = {}): Promise<import("./scales-view").WagonTripPage> {
+    return request({ method: "GET", path: "/scales/wagon-trips", params: cleanParams(params), suppressNetworkLog: true });
+  },
+  async overview(days = 30): Promise<import("./scales-insights").Overview> {
+    return request({ method: "GET", path: "/scales/overview", params: { days }, suppressNetworkLog: true });
+  },
+  async trainCard(id: string): Promise<import("./scales-insights").TrainCard> {
+    return request({ method: "GET", path: `/scales/trains/${id}`, suppressNetworkLog: true });
+  },
+  async wagonCard(params: { asset_id?: string; carriage_gtk_id?: number; days?: number }): Promise<import("./scales-insights").WagonCard> {
+    return request({ method: "GET", path: "/scales/wagon-card", params: cleanParams(params), suppressNetworkLog: true });
+  },
+  async locoCard(assetId: string, days = 30): Promise<import("./scales-insights").LocoCard> {
+    return request({ method: "GET", path: `/scales/loco-card/${assetId}`, params: { days }, suppressNetworkLog: true });
+  },
+  async exportWagonTrips(params: WagonLedgerParams = {}): Promise<Blob> {
+    return request({ method: "GET", path: "/scales/wagon-trips/export.csv", params: cleanParams(params), responseType: "blob" });
+  },
+};
+
+export type WagonLedgerParams = {
+  asset_id?: string; q?: string; date_from?: string; date_to?: string; post?: string; cargo_code?: number; only_linked?: boolean;
+  sort_by?: string; sort_dir?: "asc" | "desc"; limit?: number; offset?: number;
+};
+
+function cleanParams(params: Record<string, unknown>): Record<string, string | number | boolean> {
+  return Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== "" && value !== false)) as Record<string, string | number | boolean>;
+}
+
 const maintenanceSchedule = {
   async get(params: { month: string }): Promise<MaintenanceScheduleResponse> {
     return request<MaintenanceScheduleResponse>({ method: "GET", path: "/maintenance-schedule", params, suppressNetworkLog: true });
@@ -2457,6 +2514,7 @@ export const api = {
   nomenclatureNorms,
   workTypeTemplates,
   assetMap,
+  scales,
   maintenanceSchedule,
   maintenancePlans,
   maintenanceLive,

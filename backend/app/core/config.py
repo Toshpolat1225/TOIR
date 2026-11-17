@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     cors_origins: str
     api_docs_enabled: bool = True
     wialon_ingest_token: SecretStr | None = None
+    # Weighing scales (Vesovoy): the Windows collector pushes with this token; unset = the ingest endpoint is closed.
+    scales_ingest_token: SecretStr | None = None
+    scales_utc_offset_hours: int = Field(default=5, ge=-12, le=14)  # the scale PCs store local (Tashkent) time without a zone
+    scales_traction_tare_min_t: float = Field(default=115.0, gt=0)  # tare at/above this = traction unit (without GTK); measured: units 1-2 cluster at 115-140 t, dump cars at 60-115 t
+    scales_carriage_order: str = Field(default="asc", pattern="^(asc|desc)$")  # dump car by scale position <-> GTK carriage by ord (confirmed: asc)
+    scales_gtk_tolerance_min: int = Field(default=15, ge=0, le=120)  # GTK membership is observed every ~10 min
+    scales_silent_warn_hours: int = Field(default=6, ge=1, le=240)
+    scales_silent_alert_hours: int = Field(default=24, ge=1, le=720)
     wialon_host: str | None = "https://gps.agmk.uz"
     wialon_token: SecretStr | None = None
     wialon_sync_interval_minutes: int = Field(default=2, ge=1, le=1440)

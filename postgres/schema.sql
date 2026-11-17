@@ -1473,3 +1473,103 @@ ALTER TABLE wialon_raw_receipts
 ALTER TABLE wialon_raw_receipts
     ADD CONSTRAINT wialon_raw_receipts_reading_id_fkey
     FOREIGN KEY (reading_id) REFERENCES wialon_odometer_readings(id) ON DELETE SET NULL;
+-- Weighing scales (Vesovoy), migration 0034
+CREATE TABLE scale_posts (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    code text NOT NULL UNIQUE,
+    name text NOT NULL,
+    tare_default_t numeric(8,2),
+    capacity_norm_t numeric(8,2),
+    last_pull_at timestamptz,
+    last_weighing_at timestamptz,
+    last_src_train_id integer,
+    last_src_weighing_id integer,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE scale_cargo (
+    code integer PRIMARY KEY,
+    name text NOT NULL
+);
+CREATE TABLE scale_trains (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    post_id uuid NOT NULL REFERENCES scale_posts(id) ON DELETE CASCADE,
+    src_id integer NOT NULL,
+    registered_on date,
+    loco_number text,
+    declared_wagons integer,
+    reported_weight_t numeric(10,2),
+    doc_weight_t numeric(10,2),
+    started_at timestamptz,
+    finished_at timestamptz,
+    cargo_code integer,
+    excavator integer,
+    operator_code integer,
+    row_hash text NOT NULL,
+    ingested_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    wagon_rows integer NOT NULL DEFAULT 0,
+    dump_count integer NOT NULL DEFAULT 0,
+    traction_count integer NOT NULL DEFAULT 0,
+    net_total_t numeric(10,2),
+    net_source text,
+    loco_asset_id uuid REFERENCES fixed_assets(id) ON DELETE SET NULL,
+    loco_gtk_id integer,
+    gtk_train_id integer,
+    carriages_total integer NOT NULL DEFAULT 0,
+    carriages_linked integer NOT NULL DEFAULT 0,
+    match_status text NOT NULL DEFAULT 'pending',
+    match_method text,
+    flags text[] NOT NULL DEFAULT '{}',
+    matched_at timestamptz,
+    CONSTRAINT uq_scale_trains_post_src UNIQUE (post_id, src_id),
+    CONSTRAINT ck_scale_trains_match_status CHECK (match_status IN ('pending','ok','no_loco','no_gtk_train','excluded'))
+);
+CREATE INDEX ix_scale_trains_started ON scale_trains(started_at);
+CREATE INDEX ix_scale_trains_loco_asset_started ON scale_trains(loco_asset_id, started_at);
+CREATE INDEX ix_scale_trains_open ON scale_trains(match_status) WHERE match_status <> 'ok' AND match_status <> 'excluded';
+CREATE TABLE scale_weighings (
+    id bigserial PRIMARY KEY,
+    train_id uuid NOT NULL REFERENCES scale_trains(id) ON DELETE CASCADE,
+    src_id integer NOT NULL,
+    position integer,
+    unit_label text,
+    gross_t numeric(8,2),
+    tare_t numeric(8,2),
+    net_t numeric(8,2),
+    capacity_t numeric(8,2),
+    overload_t numeric(8,2),
+    speed_kmh numeric(6,2),
+    axles smallint,
+    weighed_at timestamptz,
+    unit_kind text NOT NULL DEFAULT 'dump',
+    CONSTRAINT uq_scale_weighings_train_src UNIQUE (train_id, src_id),
+    CONSTRAINT ck_scale_weighings_unit_kind CHECK (unit_kind IN ('traction','dump'))
+);
+CREATE TABLE scale_train_carriages (
+    train_id uuid NOT NULL REFERENCES scale_trains(id) ON DELETE CASCADE,
+    carriage_gtk_id integer NOT NULL,
+    asset_id uuid REFERENCES fixed_assets(id) ON DELETE SET NULL,
+    ord integer NOT NULL,
+    unit_position integer,
+    net_t numeric(8,2),
+    PRIMARY KEY (train_id, carriage_gtk_id)
+);
+CREATE INDEX ix_scale_train_carriages_asset ON scale_train_carriages(asset_id);
+CREATE TABLE scale_corrections (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    kind text NOT NULL,
+    loco_number text,
+    train_id uuid REFERENCES scale_trains(id) ON DELETE CASCADE,
+    asset_id uuid REFERENCES fixed_assets(id) ON DELETE CASCADE,
+    gtk_train_id integer,
+    note text,
+    is_active boolean NOT NULL DEFAULT true,
+    created_by uuid REFERENCES users(id) ON DELETE SET NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    ended_at timestamptz,
+    CONSTRAINT ck_scale_corrections_kind CHECK (kind IN ('loco_alias','train_exclude','train_gtk')),
+    CONSTRAINT ck_scale_corrections_shape CHECK ((kind = 'loco_alias' AND loco_number IS NOT NULL AND asset_id IS NOT NULL) OR (kind = 'train_exclude' AND train_id IS NOT NULL) OR (kind = 'train_gtk' AND train_id IS NOT NULL AND gtk_train_id IS NOT NULL))
+);
+CREATE UNIQUE INDEX uq_scale_corrections_alias ON scale_corrections(loco_number) WHERE kind = 'loco_alias' AND is_active;
+CREATE UNIQUE INDEX uq_scale_corrections_train ON scale_corrections(train_id, kind) WHERE kind <> 'loco_alias' AND is_active;

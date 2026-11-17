@@ -658,6 +658,18 @@ async def _wialon_probe() -> int:
     return 0
 
 
+async def _scales_rematch() -> int:
+    from app.services import scales as scales_service
+
+    try:
+        async with SessionFactory() as session:
+            count = await scales_service.rematch_all(session)
+        print(json.dumps({"rematched": count}))
+        return 0
+    finally:
+        await engine.dispose()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -669,6 +681,10 @@ def main() -> int:
         help="Idempotently recalculate plans for operational locomotive and diesel assets",
     )
     subparsers.add_parser("wialon-probe", help="Read safe Wialon unit diagnostics")
+    subparsers.add_parser(
+        "scales-rematch",
+        help="Recompute every derived weighing-scale column from the raw rows, GTK history and corrections (idempotent)",
+    )
     subparsers.add_parser(
         "maintenance-shadow-report",
         help="Read-only: what the living-plan engine sees (states, confidence, pace, what it would plan)",
@@ -783,6 +799,8 @@ def main() -> int:
         return asyncio.run(_recalculate_plans())
     if arguments.command == "wialon-probe":
         return asyncio.run(_wialon_probe())
+    if arguments.command == "scales-rematch":
+        return asyncio.run(_scales_rematch())
     if arguments.command == "wagon-mileage-run":
         return asyncio.run(_wagon_mileage_run(dry_run=arguments.dry_run))
     parser.error("Unsupported command")

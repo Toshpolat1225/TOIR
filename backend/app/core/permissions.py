@@ -52,18 +52,20 @@ PERMISSIONS: dict[str, tuple[str, str, str]] = {
     "asset_conflicts.manage": ("asset_conflicts", "manage_reference_data", "Asset field conflicts"),
     "maintenance_settings.view": ("maintenance_settings", "view", "Maintenance settings"),
     "maintenance_settings.update": ("maintenance_settings", "update", "Maintenance settings"),
+    "scales.view": ("scales", "view", "Weighing scales data"),
+    "scales.manage": ("scales", "manage_reference_data", "Weighing scales corrections"),
 }
 
 ROLE_DEFAULTS: dict[str, frozenset[str]] = {
     "admin": frozenset(PERMISSIONS),
-    "operator": frozenset({"realtime.view", "dashboard.view", "assets.view", "assets.create", "assets.update", "assets.delete", "asset_catalogs.view", "organization.view", "organization.create", "organization.update", "organization.delete", "work_orders.view", "work_orders.create", "work_orders.update", "maintenance.view", "maintenance.update", "inventory.view", "inventory.create", "inventory.update", "inventory.delete", "tmc.view", "reports.view", "reports.export", "analytics.view", "gtk.view", "gtk.manage", "asset_links.view", "asset_links.manage", "asset_conflicts.manage", "maintenance_settings.view", "maintenance_settings.update", "translations.view", "ml.view"}),
+    "operator": frozenset({"realtime.view", "dashboard.view", "assets.view", "assets.create", "assets.update", "assets.delete", "asset_catalogs.view", "organization.view", "organization.create", "organization.update", "organization.delete", "work_orders.view", "work_orders.create", "work_orders.update", "maintenance.view", "maintenance.update", "inventory.view", "inventory.create", "inventory.update", "inventory.delete", "tmc.view", "reports.view", "reports.export", "analytics.view", "gtk.view", "gtk.manage", "asset_links.view", "asset_links.manage", "asset_conflicts.manage", "maintenance_settings.view", "maintenance_settings.update", "translations.view", "ml.view", "scales.view", "scales.manage"}),
     "master": frozenset({"realtime.view", "dashboard.view", "assets.view", "asset_catalogs.view", "organization.view", "work_orders.view", "work_orders.create", "work_orders.update", "maintenance.view", "maintenance_settings.view", "inventory.view", "tmc.view", "reports.view", "reports.export", "analytics.view", "translations.view", "ml.view"}),
-    "management": frozenset({"realtime.view", "dashboard.view", "assets.view", "asset_catalogs.view", "organization.view", "work_orders.view", "work_orders.create", "work_orders.update", "work_orders.delete", "maintenance.view", "maintenance.update", "maintenance_settings.view", "maintenance_settings.update", "inventory.view", "tmc.view", "reports.view", "reports.export", "analytics.view", "gtk.view", "asset_links.view", "translations.view", "ml.view"}),
+    "management": frozenset({"realtime.view", "dashboard.view", "assets.view", "asset_catalogs.view", "organization.view", "work_orders.view", "work_orders.create", "work_orders.update", "work_orders.delete", "maintenance.view", "maintenance.update", "maintenance_settings.view", "maintenance_settings.update", "inventory.view", "tmc.view", "reports.view", "reports.export", "analytics.view", "gtk.view", "asset_links.view", "translations.view", "ml.view", "scales.view"}),
 }
 
 ROLE_DENIED: dict[str, frozenset[str]] = {
-    "master": frozenset({"gtk.view", "gtk.manage", "asset_links.view", "asset_links.manage", "asset_conflicts.manage"}),
-    "management": frozenset({"gtk.manage", "asset_conflicts.manage"}),
+    "master": frozenset({"gtk.view", "gtk.manage", "asset_links.view", "asset_links.manage", "asset_conflicts.manage", "scales.view", "scales.manage"}),
+    "management": frozenset({"gtk.manage", "asset_conflicts.manage", "scales.manage"}),
 }
 
 

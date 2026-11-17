@@ -399,3 +399,36 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 - O'zgardi: frontend 57 ta yetib bo'lmaydigan fayl (`components/ui/*`, `theme-provider`, `lib/i18n.tsx`, `hooks/`, `styles/globals.css`), `public/` 9 rasm, `.gitkeep`; backend 14 o'lik funksiya/klass (repositories/services/schemas); `package.json` va `package-lock.json` (37 paket). Yangi: `docs/CLEANUP_2026-11-17.md`.
 - Tested: tsc 0 xato, eslint 0 xato, 75 unit, `npm run build` OK (paketlardan keyin ham), backend 581 o'tdi + 1 eski sanaga bog'liq xato. NOT TESTED: Docker image qurish, jonli brauzer, joylash.
 - Keyingi qadam: `docker compose build frontend` + `up -d --no-deps frontend`, so'ng Edge E2E (`b01`, `b05`, `b06`); `docs/CLEANUP_2026-11-17.md` 3-bo'limidagi nomzodlar bo'yicha qaror.
+
+## 2026-11-17: Vesovoy (vagon tarozisi) Access bazalarini o'rganish
+- Task: `Bridge_Scale 93.mdb` va `Bridge_Scale 97.mdb` tuzilmasi, bog'lanishi va mantiqini o'rganish.
+- O'zgardi: `.gitignore` (`*.mdb`, `*.accdb`, `*.ldb`, `*.laccdb`), yangi `docs/VESOVOY_ANALYSIS.md`. Kod va baza o'zgarmadi.
+- Tested: Access nusxalari scratchpad'da `pyodbc` (ACE 64-bit, ReadOnly) bilan o'qildi; jonli PostgreSQL faqat SELECT. Prototip bog'lash: sostavlarning 88% i lokomotiv garaj raqami + vaqt bo'yicha GTK ga topildi. NOT TESTED: haqiqiy `.ecg` fayllar, vagon darajasidagi TOIR bog'lash, 7-bo'limdagi savollar (egasi javobi).
+- Keyingi qadam: egasidan `docs/VESOVOY_ANALYSIS.md` 7-bo'lim javoblari, so'ng import usuli (eksport/ETL) va ТО intervali (tonna/reys) bo'yicha reja.
+
+## 2026-11-17: Vesovoy (tarozi) real rejim arxitekturasi
+- Task: ikki tarozi (93, 97) ma'lumotini doimiy olib kelish, GTK/ОС bilan bog'lash, dinamik to'g'rilash.
+- O'zgardi: yangi `backend/app/{models,schemas,routers,services}/scales*.py`, `alembic/versions/0034_scales.py`, `postgres/schema.sql`, `core/permissions.py` (`scales.*`), `core/config.py`, `main.py` (router, audit istisnosi), `cli.py` (`scales-rematch`), `services/audit_log.py`; `scripts/scales_collector/` (collector, README, install_task.ps1); frontend `lib/scales-view.ts` (+test), `lib/api.ts`, `app/dashboard/scales/page.tsx`, menyu; hujjatlar `docs/SCALES_ARCHITECTURE.md`, `VESOVOY_ANALYSIS.md`; `.gitignore`.
+- Tested: `test_scales.py` 14 (pure 11 + PG 3, haqiqiy hajmli bazada ham); to'liq backend toza bazada 595 o'tdi + 1 eski sanaga bog'liq xato; migratsiya down/up; tsc/eslint 0 xato, 80 unit, build OK. Haqiqiy ikki tarozidan 55 249 sostav/595 734 vagon sinov bazasiga yuklandi: GTK oynasida 88% taniladi, tarkib 98% mos. Joylandi: backend+frontend healthy, alembic `0034_scales`, jonli endpointlar tokensiz 401.
+- NOT TESTED: UI ma'lumot bilan (jonli), kollektorning doimiy rejimi va Task Scheduler, jonli bazaga yuklash (token `.env` da yo'q).
+- Keyingi qadam: foydalanuvchi `scripts/scales_collector/README.md` bo'yicha token qo'yadi, backfill va `install_task.ps1` ishga tushiradi; keyin ТО intervaliga tonna/reys (qaror).
+
+## 2026-11-17 (kech): Vesovoy vagon tartibi, kollektor jonli ishga tushirildi
+- Task: GTK tartibi tasdiqlandi, vagonga aniq tonna; foydalanuvchi buyruqlari `pyodbc` (venv) xatosi berdi.
+- O'zgardi: `0035_scale_car_net`, `scales_matching.assign_units_to_carriages`, rematch/asset_work (`exact_share`), `docker-compose.yml` (`SCALES_INGEST_TOKEN`), kollektor (https + ildiz sertifikat, HY109 bo'yicha sana skani), `install_task.ps1` (pyodbc o'zi o'rnatadi), README, docs.
+- Tested: `test_scales.py` 15, backend toza bazada 596 o'tdi + 1 eski xato, migratsiya down/up, tsc/eslint 0 xato. Joylandi (backup `pre_scale_net_20261117_1552.dump`). Jonli: backend tokenni oldi, birinchi o'tish 93: 1446 sostav/21 408 vagon, 97: 2826/41 225 yuklandi.
+- NOT TESTED: UI jonli ma'lumot bilan, doimiy rejim va Task Scheduler.
+- Keyingi qadam: `install_task.ps1`; `/dashboard/scales` ni tekshirish.
+
+## 2026-11-17 (kech): Vagonlar daftari (qaysi vagon, qachon, qancha yuk)
+- Task: har bir vagonning reyslari va tonnasi: mantiq va realizatsiya.
+- O'zgardi: yangi `services/scales_trips.py`, `/scales/wagons`, `/scales/wagon-trips`, `/scales/wagon-trips/export.csv`, sxemalar; `asset_work` (taxminiy sostavlarda ham ulush); status hisobi (GTK tarixigacha alohida); frontend `WagonLedger.tsx`, `lib/scales-view.ts`, `lib/api.ts`; e2e `t12_scales_verify.py`, `browser/b07_scales.mjs`.
+- Tested: `test_scales.py` 15; backend toza bazada 596 o'tdi (+1 eski xato); tsc/eslint 0 xato, 83 unit; jonli API `t12` (data tekshiruvlari PASS; faqat «kollektor jonli» FAIL: doimiy vazifa o'rnatilmagan); Edge `b07` 11/11 (telefonda yon siljish topildi va tuzatildi); ZZTEST qoldig'i 0.
+- Xato (o'zimniki): `rehearse_env.sh` ni `docker compose` bilan bir shellda yuklab, backendni noto'g'ri bazaga ulab qo'ydim (crashloop); toza shellda qayta yaratildi, ma'lumot yo'qolmadi. Qoida: sinov env'ini compose bilan aralashtirmaslik.
+- Keyingi qadam: `install_task.ps1`.
+
+## 2026-11-17 (kech): Весовая boshqaruv markazi va kartochkalar
+- Task: sahifa va undan o'tiladigan sahifalarni maksimal ma'lumotli, ko'p join li, tushunarli va ijodiy dizaynda qilish.
+- O'zgardi: yangi `services/scales_insights.py`, `schemas/scales_insights.py`, endpointlar `/scales/overview`, `/trains/{id}`, `/wagon-card`, `/loco-card/{id}`; frontend `lib/scales-insights.ts` (+test), `_components/{viz,Overview,cards}.tsx`, sahifalar `train/[id]`, `wagon/[key]`, `loco/[id]`, asosiy sahifa qayta tuzildi, jadvallar havolali; e2e `t12` (+30 tekshiruv), `b08_scales_cards.mjs`.
+- Tested: `test_scales_insights.py` + `test_scales.py` 16; backend toza bazada 597 o'tdi (+1 eski xato); tsc/eslint 0 xato, 89 unit, build OK; jonli API t12: 57 PASS (faqat «kollektor jim» FAIL: doimiy vazifa yo'q); Edge b07 11/11, b08 11/11 (telefon kengligi ham); skrinshotlar ko'rib chiqildi; ZZTEST qoldig'i 0.
+- Keyingi qadam: `install_task.ps1`; vagonlarni ОС ga bog'lash.

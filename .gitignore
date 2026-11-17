@@ -62,3 +62,9 @@ assets_import.json
 reports/
 backups/
 *.dump
+
+# Access databases (Vesovoy) - large, sensitive, never commit
+*.mdb
+*.accdb
+*.ldb
+*.laccdb
