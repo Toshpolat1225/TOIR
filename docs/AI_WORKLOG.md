@@ -458,3 +458,5 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 - Tested: backend 641 o'tdi (+1 eski xato), tsc/eslint 0, 125 unit, build OK; jonli: t15 40/40, t11 44/44, t13/t14 o'tdi, brauzer b11 17/17, b05 11/11, b09 12/12, b10 8/8; ZZTEST qoldig'i 0. Backup `backups/pre_gtkgps_20261117_2322.dump`.
 - Topildi/tuzatildi: (1) birinchi xulosam («GTK'dan probeg yo'q») noto'g'ri edi; (2) 30 kunlik yuklash hamma trekni xotirada ushlardi -> paketlar; (3) tugamagan sinxron «failed» ko'rinardi -> faqat tugagan ishga tushirish; (4) test muhitini `docker compose` bilan bir shellda yuklash backend'ni buzdi (yana!) -> toza shellda qayta yaratildi.
 
+
+- 2026-11-17: menyu qayta guruhlandi: «GPS: Wialon ↔ GTK» ostida «Карта», «Данные GTK», «Данные Wialon» (ichkarida); brauzerda admin/master uchun ko'rildi.

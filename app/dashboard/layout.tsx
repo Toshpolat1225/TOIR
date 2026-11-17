@@ -22,11 +22,11 @@ import { ThemeSwitcher } from "@/components/theme-switcher"
 const ALL_NAV = [
   { href: "/dashboard",             label: "Дашборд",        icon: LayoutDashboard, permission: "dashboard.view",         exact: true },
   { href: "/dashboard/analytics",   label: "Аналитика",      icon: BarChart3,       permission: "analytics.view"                    },
-  { href: "/dashboard/map",         label: "Карта",          icon: MapPin,          permission: "analytics.view"                    },
   { href: "/dashboard/gps",         label: "GPS: Wialon ↔ GTK", icon: Target,       permission: "analytics.view"                    },
+  { href: "/dashboard/map",         label: "Карта",          icon: MapPin,          permission: "analytics.view", child: true       },
+  { href: "/dashboard/os/gtk",      label: "Данные GTK",     icon: Radio,           permission: "gtk.view", exact: true, child: true },
+  { href: "/dashboard/os/wialon",   label: "Данные Wialon", icon: Radio,           permission: "assets.view", child: true          },
   { href: "/dashboard/scales",     label: "Весовая",        icon: Gauge,           permission: "scales.view"                       },
-  { href: "/dashboard/os/gtk",      label: "Данные GTK",     icon: Radio,           permission: "gtk.view", exact: true           },
-  { href: "/dashboard/os/wialon",   label: "Данные Wialon", icon: Radio,           permission: "assets.view"                    },
   { href: "/dashboard/maintenance", label: "ТО и ремонты",   icon: Wrench,          permission: "maintenance.view"                    },
   { href: "/dashboard/work-orders", label: "Наряд-заказы",   icon: ClipboardList,   permission: "work_orders.view"            },
   { href: "/dashboard/tmc",         label: "ТМЦ",            icon: Package,         permission: "tmc.view"                    },
@@ -243,7 +243,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Link key={item.href} href={item.href} onClick={() => setMobileNavOpen(false)} aria-current={active ? "page" : undefined}
                   className={cn(
                     "group flex items-center gap-3 rounded-lg py-2.5 text-sm font-medium transition-colors",
-                    item.href === "/dashboard/os/wialon" || item.href === "/dashboard/os/gtk" ? "ml-4 px-3 text-xs" : "px-3",
+                    item.child ? "ml-4 px-3 text-xs" : "px-3",
                     active ? "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
                   )}>
                   <item.icon className={cn("h-4 w-4 shrink-0", active ? "text-blue-700 dark:text-blue-300" : "text-slate-400 group-hover:text-slate-600 dark:text-gray-500")} />
