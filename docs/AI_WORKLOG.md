@@ -374,3 +374,9 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 - Qo'shildi: migratsiya `0033_wialon_position` (Wialon `lat/lon/position_at`), Wialon pozitsiyasini o'qish/saqlash, `GET /api/v1/map/assets` (`routers|services|repositories|schemas/asset_map.py`), `app/dashboard/map/` (Google xarita + klaster, kalitsiz zaxira variant), `lib/map-view.ts`, `lib/api.ts`, yon menyu, Dockerfile/compose/`.env.example` (`GOOGLE_MAPS_API_KEY`), testlar (`test_asset_map.py`, `map-view.test.ts`), `e2e_live/t11_map_verify.py`, `browser/b05_map.mjs`.
 - Tested: backend 569, tsc/eslint 0 xato, 68 unit; migratsiya up/down/up (pg_rehearse) va jonli; jonli API 19/19, Edge 9/9; ZZTEST qoldig'i 0. NOT tested: Google kaliti bilan interaktiv xarita (kalit yo'q).
 - Keyingi qadam: Google kalitini olib `.env` ga qo'yish va frontendni qayta qurish.
+
+## 2026-11-17: Karta — OpenStreetMap zaxirasi (kalitsiz)
+- Task: Google kaliti (karta) yo'q, shuning uchun Google (kalit bilan) + OpenStreetMap (kalitsiz) birga.
+- Qo'shildi: `leaflet`, `leaflet.markercluster` (+tiplar), `app/dashboard/map/_components/OsmAssetMap.tsx`, `app/dashboard/map/page.tsx` (Google → OSM → eski embed), `browser/b05_map.mjs` (OSM tekshiruvlari).
+- Tested: `tsc` 0 xato, `eslint` 0 xato, 68 unit, `npm run build` OK; frontend jonli qayta qurildi (healthy); Edge 10/10 (OSM plitkalari 9/9 yuklandi, klaster, popup, filtr, master doirasi, telefon eni); ZZTEST qoldig'i 0. NOT tested: Google kaliti bilan xarita.
+- Keyingi qadam: (ixtiyoriy) Google kaliti; 401 bog'lanmagan aktivni bog'lash.

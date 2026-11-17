@@ -7,6 +7,7 @@ import {
   type MapPoint, type MapSource,
 } from "@/lib/map-view"
 import { GoogleAssetMap } from "./_components/GoogleAssetMap"
+import { OsmAssetMap } from "./_components/OsmAssetMap"
 import { Loader2, MapPin, RefreshCw } from "@/components/ui/icons"
 
 // Public by design (it ends up in the page); restrict it by HTTP referrer in Google Cloud.
@@ -20,6 +21,7 @@ export default function MapPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [mapError, setMapError] = useState<string | null>(null)
+  const [osmError, setOsmError] = useState<string | null>(null)
   const [q, setQ] = useState("")
   const [type, setType] = useState("")
   const [source, setSource] = useState<MapSource | "">("")
@@ -51,6 +53,7 @@ export default function MapPage() {
   const types = useMemo(() => typeOptions(points), [points])
   const selected = useMemo(() => visible.find((p) => p.asset_id === selectedId) ?? null, [visible, selectedId])
   const useGoogle = GOOGLE_MAPS_API_KEY !== "" && mapError === null
+  const useOsm = !useGoogle && osmError === null
 
   return (
     <div className="mx-auto min-h-screen max-w-[1680px] space-y-5 bg-gray-50 p-5 sm:p-7 xl:p-9 dark:bg-gray-950">
@@ -147,14 +150,22 @@ export default function MapPage() {
               onSelect={setSelectedId}
               onError={setMapError}
             />
+          ) : useOsm ? (
+            <div className="flex h-full flex-col">
+              {mapError && (
+                <div className="border-b border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                  {`Карта Google недоступна: ${mapError}. Показана карта OpenStreetMap.`}
+                </div>
+              )}
+              <div className="min-h-0 flex-1">
+                <OsmAssetMap points={visible} selectedId={selectedId} onSelect={setSelectedId} onError={setOsmError} />
+              </div>
+            </div>
           ) : (
             <div className="flex h-full flex-col">
               <div className="border-b border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-                {mapError
-                  ? `Интерактивная карта Google недоступна: ${mapError}. `
-                  : "Ключ Google Maps не задан: интерактивная карта со всеми точками отключена. "}
-                Выберите единицу в списке — её положение откроется на карте Google ниже. Чтобы увидеть все точки сразу, администратор
-                задаёт <code>GOOGLE_MAPS_API_KEY</code> (см. docs/DEPLOY.md).
+                {`Интерактивная карта недоступна: ${osmError ?? mapError ?? ""}. (Нет доступа к интернету?) `}
+                Выберите единицу в списке — её положение откроется на карте Google ниже.
               </div>
               {selected ? (
                 <iframe

@@ -85,3 +85,5 @@ Sahifa `/dashboard/map` Wialon (GPS) va GTK koordinatalarini ko'rsatadi. Barcha 
 3. Frontendni qayta quring: `docker compose build frontend` va `docker compose up -d --no-deps frontend`.
 
 Kalit bo'lmasa ham sahifa ishlaydi: ro'yxat va tanlangan birlikning Google xaritadagi o'rni (kalitsiz). Mijoz kompyuterlarda `maps.googleapis.com` ga internet kerak.
+
+Kalit bo'lmasa sahifa OpenStreetMap xaritasini (Leaflet) ko'rsatadi: barcha nuqtalar, klaster va popup bilan, kartasiz. Kalit qo'yilsa Google xarita ishlatiladi. Ikkalasi uchun ham mijoz kompyuterda internet kerak (`tile.openstreetmap.org` yoki `maps.googleapis.com`).

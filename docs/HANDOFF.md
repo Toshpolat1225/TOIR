@@ -1251,3 +1251,15 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 
 ### NOT TESTED
 - Google kaliti bilan interaktiv xarita (markerlar, klaster, info oynasi, kalit rad etilganda zaxira) — kalit yo'q edi. Mijoz kompyuterlarda `maps.googleapis.com` ga kirish. GTK lokomotivlari koordinata bermaydi (faqat Wialon orqali). O'zgarishlar commit qilinmagan.
+
+## Karta: OpenStreetMap zaxirasi (2026-11-17)
+
+### Verified (buyruq natijasi ko'rilgan)
+- Kalit yo'q: `/dashboard/map` OpenStreetMap + Leaflet xaritasida 656 nuqtani klaster va popup bilan ko'rsatadi. `tsc`/`eslint` 0 xato, 68 unit, `npm run build` OK, frontend jonli qayta qurildi (healthy), Edge 10/10, ZZTEST qoldig'i 0.
+
+### Next task
+- (Ixtiyoriy) Google Maps kaliti: `.env` ga `GOOGLE_MAPS_API_KEY` (foydalanuvchi o'zi) + frontendni qayta qurish; shunda Google xarita ishlaydi.
+- 401 ta bog'lanmagan aktivni GTK/Wialon ga bog'lash.
+
+### NOT TESTED
+- Google kaliti bilan xarita (kalit yo'q). Mijoz kompyuterlarda `tile.openstreetmap.org` ga kirish (serverdan Edge orqali tekshirildi, plitkalar yuklandi). O'zgarishlar commit qilinmagan.

@@ -1,4 +1,4 @@
-// Real-browser (Edge) check of the Map page (without a Google key: list + keyless Google embed fallback).
+// Real-browser (Edge) check of the Map page (without a Google key: OpenStreetMap map + list).
 import { chromium } from "playwright-core"
 import { readFileSync } from "node:fs"
 import assert from "node:assert/strict"
@@ -48,12 +48,20 @@ async function session(role, viewport = { width: 1440, height: 900 }) {
     assert.ok((await items.count()) > 20, "list too short")
     assert.match(await items.first().innerText(), /Wialon|GTK/)
   })
-  await check("selecting an asset opens its position in Google Maps (keyless embed fallback) and offers links", async () => {
+  await check("without a Google key the OpenStreetMap map (Leaflet) is shown with all points as clusters/markers", async () => {
+    await page.waitForSelector(".leaflet-container", { timeout: 15000 })
+    await page.waitForTimeout(1500)
+    const n = await page.locator(".marker-cluster, .leaflet-interactive").count()
+    assert.ok(n > 0, "no clusters or markers on the map")
+    assert.ok((await page.locator(".leaflet-control-attribution").innerText()).includes("OpenStreetMap"), "no OSM attribution")
+  })
+  await check("selecting an asset opens its popup on the map with links", async () => {
     await page.locator("aside ul li button").first().click()
-    await page.waitForTimeout(800)
-    const src = await page.locator("iframe").first().getAttribute("src")
-    assert.match(src, /^https:\/\/www\.google\.com\/maps\?q=-?\d+\.\d+,-?\d+\.\d+&z=\d+&output=embed$/)
-    assert.ok(await page.getByText("Открыть в Google Maps").first().isVisible())
+    await page.waitForSelector(".leaflet-popup-content a", { timeout: 15000 })
+    await page.waitForTimeout(600)
+    const t = (await page.locator(".leaflet-popup-content").first().textContent()) ?? ""
+    assert.match(t, /Источник: (Wialon|GTK)/)
+    assert.ok(await page.locator(".leaflet-popup a", { hasText: "Открыть в Google Maps" }).first().isVisible())
   })
   await check("the source filter narrows the list to GTK only", async () => {
     await page.getByLabel("Источник").selectOption("gtk")
