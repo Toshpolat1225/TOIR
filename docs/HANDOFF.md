@@ -1350,3 +1350,11 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 - Cheklov: o'lchamlar tipik (katalog) qiymatlar; vagon yo'li lokomotiv treki bo'yicha (trek yo'q lokomotivda yo'nalish shartli); GTK vagonlari «yuklangan/bo'sh» ma'lumoti yo'q (`is_loaded` hammasi false), shuning uchun vagon rangi bir xil.
 - Next task: vagon turi/modeli bo'yicha aniq o'lchamlarni ma'lumotnomaga kiritish (ixtiyoriy); Google xaritasi uchun ham xuddi shu chizma (kalit to'g'rilangach).
 - NOT TESTED: Google xaritasida ikonkalar (kalit rad etiladi); telefonda masshtabdagi poyezd (faqat sahifa yon siljimasligi tekshirilgan).
+
+## GTK GPS + birlashgan xarita (2026-11-17)
+### Verified
+- Jonli bazada `0037_gtk_gps`; GTK GPS sinxroni ishlaydi (242 birlik, 76 lokomotiv treki); `/gps/*` API, `/dashboard/gps`, `/dashboard/gps/[id]`, xarita verdiktlari: t15 40/40, brauzer b11 17/17 (qarang DECISIONS #58, #59).
+- GTK/Wialon masofa nisbati median 0,96; GTK treklarida teshiklar bor (hukm `gtk_gap`).
+### Next task
+- 30 kunlik GTK tarixi yuklanishini tugatish (`gtk-gps-backfill`, orqa fonda; tugagach `t15` ni qayta o'tkazish). Foydalanuvchi: commit va kollektor `install_task.ps1`.
+- NOT TESTED: poyezd formatsiyasi GTK treki bo'yicha; GTK GPS mustaqilligi; `GTK_GPS_*` ni `.env` da qo'lda o'zgartirish; 31 kunlik oynada sahifa tezligi.

@@ -2,7 +2,8 @@
 // Run the tests with: npm run test:unit
 
 // "train" = a wagon has no GPS: it is drawn where the locomotive of its open GTK train is
-export type MapSource = "wialon" | "gtk" | "train"
+// "gtk_gps" = a locomotive drawn at GTK's OWN GPS fix (the newer of its two trackers)
+export type MapSource = "wialon" | "gtk" | "gtk_gps" | "train"
 
 export type MapPoint = {
   asset_id: string
@@ -25,9 +26,21 @@ export type MapPoint = {
   locomotive_asset_id?: string | null
   locomotive_inv_number?: string | null
   locomotive_name?: string | null
+  // locomotives that have BOTH trackers: the verdict of comparing Wialon and GTK GPS, and the OTHER tracker's fix
+  gps_verdict?: string | null
+  gps_diff_m?: number | null
+  gps_wialon_age_min?: number | null
+  gps_gtk_age_min?: number | null
+  alt_source?: "wialon" | "gtk_gps" | null
+  alt_lat?: number | null
+  alt_lon?: number | null
+  alt_position_at?: string | null
 }
 
-export const SOURCE_LABEL: Record<MapSource, string> = { wialon: "Wialon (GPS)", gtk: "GTK", train: "Состав (по локомотиву)" }
+/** A point that comes from a GPS tracker of its own (not GTK's carriage state, not a train): it has a speed and an online state. */
+export const isTracked = (source: MapSource): boolean => source === "wialon" || source === "gtk_gps"
+
+export const SOURCE_LABEL: Record<MapSource, string> = { wialon: "Wialon (GPS)", gtk: "GTK", gtk_gps: "GTK GPS", train: "Состав (по локомотиву)" }
 
 export const UNPLACED_LABEL: Record<string, string> = {
   no_link: "нет привязки к Wialon/GTK",
@@ -38,6 +51,7 @@ export const UNPLACED_LABEL: Record<string, string> = {
 export function markerColor(point: Pick<MapPoint, "source" | "online">): string {
   if (point.source === "gtk") return "#2563eb"
   if (point.source === "train") return "#d97706"
+  if (point.source === "gtk_gps") return point.online ? "#0d9488" : "#6b7280"
   return point.online ? "#16a34a" : "#6b7280"
 }
 

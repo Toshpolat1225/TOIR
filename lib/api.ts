@@ -1850,6 +1850,8 @@ export type AssetMapSummary = {
   unplaced: number;
   by_source: Record<string, number>;
   unplaced_reasons: Record<string, number>;
+  /** Locomotives that have a GTK GPS unit, by the Wialon-vs-GTK verdict of their live positions. */
+  gps_verdicts?: Record<string, number>;
 };
 
 export type AssetMapResponse = {
@@ -1857,8 +1859,23 @@ export type AssetMapResponse = {
   summary: AssetMapSummary;
 };
 
+const gps = {
+  /** Every locomotive with the Wialon and the GTK tracker side by side (master: own section only). */
+  async overview(
+    params: { days?: number; q?: string; section_id?: string; verdict?: import("./gps-view").PositionVerdict; only_issues?: boolean; limit?: number; offset?: number } = {},
+  ): Promise<import("./gps-view").GpsOverview> {
+    const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== "" && value !== false)) as Record<string, string | number | boolean>;
+    return request<import("./gps-view").GpsOverview>({ method: "GET", path: "/gps/overview", params: clean, suppressNetworkLog: true });
+  },
+  /** One locomotive: both live fixes, the day-by-day table and both stored tracks. */
+  async asset(assetId: string, params: { days?: number; track_days?: number } = {}): Promise<import("./gps-view").GpsAssetDetail> {
+    const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined)) as Record<string, number>;
+    return request<import("./gps-view").GpsAssetDetail>({ method: "GET", path: `/gps/assets/${encodeURIComponent(assetId)}`, params: clean, suppressNetworkLog: true });
+  },
+};
+
 const assetMap = {
-  async assets(params: { asset_type?: string; source?: "wialon" | "gtk" | "train"; section_id?: string; q?: string } = {}): Promise<AssetMapResponse> {
+  async assets(params: { asset_type?: string; source?: "wialon" | "gtk" | "gtk_gps" | "train"; section_id?: string; q?: string } = {}): Promise<AssetMapResponse> {
     const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== "")) as Record<string, string>;
     return request<AssetMapResponse>({ method: "GET", path: "/map/assets", params: clean, suppressNetworkLog: true });
   },
@@ -2521,6 +2538,7 @@ export const api = {
   nomenclatureNorms,
   workTypeTemplates,
   assetMap,
+  gps,
   scales,
   maintenanceSchedule,
   maintenancePlans,

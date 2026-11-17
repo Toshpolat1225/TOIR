@@ -680,6 +680,21 @@ async def _wialon_track_backfill(days: int) -> int:
         await engine.dispose()
 
 
+async def _gtk_gps_backfill(days: int) -> int:
+    from app.services import gtk_gps
+
+    if not settings.gtk_credentials_configured:
+        print("GTK is not configured", file=sys.stderr)
+        return 2
+    try:
+        async with SessionFactory() as session:
+            run = await gtk_gps.sync_gtk_gps(session, backfill_days=max(1, min(days, 120)), progress=lambda line: print(line, flush=True))
+        print(json.dumps({"status": run.status, "units": run.units, "tracks_ok": run.tracks_ok, "tracks_failed": run.tracks_failed, "points": run.points_stored}))
+        return 0 if run.status != "failed" else 1
+    finally:
+        await engine.dispose()
+
+
 async def _scales_rematch() -> int:
     from app.services import scales as scales_service
 
@@ -708,6 +723,11 @@ def main() -> int:
         help="Load the past GPS track of every linked Wialon unit into the position history (idempotent; a day at a time, thinned)",
     )
     track_parser.add_argument("--days", type=int, default=7)
+    gtk_gps_parser = subparsers.add_parser(
+        "gtk-gps-backfill",
+        help="Fetch GTK's own GPS tracks for the last N local days of every linked locomotive (read-only towards GTK)",
+    )
+    gtk_gps_parser.add_argument("--days", type=int, default=30)
     subparsers.add_parser(
         "scales-rematch",
         help="Recompute every derived weighing-scale column from the raw rows, GTK history and corrections (idempotent)",
@@ -828,6 +848,8 @@ def main() -> int:
         return asyncio.run(_wialon_probe())
     if arguments.command == "wialon-track-backfill":
         return asyncio.run(_wialon_track_backfill(arguments.days))
+    if arguments.command == "gtk-gps-backfill":
+        return asyncio.run(_gtk_gps_backfill(arguments.days))
     if arguments.command == "scales-rematch":
         return asyncio.run(_scales_rematch())
     if arguments.command == "wagon-mileage-run":

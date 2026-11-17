@@ -50,7 +50,7 @@ const WHEELS = '<circle cx="10" cy="20.5" r="2.3" fill="#0f172a"/><circle cx="30
 const STROKE = 'stroke="#0f172a" stroke-width="1.2"'
 
 /** Side-view pictogram, 40x24. `status` is the small dot at the corner (green online, grey offline, blue GTK, amber with a train). */
-export function iconSvg(kind: IconKind, status: Status, width = 36, selected = false): string {
+export function iconSvg(kind: IconKind, status: Status, width = 36, selected = false, verdictColor: string | null = null): string {
   const c = KIND_COLOR[kind]
   const body: Record<IconKind, string> = {
     electric: `<rect x="3" y="7" width="34" height="11" rx="3" fill="${c}" ${STROKE}/><rect x="6" y="9" width="6" height="4" rx="1" fill="#bfdbfe"/><rect x="28" y="9" width="6" height="4" rx="1" fill="#bfdbfe"/><path d="M15 7 L20 1.5 L25 7" fill="none" stroke="#0f172a" stroke-width="1.5"/><path d="M17.5 1.5h5" stroke="#0f172a" stroke-width="1.5"/><path d="M21 9.5 l-3 4 h3 l-1 4 4-5 h-3z" fill="#fde047"/>${WHEELS}`,
@@ -62,7 +62,9 @@ export function iconSvg(kind: IconKind, status: Status, width = 36, selected = f
     other: `<rect x="8" y="5" width="24" height="14" rx="3" fill="${c}" ${STROKE}/>`,
   }
   const ring = selected ? '<rect x="0.5" y="0.5" width="39" height="23" rx="5" fill="none" stroke="#ef4444" stroke-width="2"/>' : ""
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 24" width="${width}" height="${Math.round((width * 24) / 40)}">${body[kind]}${ring}<circle cx="35" cy="4.5" r="3.6" fill="${STATUS_COLOR[status]}" stroke="#fff" stroke-width="1.2"/></svg>`
+  // locomotives with two trackers: a coloured ring at the opposite corner = the verdict of comparing Wialon and GTK GPS
+  const verdict = verdictColor ? `<circle cx="5" cy="4.5" r="3.4" fill="#fff" stroke="${verdictColor}" stroke-width="2.2"/>` : ""
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 24" width="${width}" height="${Math.round((width * 24) / 40)}">${body[kind]}${ring}${verdict}<circle cx="35" cy="4.5" r="3.6" fill="${STATUS_COLOR[status]}" stroke="#fff" stroke-width="1.2"/></svg>`
 }
 
 /** Icon width in pixels for a zoom level: small on the country view, larger when the viewer is close. */

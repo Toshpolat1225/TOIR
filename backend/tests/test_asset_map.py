@@ -465,3 +465,49 @@ async def test_the_unplaced_page_explains_each_reason_from_the_database_and_scop
             await db.execute(delete(WialonUnitRecord).where(WialonUnitRecord.unit_id == unit_id))
             await db.execute(delete(Section).where(Section.id.in_([section_a, section_b])))
             await db.commit()
+
+
+# ── Wialon + GTK GPS unified for locomotives ──────────────────────────────────────────────────────────────
+def _gps_row(**over):
+    base = dict(
+        wialon_link_id=uuid4(), wialon_lat=Decimal("40.8500"), wialon_lon=Decimal("69.5700"), wialon_last_message_at=NOW - timedelta(minutes=2),
+        wialon_position_at=NOW - timedelta(minutes=2), wialon_speed=Decimal("0"), gtk_link_id=uuid4(), gps_unit_id=1262,
+        gps_lat=Decimal("40.85005"), gps_lon=Decimal("69.5700"), gps_at=NOW - timedelta(minutes=0.5), gps_speed=Decimal("0"),
+    )
+    base.update(over)
+    return _row(**base)
+
+
+def test_a_locomotive_with_both_trackers_is_drawn_at_the_newer_fix_and_confirmed():
+    result = build_points([_gps_row()], NOW - timedelta(minutes=15), now=NOW)
+    p = result.points[0]
+    assert (p.source, p.gps_verdict, p.online) == ("gtk_gps", "confirmed", True)
+    assert p.alt_source == "wialon" and p.alt_lat == 40.85 and p.gps_diff_m < 20
+    assert result.summary.gps_verdicts == {"confirmed": 1} and result.summary.by_source == {"gtk_gps": 1}
+
+
+def test_a_silent_gtk_tracker_keeps_the_wialon_point_and_says_so():
+    result = build_points([_gps_row(gps_at=NOW - timedelta(hours=9), gps_lat=Decimal("40.90"))], NOW - timedelta(minutes=15), now=NOW)
+    p = result.points[0]
+    assert (p.source, p.gps_verdict) == ("wialon", "gtk_stale") and p.alt_source == "gtk_gps" and p.gps_diff_m > 5000 and p.gps_gtk_age_min > 500
+
+
+def test_a_locomotive_only_gtk_gps_knows_is_placed_with_its_fix():
+    row = _gps_row(wialon_link_id=None, wialon_lat=None, wialon_lon=None, wialon_position_at=None, wialon_last_message_at=None)
+    result = build_points([row], NOW - timedelta(minutes=15), now=NOW)
+    p = result.points[0]
+    assert (p.source, p.gps_verdict, p.alt_source) == ("gtk_gps", "gtk_only", None) and result.summary.unplaced == 0
+    from app.services.asset_map import _is_placed
+
+    assert _is_placed(row, {})
+
+
+def test_a_locomotive_without_a_gtk_gps_unit_keeps_the_plain_wialon_rules():
+    result = build_points([_gps_row(gps_unit_id=None, gps_lat=None, gps_lon=None, gps_at=None)], NOW - timedelta(minutes=15), now=NOW)
+    p = result.points[0]
+    assert (p.source, p.gps_verdict, p.alt_source) == ("wialon", None, None) and result.summary.gps_verdicts == {}
+
+
+def test_a_wagon_never_takes_a_gps_fix_of_a_locomotive_row():
+    result = build_points([_gps_row(asset_type="wagon")], NOW - timedelta(minutes=15), now=NOW)
+    assert result.points[0].source == "wialon" and result.points[0].gps_verdict is None

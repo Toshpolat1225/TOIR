@@ -4,12 +4,13 @@ import Link from "next/link"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { api, type AssetMapSummary } from "@/lib/api"
 import {
-  SOURCE_LABEL, UNPLACED_LABEL, ageText, filterPoints, googleEmbedUrl, googleMapsLink, markerColor, trainText, typeOptions,
+  SOURCE_LABEL, UNPLACED_LABEL, ageText, filterPoints, googleEmbedUrl, googleMapsLink, isTracked, markerColor, trainText, typeOptions,
   type MapPoint, type MapSource,
 } from "@/lib/map-view"
 import { KIND_LABEL, TRUE_SCALE_ZOOM, iconSvg, type IconKind, type LiveTrain } from "@/lib/map-icons"
 import { MOVING_KMH, buildTrains, fleetStats, historyHref, isLocomotive, movementText, type TrainOnLine } from "@/lib/map-history"
 import { locoHref, wagonHref } from "@/lib/scales-insights"
+import { GROUP_COLOR, GROUP_LABEL, GROUP_ORDER, gpsPointLines, groupCounts, positionColor, verdictGroup, type VerdictGroup } from "@/lib/gps-view"
 import { GoogleAssetMap } from "./_components/GoogleAssetMap"
 import { OsmAssetMap } from "./_components/OsmAssetMap"
 import { HBars } from "../scales/_components/viz"
@@ -35,6 +36,7 @@ export default function MapPage() {
   const [q, setQ] = useState("")
   const [type, setType] = useState("")
   const [source, setSource] = useState<MapSource | "">("")
+  const [verdictFilter, setVerdictFilter] = useState<VerdictGroup | "">("")
   const [section, setSection] = useState("")
   const [onlyMoving, setOnlyMoving] = useState(false)
   const [onlyOnline, setOnlyOnline] = useState(false)
@@ -69,14 +71,17 @@ export default function MapPage() {
     const base = filterPoints(points, { q, type, source })
     return base.filter((p) => {
       if (section && p.section_name !== section) return false
-      if (onlyOnline && !(p.source === "wialon" && p.online)) return false
+      if (verdictFilter && verdictGroup(p.gps_verdict) !== verdictFilter) return false
+      if (onlyOnline && !(isTracked(p.source) && p.online)) return false
       if (onlyMoving) {
         const speed = p.speed === null || p.speed === undefined || p.speed === "" ? null : Number(p.speed)
-        if (!(p.source === "wialon" && speed !== null && speed >= MOVING_KMH)) return false
+        if (!(isTracked(p.source) && speed !== null && speed >= MOVING_KMH)) return false
       }
       return true
     })
-  }, [points, q, type, source, section, onlyMoving, onlyOnline])
+  }, [points, q, type, source, section, onlyMoving, onlyOnline, verdictFilter])
+  const verdictCounts = useMemo(() => groupCounts(summary?.gps_verdicts), [summary])
+  const hasVerdicts = GROUP_ORDER.some((g) => verdictCounts[g] > 0)
   const stats = useMemo(() => fleetStats(points), [points])
   // trains drawn to scale: those with a visible locomotive or a visible wagon
   const drawnTrains = useMemo(() => {
@@ -86,6 +91,7 @@ export default function MapPage() {
   const trains = useMemo(() => buildTrains(visible), [visible])
   const types = useMemo(() => typeOptions(points), [points])
   const selected = useMemo(() => points.find((p) => p.asset_id === selectedId) ?? null, [points, selectedId])
+  const selectedGps = useMemo(() => (selected ? gpsPointLines(selected) : null), [selected])
   const useGoogle = GOOGLE_MAPS_API_KEY !== "" && mapError === null
   const useOsm = !useGoogle && osmError === null
 
@@ -97,6 +103,7 @@ export default function MapPage() {
     { label: "Едут сейчас", value: stats.moving, hint: `скорость от ${MOVING_KMH} км/ч` },
     { label: "Составов на линии", value: stats.trains, hint: `${stats.wagonsInTrains} вагонов в них` },
     { label: "Молчат более суток", value: stats.silent24h, hint: "GPS не передаёт позицию", tone: stats.silent24h ? "warn" : undefined },
+    ...(hasVerdicts ? [{ label: "Подтверждено двумя GPS", value: verdictCounts.confirmed, hint: `${verdictCounts.diverged} расхождений · GTK молчит: ${verdictCounts.gtk_stale} · Wialon молчит: ${verdictCounts.wialon_stale}`, tone: verdictCounts.diverged ? "warn" : undefined, href: "/dashboard/gps" }] : []),
     ...(summary && summary.unplaced > 0 ? [{ label: "Без координат", value: summary.unplaced, hint: "нажмите: почему и как давно", tone: "warn", href: "/dashboard/map/unplaced" }] : []),
   ]
 
@@ -116,7 +123,7 @@ export default function MapPage() {
             <RefreshCw className="h-4 w-4" /> Обновить
           </button>
         </div>
-        <div className="relative mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6" data-testid="map-kpis">
+        <div className="relative mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-7" data-testid="map-kpis">
           {tiles.map((t) => {
             const body = (
               <div className={`h-full rounded-2xl p-3 ring-1 backdrop-blur ${t.tone === "warn" ? "bg-amber-400/15 ring-amber-300/30" : "bg-white/10 ring-white/10"}`}>
@@ -136,12 +143,21 @@ export default function MapPage() {
         <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Инв. номер, название, участок, № состава" aria-label="Поиск" className={`${field} w-full sm:w-80`} />
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Источник">
           <button type="button" className={chip(source === "")} onClick={() => setSource("")}>Все</button>
-          {(["wialon", "gtk", "train"] as MapSource[]).map((s) => (
+          {(["wialon", "gtk_gps", "gtk", "train"] as MapSource[]).map((s) => (
             <button key={s} type="button" className={chip(source === s)} aria-pressed={source === s} onClick={() => setSource(source === s ? "" : s)}>
               <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full" style={{ background: markerColor({ source: s, online: true }) }} />{SOURCE_LABEL[s]}: {summary?.by_source[s] ?? 0}
             </button>
           ))}
         </div>
+        {hasVerdicts && (
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Сверка Wialon и GTK GPS" data-testid="map-verdict-chips">
+            {GROUP_ORDER.filter((g) => verdictCounts[g] > 0 || verdictFilter === g).map((g) => (
+              <button key={g} type="button" data-testid={`map-verdict-chip-${g}`} className={chip(verdictFilter === g)} aria-pressed={verdictFilter === g} onClick={() => setVerdictFilter(verdictFilter === g ? "" : g)}>
+                <span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full ring-2 ring-offset-1" style={{ background: "#fff", boxShadow: `inset 0 0 0 2px ${GROUP_COLOR[g]}` }} />{GROUP_LABEL[g]}: {verdictCounts[g]}
+              </button>
+            ))}
+          </div>
+        )}
         <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Тип" className={field}>
           <option value="">Все типы</option>
           {types.map((t) => <option key={t.value} value={t.value}>{`${t.label} (${t.count})`}</option>)}
@@ -163,7 +179,15 @@ export default function MapPage() {
         ))}
         <span className="inline-flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-full bg-[#16a34a]" />на связи</span>
         <span className="inline-flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-full bg-[#9ca3af]" />нет связи</span>
+        <span className="inline-flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-full bg-[#0d9488]" />GTK GPS</span>
         <span className="inline-flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-full bg-[#3b82f6]" />по GTK</span>
+        {hasVerdicts && (
+          <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1" data-testid="map-verdict-legend">
+            кольцо у локомотива:
+            {GROUP_ORDER.map((g) => <span key={g} className="inline-flex items-center gap-1"><i className="h-2.5 w-2.5 rounded-full bg-white" style={{ boxShadow: `inset 0 0 0 2px ${GROUP_COLOR[g]}` }} />{GROUP_LABEL[g]}</span>)}
+            <span>· пунктир и пустой кружок — позиция второго трекера</span>
+          </span>
+        )}
         <span className="ml-auto text-gray-500">Состав: значок с числом вагонов; приблизьте карту (от {TRUE_SCALE_ZOOM}-го уровня) и он рисуется в масштабе, вагоны по порядку GTK</span>
       </div>
 
@@ -203,7 +227,17 @@ export default function MapPage() {
                 {movementText(selected)} · {SOURCE_LABEL[selected.source]} · {ageText(selected.position_at)}
                 {trainText(selected) ? <div>{trainText(selected)}</div> : null}
               </div>
+              {selectedGps && (
+                <div className="mt-2 rounded-lg bg-white/80 p-2 text-xs text-gray-800 ring-1 ring-gray-200 dark:bg-gray-900/60 dark:text-gray-100 dark:ring-gray-700" data-testid="inspector-gps">
+                  <div className="flex items-center gap-1.5 font-semibold"><i className="h-2.5 w-2.5 rounded-full" style={{ background: positionColor(selectedGps.verdict) }} />{selectedGps.verdictLabel}</div>
+                  <div>Рисуется: {selectedGps.drawn}</div>
+                  {selectedGps.other && <div>Второй трекер: {selectedGps.other}</div>}
+                  {selectedGps.diff && <div>Между точками: {selectedGps.diff}</div>}
+                  <div className="mt-0.5 text-gray-500 dark:text-gray-400">{selectedGps.hint}</div>
+                </div>
+              )}
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                {selectedGps && <Link className="rounded-lg bg-teal-600 px-3 py-1.5 font-medium text-white hover:bg-teal-700" href={`/dashboard/gps/${selected.asset_id}`} data-testid="open-gps">Сравнение GPS →</Link>}
                 <Link className="rounded-lg bg-indigo-600 px-3 py-1.5 font-medium text-white hover:bg-indigo-700" href={historyHref({ asset_id: selected.asset_id })} data-testid="open-history">Где был и с кем →</Link>
                 {isLocomotive(selected.asset_type)
                   ? <Link className="rounded-lg bg-white px-3 py-1.5 text-blue-700 ring-1 ring-blue-200 hover:bg-blue-50" href={locoHref(selected.asset_id)}>Работа по весам</Link>
@@ -253,7 +287,7 @@ export default function MapPage() {
                   {visible.slice(0, LIST_LIMIT).map((p) => (
                     <li key={p.asset_id}>
                       <button type="button" onClick={() => setSelectedId(p.asset_id === selectedId ? null : p.asset_id)} className={`block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800 ${p.asset_id === selectedId ? "bg-blue-50 dark:bg-blue-950/40" : ""}`}>
-                        <span className="flex items-center gap-2"><span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: markerColor(p) }} /><span className="truncate font-medium text-gray-900 dark:text-white">{p.name}</span></span>
+                        <span className="flex items-center gap-2"><span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: markerColor(p) }} />{p.gps_verdict ? <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-white" title={gpsPointLines(p)?.verdictLabel} style={{ boxShadow: `inset 0 0 0 2px ${positionColor(p.gps_verdict)}` }} /> : null}<span className="truncate font-medium text-gray-900 dark:text-white">{p.name}</span></span>
                         <span className="mt-0.5 block truncate text-xs text-gray-500 dark:text-gray-400">{`${trainText(p) ?? SOURCE_LABEL[p.source]} · ${movementText(p)} · ${ageText(p.position_at)}${p.section_name ? ` · ${p.section_name}` : ""}`}</span>
                       </button>
                     </li>

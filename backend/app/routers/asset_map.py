@@ -25,7 +25,7 @@ async def read_asset_map(
     user: MapViewer,
     db: DatabaseSession,
     asset_type: Annotated[str | None, Query(max_length=40)] = None,
-    source: Annotated[Literal["wialon", "gtk", "train"] | None, Query()] = None,
+    source: Annotated[Literal["wialon", "gtk", "gtk_gps", "train"] | None, Query()] = None,
     section_id: Annotated[UUID | None, Query()] = None,
     q: Annotated[str | None, Query(max_length=100)] = None,
 ) -> AssetMapRead:

@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-PositionSource = Literal["wialon", "gtk", "train"]
+PositionSource = Literal["wialon", "gtk", "gtk_gps", "train"]
 UnplacedReason = Literal["no_link", "no_position"]
 
 
@@ -30,6 +30,15 @@ class AssetMapPoint(BaseModel):
     locomotive_asset_id: UUID | None = None  # source "train": the locomotive pulling it (hidden from a master of another section)
     locomotive_inv_number: str | None = None
     locomotive_name: str | None = None
+    # Locomotives that have BOTH trackers (Wialon and GTK's own GPS): the verdict of comparing the two live fixes and the other fix
+    gps_verdict: str | None = None  # confirmed | diverged | gtk_stale | wialon_stale | both_stale_agree | both_stale_apart | wialon_only | gtk_only
+    gps_diff_m: float | None = None
+    gps_wialon_age_min: float | None = None
+    gps_gtk_age_min: float | None = None
+    alt_source: Literal["wialon", "gtk_gps"] | None = None  # the OTHER tracker's fix (the point itself is the newer one)
+    alt_lat: float | None = None
+    alt_lon: float | None = None
+    alt_position_at: datetime | None = None
 
 
 class AssetMapSummary(BaseModel):
@@ -38,6 +47,7 @@ class AssetMapSummary(BaseModel):
     unplaced: int = 0
     by_source: dict[str, int] = Field(default_factory=dict)  # placed assets by the source of their point
     unplaced_reasons: dict[str, int] = Field(default_factory=dict)  # no_link / no_position
+    gps_verdicts: dict[str, int] = Field(default_factory=dict)  # locomotives with a GTK GPS unit, by the Wialon-vs-GTK verdict
 
 
 class AssetMapRead(BaseModel):

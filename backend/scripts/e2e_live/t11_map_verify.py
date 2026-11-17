@@ -39,7 +39,7 @@ rec(AREA, "map: summary adds up (placed + unplaced = total)", "PASS" if summary[
 rec(AREA, "map: per-source counts add up to placed", "PASS" if sum(summary["by_source"].values()) == summary["placed"] else "FAIL", str(summary["by_source"]), "medium")
 rec(AREA, "map: unplaced reasons add up", "PASS" if sum(summary["unplaced_reasons"].values()) == summary["unplaced"] else "FAIL", str(summary["unplaced_reasons"]), "medium")
 rec(AREA, "map: every point has valid coordinates, a known source and an asset id",
-    "PASS" if points and all(-90 <= p["lat"] <= 90 and -180 <= p["lon"] <= 180 and p["source"] in ("wialon", "gtk", "train") and p["asset_id"] for p in points) else "FAIL", f"{len(points)} points", "high")
+    "PASS" if points and all(-90 <= p["lat"] <= 90 and -180 <= p["lon"] <= 180 and p["source"] in ("wialon", "gtk", "gtk_gps", "train") and p["asset_id"] for p in points) else "FAIL", f"{len(points)} points", "high")
 rec(AREA, "map: Wialon (locomotives) and wagons (GTK or train) are both present", "PASS" if summary["by_source"].get("wialon", 0) > 0 and summary["by_source"].get("gtk", 0) + summary["by_source"].get("train", 0) > 0 else "FAIL", str(summary["by_source"]), "medium")
 train_points = [p for p in points if p["source"] == "train"]
 rec(AREA, "map: wagons of open GTK trains are drawn at their locomotive (source train)", "PASS" if train_points and all(p["asset_type"] not in ("locomotive", "diesel", "special_self_propelled") for p in train_points) else "FAIL", f"{len(train_points)} train points", "high")

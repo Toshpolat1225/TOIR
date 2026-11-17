@@ -6,6 +6,7 @@ import "leaflet/dist/leaflet.css"
 import "leaflet.markercluster/dist/MarkerCluster.css"
 import "leaflet.markercluster/dist/MarkerCluster.Default.css"
 import { SOURCE_LABEL, trainText, ageText, boundsOf, googleMapsLink, type MapPoint } from "@/lib/map-view"
+import { gpsPointLines, positionColor } from "@/lib/gps-view"
 import {
   TRUE_SCALE_ZOOM, iconKind, iconSvg, iconWidth, locoOutline, statusOf, strip, trainBounds, trainCaption, vehicleCorners, vehicleFill, KIND_LABEL,
   type FormationVehicle, type LiveTrain,
@@ -16,6 +17,7 @@ function escapeHtml(text: string): string {
 }
 
 function popupHtml(p: MapPoint): string {
+  const gps = gpsPointLines(p)
   const lines = [
     `<div style="font-weight:600;margin-bottom:2px">${escapeHtml(p.name)}</div>`,
     `<div>${escapeHtml(KIND_LABEL[iconKind(p)])} · Инв. № ${escapeHtml(p.inv_number)}${p.section_name ? ` · ${escapeHtml(p.section_name)}` : ""}</div>`,
@@ -23,7 +25,11 @@ function popupHtml(p: MapPoint): string {
     trainText(p) ? `<div>${escapeHtml(trainText(p) as string)}</div>` : "",
     `<div>Источник: ${SOURCE_LABEL[p.source]}${p.source !== "gtk" ? (p.online ? " · на связи" : " · нет связи") : ""}</div>`,
     `<div>Позиция: ${escapeHtml(ageText(p.position_at))}${p.speed != null && Number(p.speed) > 0 ? ` · ${Math.round(Number(p.speed))} км/ч` : ""}</div>`,
-    `<div style="margin-top:4px"><a href="/dashboard/map/history/${p.asset_id}">Где был и с кем</a> · <a href="${googleMapsLink(p.lat, p.lon)}" target="_blank" rel="noopener noreferrer">Google Maps</a> · ` +
+    gps
+      ? `<div style="margin-top:4px;padding:4px 6px;border-radius:6px;background:#f3f4f6"><div style="font-weight:600"><span style="display:inline-block;width:9px;height:9px;border-radius:9999px;background:${positionColor(gps.verdict)};margin-right:5px"></span>${escapeHtml(gps.verdictLabel)}</div>` +
+        `<div>Рисуется: ${escapeHtml(gps.drawn)}</div>${gps.other ? `<div>Второй трекер: ${escapeHtml(gps.other)}</div>` : ""}${gps.diff ? `<div>Между точками: ${escapeHtml(gps.diff)}</div>` : ""}</div>`
+      : "",
+    `<div style="margin-top:4px"><a href="/dashboard/map/history/${p.asset_id}">Где был и с кем</a>${gps ? ` · <a href="/dashboard/gps/${p.asset_id}">Сравнение GPS</a>` : ""} · <a href="${googleMapsLink(p.lat, p.lon)}" target="_blank" rel="noopener noreferrer">Google Maps</a> · ` +
       `<a href="/dashboard/directories/assets?q=${encodeURIComponent(p.inv_number)}">Карточка ОС</a></div>`,
   ]
   return `<div style="font-size:13px;line-height:1.35;color:#111827">${lines.join("")}</div>`
@@ -61,6 +67,7 @@ export function OsmAssetMap({ points, trains, selectedId, onSelect, onError }: P
   const mapRef = useRef<Leaflet.Map | null>(null)
   const clusterRef = useRef<Leaflet.MarkerClusterGroup | null>(null)
   const trainLayerRef = useRef<Leaflet.LayerGroup | null>(null)
+  const altLayerRef = useRef<Leaflet.LayerGroup | null>(null)
   const markersRef = useRef<Map<string, Leaflet.Marker>>(new Map())
   const fittedRef = useRef(false)
   const onSelectRef = useRef(onSelect)
@@ -85,7 +92,7 @@ export function OsmAssetMap({ points, trains, selectedId, onSelect, onError }: P
     const L = libRef.current as LeafletModule
     const kind = iconKind(p)
     const w = iconWidth(mapRef.current?.getZoom() ?? 6, kind)
-    return L.divIcon({ className: "pt-icon", html: iconSvg(kind, statusOf(p), w, selected), iconSize: [w, Math.round((w * 24) / 40)], iconAnchor: [w / 2, Math.round((w * 12) / 40)] })
+    return L.divIcon({ className: "pt-icon", html: iconSvg(kind, statusOf(p), w, selected, p.gps_verdict ? positionColor(p.gps_verdict) : null), iconSize: [w, Math.round((w * 24) / 40)], iconAnchor: [w / 2, Math.round((w * 12) / 40)] })
   }
 
   function showPopup(lat: number, lon: number, html: string, minZoom = 15) {
@@ -117,6 +124,7 @@ export function OsmAssetMap({ points, trains, selectedId, onSelect, onError }: P
         }).addTo(map)
         const cluster = leaflet.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 45, disableClusteringAtZoom: 15 })
         map.addLayer(cluster)
+        altLayerRef.current = leaflet.layerGroup().addTo(map)
         trainLayerRef.current = leaflet.layerGroup().addTo(map)
         map.on("zoomend", () => setZoom(map.getZoom()))
         map.on("moveend", () => setView((v) => v + 1))
@@ -134,6 +142,7 @@ export function OsmAssetMap({ points, trains, selectedId, onSelect, onError }: P
       mapRef.current = null
       clusterRef.current = null
       trainLayerRef.current = null
+      altLayerRef.current = null
       markers.clear()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -172,6 +181,23 @@ export function OsmAssetMap({ points, trains, selectedId, onSelect, onError }: P
     framed.current = selectedId
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, selectedId])
+
+  // 2c) the OTHER tracker of a locomotive: a dashed line and a ghost ring when the two disagree or one is silent
+  useEffect(() => {
+    const L = libRef.current, layer = altLayerRef.current
+    if (!ready || !L || !layer) return
+    layer.clearLayers()
+    for (const p of loose) {
+      if (p.alt_lat == null || p.alt_lon == null || !p.gps_verdict || p.gps_verdict === "confirmed" || p.gps_verdict === "both_stale_agree") continue
+      const color = positionColor(p.gps_verdict)
+      L.polyline([[p.lat, p.lon], [p.alt_lat, p.alt_lon]], { color, weight: 2, dashArray: "5 6", opacity: 0.9, interactive: false }).addTo(layer)
+      const gps = gpsPointLines(p)
+      L.circleMarker([p.alt_lat, p.alt_lon], { radius: 7, color, weight: 2.5, dashArray: "3 3", fillColor: "#fff", fillOpacity: 0.7 })
+        .bindTooltip(`${p.inv_number}: ${p.alt_source === "gtk_gps" ? "GTK GPS" : "Wialon"} (второй трекер)${gps?.other ? ` · ${gps.other.split(": ")[1] ?? ""}` : ""}`)
+        .on("click", () => { onSelectRef.current(p.asset_id); showPopup(p.lat, p.lon, popupHtml(p), 14) })
+        .addTo(layer)
+    }
+  }, [ready, loose])
 
   // 3) trains: a pictogram with a car count far away, the formation to scale up close
   useEffect(() => {

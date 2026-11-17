@@ -154,11 +154,11 @@ async def asset_history(db: AsyncSession, user: User, *, asset_id: UUID | None, 
     loco_assets = {labels[s["loco_gtk"]][0] for s in seg_specs if s["loco_gtk"] in labels and labels[s["loco_gtk"]][0]}
     wanted = set(loco_assets) | ({asset_id} if asset_id else set())
     # when the stored track of THESE assets begins (a global minimum would be an old stale fix of some silent unit)
-    track_from = (await db.execute(select(func.min(AssetPositionHistory.at)).where(AssetPositionHistory.asset_id.in_(wanted)))).scalar_one() if wanted else None
+    track_from = (await db.execute(select(func.min(AssetPositionHistory.at)).where(AssetPositionHistory.asset_id.in_(wanted), AssetPositionHistory.source.in_(("wialon", "gtk"))))).scalar_one() if wanted else None
     raw: dict[UUID, list[tuple[datetime, float, float, float | None]]] = defaultdict(list)
     if wanted:
         for a, at, lat, lon, speed in (
-            await db.execute(select(AssetPositionHistory.asset_id, AssetPositionHistory.at, AssetPositionHistory.lat, AssetPositionHistory.lon, AssetPositionHistory.speed).where(AssetPositionHistory.asset_id.in_(wanted), AssetPositionHistory.at >= lo).order_by(AssetPositionHistory.at))
+            await db.execute(select(AssetPositionHistory.asset_id, AssetPositionHistory.at, AssetPositionHistory.lat, AssetPositionHistory.lon, AssetPositionHistory.speed).where(AssetPositionHistory.asset_id.in_(wanted), AssetPositionHistory.source.in_(("wialon", "gtk")), AssetPositionHistory.at >= lo).order_by(AssetPositionHistory.at))
         ).all():
             raw[a].append((at, float(lat), float(lon), None if speed is None else float(speed)))
 

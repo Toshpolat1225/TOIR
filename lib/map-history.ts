@@ -1,7 +1,7 @@
 // Pure helpers of the map command center and the asset history page. No React.
 // Run the tests with: npm run test:unit
 
-import type { MapPoint } from "./map-view.ts"
+import { isTracked, type MapPoint } from "./map-view.ts"
 import type { AssetIdentity, GtkCarriageInfo, GtkLocoInfo, Num } from "./scales-insights.ts"
 
 export type HistoryPoint = { at: string; lat: number; lon: number; speed: number | null; source: "own" | "loco"; label: string | null }
@@ -105,7 +105,7 @@ const speedOf = (p: Pick<MapPoint, "speed">): number | null => (p.speed === null
 
 /** Group the wagons drawn at a locomotive (source «train») into trains, joined with the locomotive's own point when it is on the map. */
 export function buildTrains(points: MapPoint[]): TrainOnLine[] {
-  const locos = new Map(points.filter((p) => isLocomotive(p.asset_type) && p.source === "wialon").map((p) => [p.asset_id, p]))
+  const locos = new Map(points.filter((p) => isLocomotive(p.asset_type) && isTracked(p.source)).map((p) => [p.asset_id, p]))
   const groups = new Map<string, MapPoint[]>()
   for (const p of points) {
     if (p.source !== "train" || !p.locomotive_asset_id) continue
@@ -137,7 +137,7 @@ export function fleetStats(points: MapPoint[], now = Date.now()): FleetStats {
   const types = new Map<string, { label: string; count: number }>()
   const sections = new Map<string, number>()
   for (const p of points) {
-    if (p.source === "wialon") {
+    if (isTracked(p.source)) {
       if (p.online) online++
       const s = speedOf(p)
       if (s !== null && s >= MOVING_KMH) moving++

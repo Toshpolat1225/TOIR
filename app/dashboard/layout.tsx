@@ -11,6 +11,7 @@ import {
   Radio,
   MapPin,
   Gauge,
+  Target,
 } from "@/components/ui/icons"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
@@ -22,6 +23,7 @@ const ALL_NAV = [
   { href: "/dashboard",             label: "Дашборд",        icon: LayoutDashboard, permission: "dashboard.view",         exact: true },
   { href: "/dashboard/analytics",   label: "Аналитика",      icon: BarChart3,       permission: "analytics.view"                    },
   { href: "/dashboard/map",         label: "Карта",          icon: MapPin,          permission: "analytics.view"                    },
+  { href: "/dashboard/gps",         label: "GPS: Wialon ↔ GTK", icon: Target,       permission: "analytics.view"                    },
   { href: "/dashboard/scales",     label: "Весовая",        icon: Gauge,           permission: "scales.view"                       },
   { href: "/dashboard/os/gtk",      label: "Данные GTK",     icon: Radio,           permission: "gtk.view", exact: true           },
   { href: "/dashboard/os/wialon",   label: "Данные Wialon", icon: Radio,           permission: "assets.view"                    },

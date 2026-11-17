@@ -10,6 +10,7 @@ from app.models.asset_models import AssetModel
 from app.models.asset_source_links import AssetSourceLink
 from app.models.assets import FixedAsset, fixed_asset_name_expression
 from app.models.gtk import GtkCarriage, GtkTrain, GtkTrainMember
+from app.models.gtk_gps import GtkGpsUnit
 from app.models.localization import FixedAssetStatusTranslation, FixedAssetTypeTranslation
 from app.models.organization import Section
 from app.models.wialon_units import WialonUnitRecord
@@ -80,6 +81,11 @@ async def list_asset_positions(
             GtkCarriage.lat.label("gtk_lat"),
             GtkCarriage.lon.label("gtk_lon"),
             GtkCarriage.last_synced_at.label("gtk_synced_at"),
+            GtkGpsUnit.gtk_id.label("gps_unit_id"),
+            GtkGpsUnit.lat.label("gps_lat"),
+            GtkGpsUnit.lon.label("gps_lon"),
+            GtkGpsUnit.speed.label("gps_speed"),
+            GtkGpsUnit.position_at.label("gps_at"),
         )
         .select_from(FixedAsset)
         .outerjoin(Section, FixedAsset.section_id == Section.id)
@@ -97,6 +103,10 @@ async def list_asset_positions(
             GtkCarriage,
             (cast(GtkCarriage.gtk_id, String) == gtk_link.external_id) & FixedAsset.asset_type.not_in(LOCOMOTIVE_TYPES),
         )
+        .outerjoin(
+            GtkGpsUnit,
+            (cast(GtkGpsUnit.gtk_id, String) == gtk_link.external_id) & FixedAsset.asset_type.in_(LOCOMOTIVE_TYPES),
+        )
         .where(FixedAsset.decommissioned_at.is_(None))
         .order_by(FixedAsset.inv_number, FixedAsset.id)
     )
@@ -109,6 +119,20 @@ async def list_asset_positions(
         statement = statement.where(or_(FixedAsset.inv_number.ilike(pattern), FixedAsset.serial_number.ilike(pattern)))
     rows = (await db.execute(statement)).mappings().all()
     return [dict(row) for row in rows]
+
+
+def _fix_ok(lat: Any, lon: Any) -> bool:
+    return lat is not None and lon is not None and abs(lat) <= 90 and abs(lon) <= 180 and not (lat == 0 and lon == 0)
+
+
+def _newer_fix(row: dict[str, Any]) -> dict[str, Any] | None:
+    """A locomotive's position for a train: the newer of its Wialon fix and its own GTK GPS fix (a missing time loses)."""
+    w_ok, g_ok = _fix_ok(row["lat"], row["lon"]), _fix_ok(row["g_lat"], row["g_lon"])
+    w_at = row["position_at"] or row["last_message_at"]
+    if g_ok and (not w_ok or (row["g_at"] is not None and (w_at is None or row["g_at"] > w_at))):
+        row.update(lat=row["g_lat"], lon=row["g_lon"], position_at=row["g_at"], last_message_at=row["g_at"], speed=row["g_speed"])
+        return row
+    return row if w_ok else None
 
 
 async def list_train_positions(db: AsyncSession) -> dict[str, dict[str, Any]]:
@@ -132,6 +156,10 @@ async def list_train_positions(db: AsyncSession) -> dict[str, dict[str, Any]]:
             WialonUnitRecord.position_at.label("position_at"),
             WialonUnitRecord.last_message_at.label("last_message_at"),
             WialonUnitRecord.speed.label("speed"),
+            GtkGpsUnit.lat.label("g_lat"),
+            GtkGpsUnit.lon.label("g_lon"),
+            GtkGpsUnit.position_at.label("g_at"),
+            GtkGpsUnit.speed.label("g_speed"),
         )
         .select_from(GtkTrainMember)
         .join(GtkTrain, GtkTrain.gtk_id == GtkTrainMember.train_gtk_id)
@@ -147,26 +175,26 @@ async def list_train_positions(db: AsyncSession) -> dict[str, dict[str, Any]]:
             & FixedAsset.asset_type.in_(LOCOMOTIVE_TYPES)
             & FixedAsset.decommissioned_at.is_(None),
         )
-        .join(
+        .outerjoin(
             wialon_link,
             (wialon_link.asset_id == FixedAsset.id) & (wialon_link.source == "wialon") & (wialon_link.status == "active"),
         )
-        .join(WialonUnitRecord, WialonUnitRecord.unit_id == wialon_link.external_id)
+        .outerjoin(WialonUnitRecord, WialonUnitRecord.unit_id == wialon_link.external_id)
+        .outerjoin(GtkGpsUnit, GtkGpsUnit.gtk_id == GtkTrainMember.object_gtk_id)
         .where(
             GtkTrainMember.observed_to.is_(None),
             GtkTrainMember.kind == "locomotive",
             GtkTrain.is_open.is_(True),
-            WialonUnitRecord.lat.is_not(None),
-            WialonUnitRecord.lon.is_not(None),
         )
         .order_by(GtkTrainMember.train_gtk_id, GtkTrainMember.is_main.desc(), GtkTrainMember.ord, FixedAsset.inv_number)
     )
     best: dict[int, dict[str, Any]] = {}
-    for row in (await db.execute(locomotives)).mappings().all():
-        lat, lon = row["lat"], row["lon"]
-        if abs(lat) > 90 or abs(lon) > 180 or (lat == 0 and lon == 0):
+    for raw in (await db.execute(locomotives)).mappings().all():
+        row = dict(raw)
+        row = _newer_fix(row)
+        if row is None:
             continue
-        best.setdefault(row["train_gtk_id"], dict(row))
+        best.setdefault(row["train_gtk_id"], row)
     if not best:
         return {}
     carriages = select(GtkTrainMember.train_gtk_id, GtkTrainMember.object_gtk_id).where(

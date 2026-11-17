@@ -22,6 +22,7 @@ from app.routers.asset_links import router as asset_links_router
 from app.routers.analytics import router as analytics_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.asset_map import router as asset_map_router
+from app.routers.gps import router as gps_router
 from app.routers.health import router as health_router
 from app.routers.gtk import router as gtk_router
 from app.routers.mileage import router as mileage_router
@@ -42,6 +43,7 @@ from app.routers.work_orders import router as work_orders_router
 from app.realtime import dispatch_database_events, listen_for_database_events
 from app.services.wialon import run_periodic_wialon_sync
 from app.services.gtk import run_periodic_gtk_sync
+from app.services.gtk_gps import run_periodic_gtk_gps_sync
 from app.models.audit_log import AuditLog
 from app.services.audit_log import run_audit_retention
 from app.services.maintenance_lifecycle import run_periodic_maintenance
@@ -72,6 +74,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         else None
     )
     gtk_task = _create_gtk_sync_task()
+    gtk_gps_task = asyncio.create_task(run_periodic_gtk_gps_sync()) if settings.gtk_gps_pull_enabled else None
     maintenance_task = (
         asyncio.create_task(run_periodic_maintenance())
         if settings.maintenance_job_enabled
@@ -89,6 +92,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         if gtk_task is not None:
             gtk_task.cancel()
             tasks.append(gtk_task)
+        if gtk_gps_task is not None:
+            gtk_gps_task.cancel()
+            tasks.append(gtk_gps_task)
         if maintenance_task is not None:
             maintenance_task.cancel()
             tasks.append(maintenance_task)
@@ -286,6 +292,7 @@ app.include_router(mileage_router, prefix="/api/v1")
 app.include_router(work_orders_router, prefix="/api/v1")
 app.include_router(maintenance_router, prefix="/api/v1")
 app.include_router(asset_map_router, prefix="/api/v1")
+app.include_router(gps_router, prefix="/api/v1")
 app.include_router(scales_router, prefix="/api/v1")
 app.include_router(localization_router, prefix="/api/v1")
 app.include_router(asset_catalogs_router, prefix="/api/v1")

@@ -4,6 +4,7 @@ Wialon is preferred (a live GPS fix with its own time); GTK is used for assets W
 asset without a link or without coordinates is not drawn but is counted with the reason, so a gap is never silent.
 """
 from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.identity import User
 from app.repositories import asset_map as repository
+from app.services import gps_compare
 from app.schemas.asset_map import (
     AssetMapPoint, AssetMapRead, AssetMapSummary, AssetUnplacedItem, AssetUnplacedPage, AssetUnplacedSummary, GtkCandidate, TypeCount,
 )
@@ -42,8 +44,38 @@ def _train_for(row: dict, trains: dict[str, dict]) -> dict | None:
     return train if train is not None and _valid(train["lat"], train["lon"]) else None
 
 
+def _loco_gps_point(row: dict, common: dict, now: datetime):
+    """A locomotive with a GTK GPS unit: compare its Wialon fix with GTK's own and draw the NEWER one (the other is kept as `alt_*`).
+
+    Returns None when the locomotive has no GTK GPS unit (the plain Wialon rules apply) or neither tracker has a fix.
+    """
+    if row.get("gps_unit_id") is None or row["asset_type"] not in repository.LOCOMOTIVE_TYPES:
+        return None
+    last = row["wialon_last_message_at"]
+    w_at = row["wialon_position_at"] or last
+    w = gps_compare.SourceFix(None if row["wialon_lat"] is None else float(row["wialon_lat"]), None if row["wialon_lon"] is None else float(row["wialon_lon"]), w_at, None if row["wialon_speed"] is None else float(row["wialon_speed"]))
+    g = gps_compare.SourceFix(None if row["gps_lat"] is None else float(row["gps_lat"]), None if row["gps_lon"] is None else float(row["gps_lon"]), row["gps_at"], None if row["gps_speed"] is None else float(row["gps_speed"]))
+    check = gps_compare.position_check(w, g, now)
+    if check.verdict == "no_position":
+        return check, None
+    use_gtk = check.best == "gtk"
+    mine, other = (g, w) if use_gtk else (w, g)
+    alt_valid = other.valid
+    kwargs = dict(
+        lat=mine.lat, lon=mine.lon, source="gtk_gps" if use_gtk else "wialon", position_at=mine.at,
+        speed=None if mine.speed is None else Decimal(str(mine.speed)), online=mine.at is not None and (now - (mine.at if mine.at.tzinfo else mine.at.replace(tzinfo=timezone.utc))) <= repository.ONLINE_WINDOW,
+        gps_verdict=check.verdict, gps_diff_m=None if check.diff_m is None else round(check.diff_m, 1),
+        gps_wialon_age_min=None if check.wialon_age_min is None else round(check.wialon_age_min, 1),
+        gps_gtk_age_min=None if check.gtk_age_min is None else round(check.gtk_age_min, 1),
+        alt_source=("wialon" if use_gtk else "gtk_gps") if alt_valid else None,
+        alt_lat=other.lat if alt_valid else None, alt_lon=other.lon if alt_valid else None, alt_position_at=other.at if alt_valid else None,
+    )
+    return check, kwargs
+
+
 def build_points(
     rows: list[dict], since, source: str | None = None, trains: dict[str, dict] | None = None, scope_section_id: UUID | None = None,
+    now: datetime | None = None,
 ) -> AssetMapRead:
     """Pure part: choose the best position of every row and count what cannot be drawn.
 
@@ -51,11 +83,17 @@ def build_points(
     carriage's own GTK coordinate. `scope_section_id` is a master's section: a locomotive of another section is not named.
     """
     trains = trains or {}
+    now = now or datetime.now(timezone.utc)
     points: list[AssetMapPoint] = []
     summary = AssetMapSummary(total_assets=len(rows))
     for row in rows:
         common = {key: row[key] for key in _COMMON}
-        if _valid(row["wialon_lat"], row["wialon_lon"]):
+        loco = _loco_gps_point(row, common, now)
+        if loco is not None:
+            summary.gps_verdicts[loco[0].verdict] = summary.gps_verdicts.get(loco[0].verdict, 0) + 1
+        if loco is not None and loco[1] is not None:
+            point = AssetMapPoint(**common, **loco[1])
+        elif _valid(row["wialon_lat"], row["wialon_lon"]):
             last = row["wialon_last_message_at"]
             point = AssetMapPoint(
                 **common, lat=float(row["wialon_lat"]), lon=float(row["wialon_lon"]), source="wialon",
@@ -116,7 +154,10 @@ _REASON_ORDER = (
 
 def _is_placed(row: dict, trains: dict[str, dict]) -> bool:
     """The same decision as build_points: an own Wialon fix, a train position (wagons) or an own GTK coordinate."""
-    return _valid(row["wialon_lat"], row["wialon_lon"]) or _train_for(row, trains) is not None or _valid(row["gtk_lat"], row["gtk_lon"])
+    return (
+        _valid(row["wialon_lat"], row["wialon_lon"]) or _valid(row.get("gps_lat"), row.get("gps_lon"))
+        or _train_for(row, trains) is not None or _valid(row["gtk_lat"], row["gtk_lon"])
+    )
 
 
 def classify_unplaced(row: dict, open_trains: dict[str, dict]) -> tuple[str, str, dict | None]:

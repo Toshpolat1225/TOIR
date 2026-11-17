@@ -15,7 +15,7 @@ class AssetPositionHistory(Base):
     __tablename__ = "asset_position_history"
     __table_args__ = (
         UniqueConstraint("asset_id", "at", "source", name="uq_asset_position_history_point"),
-        CheckConstraint("source IN ('wialon','gtk')", name="ck_asset_position_history_source"),
+        CheckConstraint("source IN ('wialon','gtk','gtk_gps')", name="ck_asset_position_history_source"),
         CheckConstraint("lat BETWEEN -90 AND 90 AND lon BETWEEN -180 AND 180", name="ck_asset_position_history_range"),
         Index("ix_asset_position_history_asset_at", "asset_id", "at"),
     )

@@ -40,3 +40,6 @@ docker compose exec -T postgres psql -U toir_local -d toir_local < zz_leftovers.
 `python t13_map_history_verify.py` (faqat GET): `/map/history` (lokomotiv/vagon tarixi, izchillik, master 404); brauzer: `node browser/b09_map_history.mjs` (yangi karta, inspektor, tarix sahifasi, vaqt ползунки), `b05_map.mjs` yangi interfeysga moslandi.
 
 `python t14_map_trains_verify.py` (faqat GET): `/map/trains` (lokomotiv boshida, GTK tartibi, haqiqiy o'lchamlar, oraliqlar, master); brauzer: `node browser/b10_map_icons.mjs` (ikonkalar, poyezd ikonkasi, zoom ≥16 da masshtabdagi poyezd).
+
+## GPS (2026-11-17)
+`t15_gps_verify.py` (faqat GET, 40 tekshiruv: Wialon↔GTK GPS, `/gps/*`, birlashgan xarita, rollar) va `browser/b11_gps.mjs` (Edge: 3 xarita, tafsilot, verdikt chiplari, telefon kengligi). Tarixni yuklash: `docker compose exec -d backend python -m app.cli gtk-gps-backfill --days 30`.

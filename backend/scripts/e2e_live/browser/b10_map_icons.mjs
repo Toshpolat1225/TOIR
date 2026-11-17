@@ -34,7 +34,7 @@ await check("the legend shows the pictograms of the vehicle types", async () => 
 })
 await check("the map shows pictograms (svg icons), not dots", async () => {
   assert.ok((await page.locator(".leaflet-marker-icon.pt-icon svg").count()) > 5, "no svg pictograms")
-  assert.equal(await page.locator(".leaflet-overlay-pane path.leaflet-interactive").count(), 0, "vector shapes at the country zoom")
+  assert.equal(await page.locator(".leaflet-overlay-pane path.leaflet-interactive:not([stroke-dasharray])").count(), 0, "vector shapes at the country zoom")
 })
 await check("trains are single pictograms with a car count at the country zoom", async () => {
   assert.ok((await zoom()) < 16)
@@ -59,7 +59,7 @@ await check("zooming out brings the train back to one pictogram", async () => {
   for (let i = 0; i < 6; i++) { await page.locator(".leaflet-control-zoom-out").click(); await page.waitForTimeout(700) } // a click during the zoom animation is ignored
   await page.waitForFunction(() => Number(document.querySelector("[data-testid=osm-map]")?.getAttribute("data-zoom")) < 16, null, { timeout: 20000 })
   await page.waitForTimeout(1200)
-  assert.equal(await page.locator(".leaflet-overlay-pane path.leaflet-interactive").count(), 0)
+  assert.equal(await page.locator(".leaflet-overlay-pane path.leaflet-interactive:not([stroke-dasharray])").count(), 0)
 })
 await check("a wagon chosen in the train list is highlighted inside the formation", async () => {
   await page.getByRole("tab", { name: /Единицы/ }).click()

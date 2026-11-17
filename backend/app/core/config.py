@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     gtk_page_query: str = "EnterprisesControlRB=1"
     gtk_sync_enabled: bool = False
     gtk_sync_interval_minutes: int = Field(default=10, ge=5, le=1440)
+    # GTK's own GPS (units + tracks, read-only GETs with the same login). Separate from the Wialon feed.
+    gtk_gps_sync_enabled: bool = False
+    gtk_gps_sync_interval_minutes: int = Field(default=10, ge=5, le=240)
+    gtk_utc_offset_hours: int = Field(default=5, ge=-12, le=14)  # GTK shows LOCAL times
     # Wialon units report as rarely as every ~3 h; 30 min held 363 of 491 segments.
     wagon_mileage_max_bracket_gap_min: int = Field(default=240, ge=1)
     wagon_mileage_idle_min_minutes: int = Field(default=30, ge=1)
@@ -181,6 +185,25 @@ class Settings(BaseSettings):
     @property
     def gtk_pull_enabled(self) -> bool:
         return self.gtk_sync_enabled and self.gtk_credentials_configured
+
+    @field_validator("gtk_gps_sync_enabled", mode="before")
+    @classmethod
+    def default_empty_gtk_gps_enabled(cls, value: object) -> object:
+        return False if value is None or not str(value).strip() else value
+
+    @field_validator("gtk_gps_sync_interval_minutes", mode="before")
+    @classmethod
+    def default_empty_gtk_gps_interval(cls, value: object) -> object:
+        return 10 if value is None or not str(value).strip() else value
+
+    @field_validator("gtk_utc_offset_hours", mode="before")
+    @classmethod
+    def default_empty_gtk_offset(cls, value: object) -> object:
+        return 5 if value is None or not str(value).strip() else value
+
+    @property
+    def gtk_gps_pull_enabled(self) -> bool:
+        return self.gtk_gps_sync_enabled and self.gtk_credentials_configured
 
     @field_validator("jwt_secret")
     @classmethod

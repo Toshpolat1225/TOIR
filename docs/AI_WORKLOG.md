@@ -445,3 +445,16 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 - O'zgardi: `services/train_formation.py` + `schemas/train_formation.py` + `GET /map/trains`; frontend `lib/map-icons.ts` (+test), `OsmAssetMap.tsx` qayta yozildi (ikonkalar, poyezd ikonkasi, zoom ≥16 masshtabdagi formatsiya, tanlash/popup), `map/page.tsx` (legenda, poyezdlar), e2e `t14`, `b10`, `b05` moslandi.
 - Tested: backend toza bazada 606 o'tdi (+1 eski xato), `test_train_formation.py` 5; tsc/eslint 0 xato, 105 unit, build OK; jonli: t14 16 PASS, Edge b05 11/11 (2 marta), b06 11/11, b09 12/12, b10 8/8; ZZTEST qoldig'i 0; skrinshotlar ko'rildi (poyezd temir yo'l izi bo'ylab).
 - Topildi/tuzatildi: tanlash har safar hamma markerni qayta chizardi va popup bilan poyga holati bergan (`getRootNode`); endi faqat ikkita ikonka almashadi.
+
+## 2026-11-17 (kech): GTK saytini o'rganish — GTK treki/probegi bormi?
+- Task: GTK'dan Wialondan tashqari probeg olish mumkinmi.
+- O'zgardi: faqat hujjatlar (`DECISIONS.md` #58 qayta yozildi, `HANDOFF.md`); kod/baza o'zgarmadi. Skriptlar scratchpad'da (faqat GET).
+- Tested (o'qish): 1-akkaunt faqat poyezd sahifasi (probeg yo'q); 2-akkaunt: `get_vehicles` 242, `get_track` ishladi, 36 lokomotiv × 2 kun GTK vs Wialon median 0,96, GTK'da teshiklar.
+- Xato: dastlab "GTK'dan probeg yo'q" deb yozdim (faqat 1-akkaunt asosida) — tuzatildi. Keyingi qadam: sinxron rejasi (yangi jadval) tasdiqlanishi.
+
+## 2026-11-17 (tun): GTK GPS kanali + GPS sahifasi + birlashgan xarita
+- Task: Wialon va GTK GPS alohida (trek, probeg, xarita), TOIR xaritasida birlashtirish va farqlarni ko'rsatish.
+- O'zgardi: migratsiya `0037_gtk_gps`; `integrations/gtk_gps_client.py`, `services/{gps_compare,gtk_gps,gps_overview}.py`, `repositories/gps.py`, `routers/gps.py`, `schemas/gps.py`, `models/gtk_gps.py`; `asset_map` (repo/schema/service), `asset_history` (source filtri), config, compose, CLI `gtk-gps-backfill`, `main.py`; frontend `/dashboard/gps`, `/dashboard/gps/[assetId]`, `lib/gps-view.ts`, xarita sahifasi va `OsmAssetMap`; e2e `t15`, `b11`, `t11`/`b10` moslandi.
+- Tested: backend 641 o'tdi (+1 eski xato), tsc/eslint 0, 125 unit, build OK; jonli: t15 40/40, t11 44/44, t13/t14 o'tdi, brauzer b11 17/17, b05 11/11, b09 12/12, b10 8/8; ZZTEST qoldig'i 0. Backup `backups/pre_gtkgps_20261117_2322.dump`.
+- Topildi/tuzatildi: (1) birinchi xulosam («GTK'dan probeg yo'q») noto'g'ri edi; (2) 30 kunlik yuklash hamma trekni xotirada ushlardi -> paketlar; (3) tugamagan sinxron «failed» ko'rinardi -> faqat tugagan ishga tushirish; (4) test muhitini `docker compose` bilan bir shellda yuklash backend'ni buzdi (yana!) -> toza shellda qayta yaratildi.
+

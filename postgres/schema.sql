@@ -1583,7 +1583,52 @@ CREATE TABLE asset_position_history (
     speed numeric(6,2),
     source text NOT NULL DEFAULT 'wialon',
     CONSTRAINT uq_asset_position_history_point UNIQUE (asset_id, at, source),
-    CONSTRAINT ck_asset_position_history_source CHECK (source IN ('wialon','gtk')),
+    CONSTRAINT ck_asset_position_history_source CHECK (source IN ('wialon','gtk','gtk_gps')),
     CONSTRAINT ck_asset_position_history_range CHECK (lat BETWEEN -90 AND 90 AND lon BETWEEN -180 AND 180)
 );
 CREATE INDEX ix_asset_position_history_asset_at ON asset_position_history(asset_id, at);
+
+-- GTK's own GPS (live state, per-day distance, sync log), migration 0037; track points are asset_position_history rows with source 'gtk_gps'
+CREATE TABLE gtk_gps_units (
+    gtk_id integer PRIMARY KEY,
+    name text,
+    garage_number text,
+    model_name text,
+    vehicle_type_id integer,
+    enterprise_id integer,
+    lat numeric(10,7),
+    lon numeric(10,7),
+    speed numeric(6,2),
+    course numeric(6,2),
+    height numeric(8,2),
+    position_at timestamptz,
+    first_seen_at timestamptz NOT NULL DEFAULT now(),
+    last_synced_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_gtk_gps_units_range CHECK ((lat IS NULL OR lat BETWEEN -90 AND 90) AND (lon IS NULL OR lon BETWEEN -180 AND 180))
+);
+CREATE TABLE gtk_gps_days (
+    gtk_id integer NOT NULL,
+    day date NOT NULL,
+    distance_m integer,
+    points integer NOT NULL DEFAULT 0,
+    first_at timestamptz,
+    last_at timestamptz,
+    events jsonb,
+    is_final boolean NOT NULL DEFAULT false,
+    fetched_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (gtk_id, day)
+);
+CREATE INDEX ix_gtk_gps_days_day ON gtk_gps_days(day);
+CREATE TABLE gtk_gps_runs (
+    id bigserial PRIMARY KEY,
+    started_at timestamptz NOT NULL DEFAULT now(),
+    finished_at timestamptz,
+    status text NOT NULL,
+    units integer NOT NULL DEFAULT 0,
+    tracks_ok integer NOT NULL DEFAULT 0,
+    tracks_failed integer NOT NULL DEFAULT 0,
+    points_stored integer NOT NULL DEFAULT 0,
+    error_code text,
+    CONSTRAINT ck_gtk_gps_runs_status CHECK (status IN ('success','partial','failed'))
+);
+CREATE INDEX ix_gtk_gps_runs_started_at ON gtk_gps_runs(started_at);
