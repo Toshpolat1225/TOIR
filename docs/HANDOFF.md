@@ -1238,3 +1238,16 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 
 ### NOT TESTED
 - Mijoz PC'larida sertifikat o'rnatilgandan keyingi brauzerlar; Windows `curl` (Schannel) bilan HTTPS (SNI'siz ulanishda xato bergan edi, `default_sni` dan keyin qayta sinalmadi); avtomatik dumpdan tiklash; ikki tab poygasi brauzerda (faqat API darajasida); haqiqiy AD/Wialon/GTK. O'zgarishlar git'ga commit qilinmagan.
+
+## Karta (xarita) bo'limi (2026-11-16)
+
+### Verified (buyruq natijasi ko'rilgan)
+- Migratsiya `0033_wialon_position` pg_rehearse'da up/down/up va jonli bazada qo'llandi (zaxira `backups/pre_map_20261116_173853.dump`, `pg_restore --list` 513 obyekt). Jonli: 179 Wialon birligidan 177 tasida koordinata.
+- `GET /api/v1/map/assets`: 1075 aktivdan 656 tasi xaritada (Wialon 87, GTK 569); 419 tasi koordinatasiz (401 bog'lanmagan, 18 bog'langan lekin koordinata yo'q). Jonli API 19/19, Edge 9/9 (menyu, ro'yxat, filtr, Google embed, master doirasi, telefon eni). Backend 569 test, `tsc`/`eslint` 0 xato, 68 unit.
+
+### Next task
+- Google Maps JavaScript API kalitini olish va `.env` ga `GOOGLE_MAPS_API_KEY` qo'yish, frontendni qayta qurish (docs/DEPLOY.md §5) — shundan keyin barcha nuqtalar bitta interaktiv xaritada klasterlanadi.
+- 401 ta bog'lanmagan aktivni (asosan vagonlar) GTK/Wialon ga bog'lash — xaritada ko'rinishi uchun.
+
+### NOT TESTED
+- Google kaliti bilan interaktiv xarita (markerlar, klaster, info oynasi, kalit rad etilganda zaxira) — kalit yo'q edi. Mijoz kompyuterlarda `maps.googleapis.com` ga kirish. GTK lokomotivlari koordinata bermaydi (faqat Wialon orqali). O'zgarishlar commit qilinmagan.

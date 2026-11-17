@@ -69,6 +69,7 @@ services:
       args:
         # relative: resolved against the address the page was opened from, so http:// and https:// both work
         NEXT_PUBLIC_API_URL: /api/v1
+        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
     mem_limit: 512m
     environment:
       NODE_ENV: production

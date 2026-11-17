@@ -369,3 +369,8 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 - NOT tested: GitHub Actions natijasi, haqiqiy AD paroli, mijoz PC'larida sertifikat.
 - Keyingi qadam: biznes qarorlar va vagon intervallari/baseline ma'lumotlari (foydalanuvchidan).
 
+## 2026-11-16: Karta (xarita) bo'limi
+- Task: Аналитикадан keyin «Карта» bo'limi, Google xarita, Wialon va GTK dan har bir asosiy vosita qayerdaligini ko'rsatish.
+- Qo'shildi: migratsiya `0033_wialon_position` (Wialon `lat/lon/position_at`), Wialon pozitsiyasini o'qish/saqlash, `GET /api/v1/map/assets` (`routers|services|repositories|schemas/asset_map.py`), `app/dashboard/map/` (Google xarita + klaster, kalitsiz zaxira variant), `lib/map-view.ts`, `lib/api.ts`, yon menyu, Dockerfile/compose/`.env.example` (`GOOGLE_MAPS_API_KEY`), testlar (`test_asset_map.py`, `map-view.test.ts`), `e2e_live/t11_map_verify.py`, `browser/b05_map.mjs`.
+- Tested: backend 569, tsc/eslint 0 xato, 68 unit; migratsiya up/down/up (pg_rehearse) va jonli; jonli API 19/19, Edge 9/9; ZZTEST qoldig'i 0. NOT tested: Google kaliti bilan interaktiv xarita (kalit yo'q).
+- Keyingi qadam: Google kalitini olib `.env` ga qo'yish va frontendni qayta qurish.

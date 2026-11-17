@@ -1844,6 +1844,26 @@ export type MaintenancePlanFromForecast = {
   reschedule_reason?: string | null;
 };
 
+export type AssetMapSummary = {
+  total_assets: number;
+  placed: number;
+  unplaced: number;
+  by_source: Record<string, number>;
+  unplaced_reasons: Record<string, number>;
+};
+
+export type AssetMapResponse = {
+  points: import("./map-view").MapPoint[];
+  summary: AssetMapSummary;
+};
+
+const assetMap = {
+  async assets(params: { asset_type?: string; source?: "wialon" | "gtk"; section_id?: string; q?: string } = {}): Promise<AssetMapResponse> {
+    const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== "")) as Record<string, string>;
+    return request<AssetMapResponse>({ method: "GET", path: "/map/assets", params: clean, suppressNetworkLog: true });
+  },
+};
+
 const maintenanceSchedule = {
   async get(params: { month: string }): Promise<MaintenanceScheduleResponse> {
     return request<MaintenanceScheduleResponse>({ method: "GET", path: "/maintenance-schedule", params, suppressNetworkLog: true });
@@ -2427,6 +2447,7 @@ export const api = {
   tmcDocuments,
   nomenclatureNorms,
   workTypeTemplates,
+  assetMap,
   maintenanceSchedule,
   maintenancePlans,
   maintenanceLive,

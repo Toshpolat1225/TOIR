@@ -75,3 +75,13 @@ Compare-Object (Get-Content .\schema_actual.sql) (Get-Content .\schema_fresh.sql
 - `NEXT_PUBLIC_API_URL` nisbiy (`/api/v1`): manzil yoki protokol o'zgarsa frontendni qayta qurish shart emas.
 - `backup` xizmati har kecha 21:00 UTC (`BACKUP_HOUR_UTC`) `backups/auto-*.dump` yaratadi va `BACKUP_RETENTION_DAYS` (standart 14) dan eskisini o'chiradi. Holat: `docker compose logs backup`.
 - Bitta xizmatni qayta joylash: `docker compose up -d --no-deps <xizmat>` (aks holda bog'liq xizmatlar ham qayta ishga tushadi).
+
+## 5. Karta sahifasi: Google Maps kaliti
+
+Sahifa `/dashboard/map` Wialon (GPS) va GTK koordinatalarini ko'rsatadi. Barcha nuqtalarni bitta interaktiv Google xaritada ko'rish uchun **Maps JavaScript API** kaliti kerak:
+
+1. Google Cloud'da loyiha oching, **Maps JavaScript API** ni yoqing, API kalit yarating va uni «HTTP referrers» bilan TOIR manziliga (`https://<DOMAIN>/*`, kerak bo'lsa `http://<DOMAIN>/*`) cheklang. Kalit sahifa kodiga tushadi (bu odatiy), shuning uchun cheklash shart.
+2. Serverdagi `.env` fayliga `GOOGLE_MAPS_API_KEY=<kalit>` qatorini qo'shing (mazmunni chatga yozmang).
+3. Frontendni qayta quring: `docker compose build frontend` va `docker compose up -d --no-deps frontend`.
+
+Kalit bo'lmasa ham sahifa ishlaydi: ro'yxat va tanlangan birlikning Google xaritadagi o'rni (kalitsiz). Mijoz kompyuterlarda `maps.googleapis.com` ga internet kerak.

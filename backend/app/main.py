@@ -21,6 +21,7 @@ from app.routers.asset_conflicts import router as asset_conflicts_router
 from app.routers.asset_links import router as asset_links_router
 from app.routers.analytics import router as analytics_router
 from app.routers.dashboard import router as dashboard_router
+from app.routers.asset_map import router as asset_map_router
 from app.routers.health import router as health_router
 from app.routers.gtk import router as gtk_router
 from app.routers.mileage import router as mileage_router
@@ -282,6 +283,7 @@ app.include_router(gtk_router, prefix="/api/v1")
 app.include_router(mileage_router, prefix="/api/v1")
 app.include_router(work_orders_router, prefix="/api/v1")
 app.include_router(maintenance_router, prefix="/api/v1")
+app.include_router(asset_map_router, prefix="/api/v1")
 app.include_router(localization_router, prefix="/api/v1")
 app.include_router(asset_catalogs_router, prefix="/api/v1")
 app.include_router(ml_router, prefix="/api/v1")

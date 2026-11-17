@@ -10,6 +10,7 @@
     "start": "next start -p 3001"
   },
   "dependencies": {
+    "@googlemaps/markerclusterer": "^2.6.2",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
@@ -64,6 +65,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.9",
+    "@types/google.maps": "^3.66.10",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",

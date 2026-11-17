@@ -123,6 +123,7 @@ scripts/                  Excel/nomenklatura import, anomaliya, backup_postgres.
 | Nomenklatura va normalar | ✅ | ✅ | 🟢 35/37 (eski xabar) | Norma >20% oshsa ogohlantirish, bloklamaydi |
 | ТМЦ hujjatlari | ✅ faqat `GET /tmc-documents` | ✅ ko'rish/chop | 🟡 | Yaratish/tahrirlash **yo'q**, hozircha talab qilinmagan |
 | Dashboard | ✅ read-only | ✅ | 🟡 | Bekor qilinganlar ochiq hisoblanmaydi ✅ |
+| Karta (`/dashboard/map`) | ✅ `GET /map/assets`, `0033` | ✅ Google xarita (kalit bilan) yoki ro'yxat + kalitsiz embed | 🟢 jonli API/Edge | Wialon GPS + GTK vagon koordinatalari; `analytics.view`; kalit `GOOGLE_MAPS_API_KEY` |
 | Analytics, hisobotlar (CSV) | ✅ | ✅ | 🟡 | `/reports/{work-orders\|fixed-assets\|tmc-documents}` |
 | ML (RUL, anomaliya, health score) | ✅ | Analytics sahifasida `ai_insights_summary` view orqali; `/ml/*` endpointlari frontendda to'g'ridan-to'g'ri chaqirilmaydi | 🟡 | `/ml/analyze`, `/ml/insights` |
 | Tarjima (i18n) | Rus tiliga qisqartirilgan `0025` | — | 🟡 | `/translations` router qoldiq sifatida turibdi |

@@ -9,6 +9,7 @@ import {
   BarChart3,
   Activity,
   Radio,
+  MapPin,
 } from "@/components/ui/icons"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
@@ -19,6 +20,7 @@ import { ThemeSwitcher } from "@/components/theme-switcher"
 const ALL_NAV = [
   { href: "/dashboard",             label: "Дашборд",        icon: LayoutDashboard, permission: "dashboard.view",         exact: true },
   { href: "/dashboard/analytics",   label: "Аналитика",      icon: BarChart3,       permission: "analytics.view"                    },
+  { href: "/dashboard/map",         label: "Карта",          icon: MapPin,          permission: "analytics.view"                    },
   { href: "/dashboard/os/gtk",      label: "Данные GTK",     icon: Radio,           permission: "gtk.view", exact: true           },
   { href: "/dashboard/os/wialon",   label: "Данные Wialon", icon: Radio,           permission: "assets.view"                    },
   { href: "/dashboard/maintenance", label: "ТО и ремонты",   icon: Wrench,          permission: "maintenance.view"                    },

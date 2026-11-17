@@ -8,6 +8,9 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+# Google Maps JavaScript API key of the map page (public by design; restrict it by HTTP referrer in Google Cloud)
+ARG NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=
+ENV NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 RUN npm run build

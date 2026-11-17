@@ -365,10 +365,14 @@ CREATE TABLE wialon_units (
     calc_flags integer,
     speed numeric(6,2),
     last_message_at timestamptz,
+    lat numeric(10,7),
+    lon numeric(10,7),
+    position_at timestamptz,
     suspect_absolute boolean NOT NULL DEFAULT false,
     first_seen_at timestamptz NOT NULL DEFAULT now(),
     last_synced_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now()
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_wialon_units_position_range CHECK ((lat IS NULL OR lat BETWEEN -90 AND 90) AND (lon IS NULL OR lon BETWEEN -180 AND 180))
 );
 CREATE INDEX ix_wialon_units_name ON wialon_units(name);
 CREATE INDEX ix_wialon_units_last_message_at ON wialon_units(last_message_at);

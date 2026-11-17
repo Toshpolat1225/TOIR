@@ -19,6 +19,7 @@ docker compose exec -T postgres psql -U toir_local -d toir_local -At -F '|' -c "
 python t01_auth_security.py      # kirish, tokenlar, sarlavhalar (oxirida: brute-force)
 python t02_rbac.py admin operator master management
 python t04_maintenance_flow.py   # ТО oqimi (91 tekshiruv)
+python t11_map_verify.py        # xarita endpointi (faqat GET, 19 tekshiruv)
 python t10_fixall_verify.py      # HTTPS, refresh-token qayta ishlatilishi, sozlama oralig'i, departament, bo'lim qo'riqchisi, unforecasted (32 tekshiruv; TOIR_ROOT_CERT=toir-local-root.crt)
 python t05_get_sweep.py ; python t06_users_mileage.py ; python t08_misc_crud.py ; python t09_load.py
 node browser/b01_browser_sweep.mjs   # haqiqiy brauzer (Edge), barcha sahifa va rollar

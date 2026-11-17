@@ -58,6 +58,10 @@ class WialonUnit:
     # Yangi (ixtiyoriy, eski chaqiruvlar buzilmaydi): moto-soat hisoblagichi (cneh) va hisoblash bayroqlari (cfl).
     engine_hours: Decimal | None = None
     calc_flags: int | None = None
+    # GPS position of the last message (None when the unit has never reported one)
+    lat: Decimal | None = None
+    lon: Decimal | None = None
+    position_at: datetime | None = None
 
 
 def _decimal(value: object) -> Decimal | None:
@@ -97,6 +101,31 @@ def _speed(item: dict[str, Any]) -> Decimal | None:
     if not isinstance(position, dict):
         return None
     return _decimal(position.get("s") if "s" in position else position.get("speed"))
+
+
+def _position(item: dict[str, Any]) -> tuple[Decimal | None, Decimal | None, datetime | None]:
+    """(latitude, longitude, fix time) from `lmsg.pos` (`y`, `x`, `t`). A missing or (0, 0) fix is no position."""
+    message = _message(item)
+    position = message.get("pos")
+    if not isinstance(position, dict):
+        position = item.get("pos")
+    if not isinstance(position, dict):
+        return None, None, None
+    try:
+        lat = Decimal(str(position["y"]))
+        lon = Decimal(str(position["x"]))
+    except (KeyError, InvalidOperation, ValueError):
+        return None, None, None
+    if not (lat.is_finite() and lon.is_finite()) or abs(lat) > 90 or abs(lon) > 180 or (lat == 0 and lon == 0):
+        return None, None, None
+    moment = None
+    try:
+        stamp = int(position.get("t") or message.get("t") or 0)
+        if stamp > 0:
+            moment = datetime.fromtimestamp(stamp, tz=timezone.utc)
+    except (TypeError, ValueError, OverflowError, OSError):
+        moment = None
+    return lat, lon, moment
 
 
 def _find_counter_value(value: object, path: tuple[str, ...] = ()) -> Decimal | None:
@@ -229,6 +258,7 @@ def parse_units(payload: object) -> list[WialonUnit]:
         name = item.get("nm") or item.get("name")
         if unit_id is None or not isinstance(name, str) or not name.strip():
             continue
+        position = _position(item)
         units.append(
             WialonUnit(
                 unit_id=str(unit_id),
@@ -238,6 +268,9 @@ def parse_units(payload: object) -> list[WialonUnit]:
                 mileage=_mileage(item),
                 engine_hours=_decimal(item.get("cneh")),
                 calc_flags=_calc_flags(item),
+                lat=position[0],
+                lon=position[1],
+                position_at=position[2],
             )
         )
     return units
