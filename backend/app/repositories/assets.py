@@ -402,22 +402,6 @@ async def list_mileage_history(
     return list(result.scalars().all()), total
 
 
-async def find_asset_by_wialon_id(
-    db: AsyncSession, wialon_id: str
-) -> FixedAsset | None:
-    result = await db.execute(
-        select(FixedAsset)
-        .join(AssetSourceLink, AssetSourceLink.asset_id == FixedAsset.id)
-        .where(
-            AssetSourceLink.source == "wialon",
-            AssetSourceLink.external_id == wialon_id,
-            AssetSourceLink.status == "active",
-            FixedAsset.asset_type.in_(("locomotive", "diesel")),
-        )
-    )
-    return result.scalar_one_or_none()
-
-
 async def find_assets_by_name(db: AsyncSession, name: str) -> list[FixedAsset]:
     result = await db.execute(
         select(FixedAsset)

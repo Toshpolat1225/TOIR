@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -42,10 +41,3 @@ class TranslationList(BaseModel):
     limit: int
     offset: int
 
-
-class TranslatedAssetReferenceRead(BaseModel):
-    code: str
-    is_active: bool
-    translations: dict[Locale, str]
-    missing_locales: list[Locale]
-    updated_at: datetime | None = None

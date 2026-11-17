@@ -131,11 +131,6 @@ async def get_wialon_unit(
     )
 
 
-def _normalized_series(value: str | None) -> str | None:
-    normalized = normalize_token(value)
-    return normalized or None
-
-
 async def suggest_wialon_asset_links(
     db: AsyncSession, unit_id: str, *, master_section_id: UUID | None
 ) -> WialonAssetSuggestions:

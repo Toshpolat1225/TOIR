@@ -460,22 +460,6 @@ async def list_gtk_objects(
     return {row.gtk_id: row for row in result.scalars().all()}
 
 
-async def get_linked_asset_for_update(
-    db: AsyncSession, gtk_id: str
-) -> FixedAsset | None:
-    result = await db.execute(
-        select(FixedAsset)
-        .join(AssetSourceLink, AssetSourceLink.asset_id == FixedAsset.id)
-        .where(
-            AssetSourceLink.source == "gtk",
-            AssetSourceLink.external_id == gtk_id,
-            AssetSourceLink.status == "active",
-        )
-        .with_for_update()
-    )
-    return result.scalar_one_or_none()
-
-
 async def list_open_memberships(db: AsyncSession) -> list[GtkTrainMember]:
     result = await db.execute(
         select(GtkTrainMember).where(GtkTrainMember.observed_to.is_(None))
@@ -501,30 +485,6 @@ async def get_locomotive_mileage_checkpoints(
     }
 
 
-async def save_locomotive_mileage_checkpoints(
-    db: AsyncSession,
-    checkpoints: dict[int, tuple[Any, Any, datetime]],
-) -> None:
-    if not checkpoints:
-        return
-    existing = await get_locomotive_mileage_checkpoints(db, set(checkpoints))
-    for gtk_id, (asset_id, mileage, checkpoint_at) in checkpoints.items():
-        checkpoint = existing.get(gtk_id)
-        if checkpoint is None:
-            db.add(
-                GtkLocomotiveMileageCheckpoint(
-                    locomotive_gtk_id=gtk_id,
-                    locomotive_asset_id=asset_id,
-                    mileage=mileage,
-                    checkpoint_at=checkpoint_at,
-                )
-            )
-        else:
-            checkpoint.locomotive_asset_id = asset_id
-            checkpoint.mileage = mileage
-            checkpoint.checkpoint_at = checkpoint_at
-
-
 async def reset_locomotive_mileage_checkpoint(
     db: AsyncSession, locomotive_gtk_id: int
 ) -> None:
@@ -533,12 +493,6 @@ async def reset_locomotive_mileage_checkpoint(
             GtkLocomotiveMileageCheckpoint.locomotive_gtk_id == locomotive_gtk_id
         )
     )
-
-
-async def add_wagon_mileage_log(
-    db: AsyncSession, log: GtkWagonMileageLog
-) -> None:
-    db.add(log)
 
 
 async def list_wagon_mileage_logs(
@@ -660,19 +614,6 @@ async def latest_sync_run(db: AsyncSession) -> GtkSyncRun | None:
         ).limit(1)
     )
     return result.scalar_one_or_none()
-
-
-async def update_sync_run_counts(
-    db: AsyncSession, run_id: int, counts: dict[str, Any]
-) -> None:
-    result = await db.execute(
-        select(GtkSyncRun)
-        .where(GtkSyncRun.id == run_id)
-        .with_for_update()
-    )
-    run = result.scalar_one_or_none()
-    if run is not None:
-        run.counts = counts
 
 
 async def latest_successful_counts(db: AsyncSession) -> dict[str, int] | None:

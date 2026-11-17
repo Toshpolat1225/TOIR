@@ -393,3 +393,9 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 - Tested: `test_asset_map.py` 29 (PG bilan), to'liq to'plam 581 o'tdi, 1 yiqildi (sanaga bog'liq eski `test_maintenance_schedule_interval_km_pg`); tsc/eslint 0 xato; 75 unit; build OK; backend+frontend jonli (healthy); jonli API 50/50 (t11), Edge b05 11/11 va b06 11/11; ZZTEST qoldig'i 0.
 - Topildi: serverdagi `.env` dagi Google kaliti Google formatida emas (`AIza` bilan boshlanmaydi) va Google `InvalidKeyMapError` qaytaradi; xarita OSM ga o'tadi. `.env` ochilmadi.
 - Keyingi qadam: to'g'ri Google Maps kalitini qo'yish (yoki `GOOGLE_MAPS_API_KEY` ni `.env` dan olib tashlash); 44 ta vagonni GTK ga bog'lash (karta ОС).
+
+## 2026-11-17: Tozalash (keraksiz fayl va o'lik kod)
+- Task: keraksiz fayllarni hujjatlash, o'lik kodni aniqlash va o'chirish.
+- O'zgardi: frontend 57 ta yetib bo'lmaydigan fayl (`components/ui/*`, `theme-provider`, `lib/i18n.tsx`, `hooks/`, `styles/globals.css`), `public/` 9 rasm, `.gitkeep`; backend 14 o'lik funksiya/klass (repositories/services/schemas); `package.json` va `package-lock.json` (37 paket). Yangi: `docs/CLEANUP_2026-11-17.md`.
+- Tested: tsc 0 xato, eslint 0 xato, 75 unit, `npm run build` OK (paketlardan keyin ham), backend 581 o'tdi + 1 eski sanaga bog'liq xato. NOT TESTED: Docker image qurish, jonli brauzer, joylash.
+- Keyingi qadam: `docker compose build frontend` + `up -d --no-deps frontend`, so'ng Edge E2E (`b01`, `b05`, `b06`); `docs/CLEANUP_2026-11-17.md` 3-bo'limidagi nomzodlar bo'yicha qaror.

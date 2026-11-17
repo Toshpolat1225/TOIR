@@ -80,13 +80,6 @@ def _source_expression(unit):
     )
 
 
-def _online_expression(now: datetime):
-    return (
-        WialonUnitRecord.last_message_at.is_not(None)
-        & (WialonUnitRecord.last_message_at >= now - timedelta(minutes=15))
-    )
-
-
 def _joined_from(unit_links):
     return (
         FixedAsset.__table__

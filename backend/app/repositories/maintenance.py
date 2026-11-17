@@ -142,24 +142,6 @@ async def list_schedule_assets(
     return list(result.scalars().all())
 
 
-async def plans_for_interval(
-    db: AsyncSession, asset_id: UUID, interval_id: UUID
-) -> list[MaintenancePlan]:
-    result = await db.execute(
-        select(MaintenancePlan)
-        .where(
-            MaintenancePlan.asset_id == asset_id,
-            MaintenancePlan.interval_id == interval_id,
-        )
-        .order_by(
-            MaintenancePlan.trigger_mileage.desc().nullslast(),
-            MaintenancePlan.scheduled_date.desc().nullslast(),
-            MaintenancePlan.created_at.desc(),
-        )
-    )
-    return list(result.scalars().all())
-
-
 async def get_plan(
     db: AsyncSession,
     plan_id: UUID,
@@ -541,24 +523,3 @@ async def get_linked_plan(
         statement = statement.with_for_update()
     return (await db.execute(statement)).scalar_one_or_none()
 
-
-async def list_asset_interval_plans(
-    db: AsyncSession, *, master_section_id: UUID | None = None
-) -> dict[tuple[UUID, UUID], list[MaintenancePlan]]:
-    statement = select(MaintenancePlan)
-    if master_section_id is not None:
-        statement = statement.join(
-            FixedAsset, FixedAsset.id == MaintenancePlan.asset_id
-        ).where(FixedAsset.section_id == master_section_id)
-    result = await db.execute(
-        statement.order_by(
-            MaintenancePlan.asset_id,
-            MaintenancePlan.interval_id,
-            MaintenancePlan.trigger_mileage.desc().nullslast(),
-            MaintenancePlan.scheduled_date.desc().nullslast(),
-        )
-    )
-    grouped: dict[tuple[UUID, UUID], list[MaintenancePlan]] = {}
-    for plan in result.scalars().all():
-        grouped.setdefault((plan.asset_id, plan.interval_id), []).append(plan)
-    return grouped

@@ -1291,3 +1291,15 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 
 ### NOT TESTED
 - Haqiqiy Google kaliti bilan xarita. Bog'lash tugmasi yo'q (faqat qo'lda, karta ОС orqali). O'zgarishlar commit qilinmagan.
+
+## Tozalash (2026-11-17)
+
+### Verified (buyruq natijasi ko'rilgan)
+- Frontend: 57 yetib bo'lmaydigan fayl, 9 rasm, 37 npm paket olib tashlandi; tsc 0 xato, eslint 0 xato, 75 unit, `npm run build` OK. Backend: 14 o'lik funksiya/klass olib tashlandi; 581 test o'tdi, 1 eski sanaga bog'liq xato (`test_maintenance_schedule_interval_km_pg`).
+
+### Next task
+- Frontend qayta qurilmagan: `docker compose build frontend` va `docker compose up -d --no-deps frontend`, so'ng `browser/b01_browser_sweep.mjs`, `b05_map.mjs`, `b06_unplaced.mjs`.
+- `docs/CLEANUP_2026-11-17.md` 3-bo'lim: eski dump, ildizdagi `.venv`, `reports/`, eski `scripts/` fayllari bo'yicha qaror; `services/analytics.py` takror `total_cost` kaliti.
+
+### NOT TESTED
+- Docker image qurish (`npm ci` konteynerda), jonli joylash, brauzer E2E. O'zgarishlar commit qilinmagan.

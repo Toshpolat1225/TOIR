@@ -176,14 +176,6 @@ async def propose_field(
     return "pending"
 
 
-async def list_conflicts(
-    db: AsyncSession, *, status_filter: str, limit: int, offset: int
-):
-    return await repository.list_changes(
-        db, status=status_filter, limit=limit, offset=offset
-    )
-
-
 def _coerce_value(field: str, value: Any) -> Any:
     if value is None:
         return None
