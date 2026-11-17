@@ -50,6 +50,8 @@ async def list_asset_positions(
             FixedAsset.inv_number,
             fixed_asset_name_expression().label("name"),
             FixedAsset.asset_type,
+            FixedAsset.serial_number,
+            FixedAsset.created_at.label("asset_created_at"),
             type_name.label("asset_type_name"),
             FixedAsset.status,
             status_name.label("status_name"),
@@ -57,6 +59,12 @@ async def list_asset_positions(
             Section.name.label("section_name"),
             AssetModel.name.label("model_name"),
             wialon_link.id.label("wialon_link_id"),
+            wialon_link.external_id.label("wialon_external_id"),
+            wialon_link.linked_at.label("wialon_linked_at"),
+            WialonUnitRecord.unit_id.label("wialon_unit_id"),
+            WialonUnitRecord.name.label("wialon_unit_name"),
+            WialonUnitRecord.first_seen_at.label("wialon_first_seen_at"),
+            WialonUnitRecord.last_synced_at.label("wialon_last_synced_at"),
             WialonUnitRecord.lat.label("wialon_lat"),
             WialonUnitRecord.lon.label("wialon_lon"),
             WialonUnitRecord.position_at.label("wialon_position_at"),
@@ -64,6 +72,11 @@ async def list_asset_positions(
             WialonUnitRecord.speed.label("wialon_speed"),
             gtk_link.id.label("gtk_link_id"),
             gtk_link.external_id.label("gtk_external_id"),
+            gtk_link.linked_at.label("gtk_linked_at"),
+            GtkCarriage.gtk_id.label("gtk_carriage_id"),
+            GtkCarriage.name.label("gtk_carriage_name"),
+            GtkCarriage.first_seen_at.label("gtk_first_seen_at"),
+            GtkCarriage.is_active.label("gtk_is_active"),
             GtkCarriage.lat.label("gtk_lat"),
             GtkCarriage.lon.label("gtk_lon"),
             GtkCarriage.last_synced_at.label("gtk_synced_at"),
@@ -162,6 +175,46 @@ async def list_train_positions(db: AsyncSession) -> dict[str, dict[str, Any]]:
         GtkTrainMember.train_gtk_id.in_(list(best)),
     )
     return {str(row.object_gtk_id): best[row.train_gtk_id] for row in (await db.execute(carriages)).all()}
+
+
+async def list_open_train_members(db: AsyncSession) -> dict[str, dict[str, Any]]:
+    """Open GTK trains by carriage gtk_id (as text): the train number and whether the train has a locomotive at all."""
+    locomotive_member = aliased(GtkTrainMember)
+    has_locomotive = (
+        select(locomotive_member.id)
+        .where(
+            locomotive_member.train_gtk_id == GtkTrainMember.train_gtk_id,
+            locomotive_member.kind == "locomotive",
+            locomotive_member.observed_to.is_(None),
+        )
+        .exists()
+    )
+    statement = (
+        select(GtkTrainMember.object_gtk_id, GtkTrain.number, has_locomotive.label("has_locomotive"))
+        .join(GtkTrain, GtkTrain.gtk_id == GtkTrainMember.train_gtk_id)
+        .where(GtkTrainMember.observed_to.is_(None), GtkTrainMember.kind == "carriage", GtkTrain.is_open.is_(True))
+    )
+    return {
+        str(row.object_gtk_id): {"train_number": row.number, "has_locomotive": bool(row.has_locomotive)}
+        for row in (await db.execute(statement)).all()
+    }
+
+
+async def list_gtk_carriages_for_matching(db: AsyncSession) -> list[dict[str, Any]]:
+    """Every GTK carriage with the asset (if any) it is already linked to: the pool for 'this wagon is probably that carriage'."""
+    link = aliased(AssetSourceLink)
+    taken_by = aliased(FixedAsset)
+    statement = (
+        select(
+            GtkCarriage.gtk_id, GtkCarriage.name, GtkCarriage.reg_number, GtkCarriage.inventory_number, GtkCarriage.is_active,
+            GtkCarriage.lat, GtkCarriage.lon, taken_by.inv_number.label("taken_by_inv_number"),
+        )
+        .select_from(GtkCarriage)
+        .outerjoin(link, (link.source == "gtk") & (link.status == "active") & (link.external_id == cast(GtkCarriage.gtk_id, String)))
+        .outerjoin(taken_by, taken_by.id == link.asset_id)
+        .order_by(GtkCarriage.gtk_id)
+    )
+    return [dict(row) for row in (await db.execute(statement)).mappings().all()]
 
 
 def online_since() -> datetime:

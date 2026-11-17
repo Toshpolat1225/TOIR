@@ -89,7 +89,7 @@ async function session(role, viewport = { width: 1440, height: 900 }) {
     assert.match(await body(), /Нет единиц с координатами/)
   })
   await check("no page errors in the console", async () => {
-    const serious = errors.filter((t) => !/favicon|ERR_CERT|Failed to load resource|auth.refresh/i.test(t))
+    const serious = errors.filter((t) => !/favicon|ERR_CERT|Failed to load resource|auth.refresh|Google Maps JavaScript API error/i.test(t))
     assert.equal(serious.length, 0, serious.join(" | "))
   })
   await context.close()

@@ -87,3 +87,5 @@ Sahifa `/dashboard/map` Wialon (GPS) va GTK koordinatalarini ko'rsatadi. Barcha 
 Kalit bo'lmasa ham sahifa ishlaydi: ro'yxat va tanlangan birlikning Google xaritadagi o'rni (kalitsiz). Mijoz kompyuterlarda `maps.googleapis.com` ga internet kerak.
 
 Kalit bo'lmasa sahifa OpenStreetMap xaritasini (Leaflet) ko'rsatadi: barcha nuqtalar, klaster va popup bilan, kartasiz. Kalit qo'yilsa Google xarita ishlatiladi. Ikkalasi uchun ham mijoz kompyuterda internet kerak (`tile.openstreetmap.org` yoki `maps.googleapis.com`).
+
+Kalit noto'g'ri bo'lsa (`InvalidKeyMapError`, referrer yoki billing xatosi) sahifa o'zi OpenStreetMap xaritasiga o'tadi. Google kaliti `AIza` bilan boshlanadi; boshqa xizmat kaliti (masalan, qidiruv API) bu yerga mos kelmaydi.

@@ -17,7 +17,7 @@ from app.models.organization import Section
 from app.models.wialon_units import WialonUnitRecord
 from app.repositories import wialon_units as unit_repository
 from app.services import asset_map
-from app.services.asset_map import build_points
+from app.services.asset_map import build_points, build_unplaced, classify_unplaced, find_gtk_candidate
 
 
 def _payload(**item):
@@ -141,6 +141,114 @@ def test_a_master_does_not_learn_the_name_of_a_locomotive_of_another_section():
     assert hidden.locomotive_inv_number is None and hidden.locomotive_name is None and hidden.locomotive_asset_id is None
     shown = build_points([wagon], NOW, trains={"77": _train(locomotive_section_id=mine)}, scope_section_id=mine).points[0]
     assert shown.locomotive_inv_number == "L-1"
+
+
+# -- the "without coordinates" page ---------------------------------------------------------------------------
+def _carriage(**over):
+    base = dict(
+        gtk_id=1, name="2ВС-115 00019427", reg_number="00019427", inventory_number="38742", is_active=True, lat=None, lon=None,
+        taken_by_inv_number=None,
+    )
+    base.update(over)
+    return base
+
+
+def _unplaced_rows():
+    """One asset for each reason, plus one placed asset that must never appear."""
+    link = uuid4
+    return [
+        _row(inv_number="A-nolink", asset_type="wagon", serial_number="19427", asset_created_at=NOW - timedelta(days=8)),
+        _row(inv_number="B-nolink-tank", asset_type="tank_car", serial_number="13"),
+        _row(inv_number="C-wialon-missing", wialon_link_id=link(), wialon_unit_id=None),
+        _row(inv_number="D-wialon-nofix", wialon_link_id=link(), wialon_unit_id="u1", wialon_unit_name="Unit 1", wialon_last_message_at=NOW),
+        _row(inv_number="E-gtk-loco", asset_type="locomotive", gtk_link_id=link(), gtk_external_id="5"),
+        _row(inv_number="F-gtk-missing", asset_type="wagon", gtk_link_id=link(), gtk_external_id="6", gtk_carriage_id=None),
+        _row(inv_number="G-gtk-nocoords", asset_type="wagon", gtk_link_id=link(), gtk_external_id="7", gtk_carriage_id=7, gtk_is_active=True),
+        _row(inv_number="H-in-train", asset_type="wagon", gtk_link_id=link(), gtk_external_id="8", gtk_carriage_id=8),
+        _row(inv_number="Z-placed", wialon_link_id=link(), wialon_lat=Decimal("41"), wialon_lon=Decimal("69")),
+    ]
+
+
+def test_every_unplaced_asset_gets_a_detailed_reason_and_a_placed_one_is_left_out():
+    open_trains = {"8": {"train_number": "T-9", "has_locomotive": True}}
+    page = build_unplaced(_unplaced_rows(), {}, open_trains, [], limit=100)
+    reasons = {i.inv_number: (i.group, i.reason) for i in page.items}
+    assert reasons == {
+        "A-nolink": ("no_link", "no_link"),
+        "B-nolink-tank": ("no_link", "no_link"),
+        "C-wialon-missing": ("no_position", "wialon_unit_missing"),
+        "D-wialon-nofix": ("no_position", "wialon_no_fix"),
+        "E-gtk-loco": ("no_position", "gtk_locomotive_only"),
+        "F-gtk-missing": ("no_position", "gtk_carriage_missing"),
+        "G-gtk-nocoords": ("no_position", "gtk_no_coords"),
+        "H-in-train": ("no_position", "train_no_gps"),
+    }
+    in_train = next(i for i in page.items if i.inv_number == "H-in-train")
+    assert in_train.train_number == "T-9" and in_train.train_has_locomotive is True
+    assert page.summary.total == 8 and page.summary.by_group == {"no_link": 2, "no_position": 6}
+
+
+def test_the_unplaced_page_agrees_with_the_map_summary():
+    rows = _unplaced_rows()
+    trains = {}
+    on_map = build_points(rows, NOW, trains=trains).summary
+    page = build_unplaced(rows, trains, {}, [])
+    assert page.summary.total == on_map.unplaced
+    assert page.summary.by_group == on_map.unplaced_reasons
+
+
+def test_a_wagon_placed_by_its_train_is_not_listed_as_unplaced():
+    wagon = _row(asset_type="wagon", gtk_link_id=uuid4(), gtk_external_id="77")
+    trains = {"77": _train()}
+    assert build_unplaced([wagon], trains, {}, []).summary.total == 0
+
+
+def test_an_unlinked_wagon_gets_the_gtk_carriage_with_the_same_numbers_and_a_taken_one_is_flagged():
+    wagon = _row(inv_number="38742", asset_type="wagon", serial_number="19427")
+    both = find_gtk_candidate(wagon, [_carriage()])
+    assert both is not None and both.match == "inv_and_reg" and both.taken_by_inv_number is None and both.has_coordinates is False
+    only_inv = find_gtk_candidate(wagon, [_carriage(reg_number="999")])
+    assert only_inv is not None and only_inv.match == "inv"
+    only_reg = find_gtk_candidate(wagon, [_carriage(inventory_number="1")])
+    assert only_reg is not None and only_reg.match == "reg"
+    taken = find_gtk_candidate(wagon, [_carriage(gtk_id=1, taken_by_inv_number="OTHER"), _carriage(gtk_id=2)])
+    assert taken is not None and taken.gtk_id == 2  # a free carriage beats a taken one
+    only_taken = find_gtk_candidate(wagon, [_carriage(taken_by_inv_number="OTHER")])
+    assert only_taken is not None and only_taken.taken_by_inv_number == "OTHER"
+    assert find_gtk_candidate(wagon, [_carriage(inventory_number="1", reg_number="2")]) is None
+    assert find_gtk_candidate(_row(inv_number="38742", asset_type="locomotive"), [_carriage()]) is None  # locomotives: no carriage match
+
+
+def test_empty_numbers_never_match_and_leading_zeros_are_ignored():
+    blank = _row(inv_number="", asset_type="wagon", serial_number=None)
+    assert find_gtk_candidate(blank, [_carriage(inventory_number="", reg_number=None)]) is None
+    padded = _row(inv_number="1", asset_type="wagon", serial_number="0019427")
+    assert find_gtk_candidate(padded, [_carriage(inventory_number="x", reg_number="19427")]).match == "reg"
+
+
+def test_linkable_counts_only_free_exact_candidates_and_the_filters_sort_and_paginate():
+    rows = [
+        _row(inv_number="38742", asset_type="wagon", serial_number="19427"),
+        _row(inv_number="38743", asset_type="wagon", serial_number="19428"),
+        _row(inv_number="T1", asset_type="tank_car", serial_number="5"),
+    ]
+    carriages = [_carriage(), _carriage(gtk_id=2, reg_number="19428", inventory_number="38743", taken_by_inv_number="OTHER")]
+    page = build_unplaced(rows, {}, {}, carriages)
+    assert page.summary.linkable == 1 and page.summary.total == 3
+    assert [(t.value, t.count) for t in page.summary.by_type] == [("wagon", 2), ("tank_car", 1)]
+    assert [i.inv_number for i in build_unplaced(rows, {}, {}, carriages, only_linkable=True).items] == ["38742"]
+    assert [i.inv_number for i in build_unplaced(rows, {}, {}, carriages, asset_type="tank_car").items] == ["T1"]
+    assert [i.inv_number for i in build_unplaced(rows, {}, {}, carriages, reason="no_link").items] == ["T1", "38742", "38743"]  # by reason, then type (tank_car < wagon), then number
+    assert [i.inv_number for i in build_unplaced(rows, {}, {}, carriages, sort_by="inv_number", descending=True).items] == ["T1", "38743", "38742"]
+    second = build_unplaced(rows, {}, {}, carriages, sort_by="inv_number", limit=1, offset=1)
+    assert [i.inv_number for i in second.items] == ["38743"] and second.total == 3 and second.summary.total == 3
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_unplaced_sort_field_is_refused():
+    with pytest.raises(HTTPException) as caught:
+        await asset_map.get_unplaced(None, SimpleNamespace(role="admin", section_id=None), sort_by="password")
+    assert caught.value.status_code == 422
 
 
 def test_a_master_without_a_section_is_refused_and_a_master_is_pinned_to_their_section():
@@ -293,4 +401,67 @@ async def test_a_wagon_in_an_open_gtk_train_is_placed_at_the_main_locomotive_and
             await db.execute(delete(GtkTrain).where(GtkTrain.gtk_id.in_([train_open, train_closed])))
             await db.execute(delete(GtkCarriage).where(GtkCarriage.gtk_id.in_([wagon_gtk_in, wagon_gtk_out])))
             await db.execute(delete(WialonUnitRecord).where(WialonUnitRecord.unit_id.in_([unit_main, unit_second])))
+            await db.commit()
+
+
+@pytest.mark.pg
+@pytest.mark.asyncio
+async def test_the_unplaced_page_explains_each_reason_from_the_database_and_scopes_a_master():
+    tag = uuid4().hex[:6]
+    base = 700_000 + int(tag[:4], 16) % 90_000
+    section_a, section_b = uuid4(), uuid4()
+    unlinked, nocoords, nofix, other_section = uuid4(), uuid4(), uuid4(), uuid4()
+    cand_gtk, nocoords_gtk = base, base + 1
+    unit_id = f"un-{tag}"
+    now = datetime.now(timezone.utc)
+    assets = [unlinked, nocoords, nofix, other_section]
+    async with SessionFactory() as db:
+        db.add_all([Section(id=section_a, name=f"UN-A-{tag}"), Section(id=section_b, name=f"UN-B-{tag}")])
+        await db.flush()
+        db.add_all([
+            FixedAsset(id=unlinked, inv_number=f"UN-1-{tag}", serial_number=f"{base}", asset_type="wagon", status="operational", section_id=section_a),
+            FixedAsset(id=nocoords, inv_number=f"UN-2-{tag}", asset_type="wagon", status="operational", section_id=section_a),
+            FixedAsset(id=nofix, inv_number=f"UN-3-{tag}", asset_type="locomotive", status="operational", section_id=section_a),
+            FixedAsset(id=other_section, inv_number=f"UN-4-{tag}", asset_type="wagon", status="operational", section_id=section_b),
+        ])
+        await db.flush()
+        db.add_all([
+            # a free GTK carriage that matches the unlinked wagon by inventory AND registration number
+            GtkCarriage(gtk_id=cand_gtk, name="CAND", reg_number=f"{base}", inventory_number=f"UN-1-{tag}", is_active=True),
+            GtkCarriage(gtk_id=nocoords_gtk, name="NOCOORDS", is_active=True),
+            WialonUnitRecord(unit_id=unit_id, name="NoFixUnit", last_message_at=now),
+        ])
+        await db.flush()
+        db.add_all([
+            AssetSourceLink(asset_id=nocoords, source="gtk", external_id=str(nocoords_gtk), status="active"),
+            AssetSourceLink(asset_id=nofix, source="wialon", external_id=unit_id, status="active"),
+        ])
+        await db.commit()
+    try:
+        async with SessionFactory() as db:
+            admin = SimpleNamespace(role="admin", section_id=None)
+            page = await asset_map.get_unplaced(db, admin, q="UN-", limit=500)
+            by_inv = {i.inv_number: i for i in page.items}
+            assert by_inv[f"UN-1-{tag}"].reason == "no_link" and by_inv[f"UN-1-{tag}"].group == "no_link"
+            candidate = by_inv[f"UN-1-{tag}"].candidate
+            assert candidate is not None and candidate.gtk_id == cand_gtk and candidate.match == "inv_and_reg" and candidate.taken_by_inv_number is None
+            assert by_inv[f"UN-2-{tag}"].reason == "gtk_no_coords" and by_inv[f"UN-2-{tag}"].gtk_carriage_id == nocoords_gtk
+            assert by_inv[f"UN-2-{tag}"].gtk_first_seen_at is not None and by_inv[f"UN-2-{tag}"].gtk_last_synced_at is not None
+            assert by_inv[f"UN-3-{tag}"].reason == "wialon_no_fix" and by_inv[f"UN-3-{tag}"].wialon_unit_name == "NoFixUnit"
+            assert by_inv[f"UN-3-{tag}"].wialon_last_message_at is not None
+            assert all(i.asset_created_at is not None for i in by_inv.values())
+            # the same population as the map: total = unplaced of /map/assets
+            on_map = await asset_map.get_asset_map(db, admin)
+            everything = await asset_map.get_unplaced(db, admin, limit=500)
+            assert everything.summary.total == on_map.summary.unplaced
+            master = SimpleNamespace(role="master", section_id=section_b)
+            scoped = await asset_map.get_unplaced(db, master, q="UN-", section_id=section_a, limit=500)  # the query asks for A
+            assert [i.inv_number for i in scoped.items] == [f"UN-4-{tag}"]
+    finally:
+        async with SessionFactory() as db:
+            await db.execute(delete(AssetSourceLink).where(AssetSourceLink.asset_id.in_(assets)))
+            await db.execute(delete(FixedAsset).where(FixedAsset.id.in_(assets)))
+            await db.execute(delete(GtkCarriage).where(GtkCarriage.gtk_id.in_([cand_gtk, nocoords_gtk])))
+            await db.execute(delete(WialonUnitRecord).where(WialonUnitRecord.unit_id == unit_id))
+            await db.execute(delete(Section).where(Section.id.in_([section_a, section_b])))
             await db.commit()

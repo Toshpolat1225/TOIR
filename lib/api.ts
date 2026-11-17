@@ -1862,6 +1862,15 @@ const assetMap = {
     const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== "")) as Record<string, string>;
     return request<AssetMapResponse>({ method: "GET", path: "/map/assets", params: clean, suppressNetworkLog: true });
   },
+  async unplaced(
+    params: {
+      reason?: string; asset_type?: string; section_id?: string; q?: string; only_linkable?: boolean;
+      sort_by?: "reason" | "inv_number" | "asset_type" | "age"; sort_dir?: "asc" | "desc"; limit?: number; offset?: number;
+    } = {},
+  ): Promise<import("./map-view").UnplacedPage> {
+    const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== "" && value !== false)) as Record<string, string | number | boolean>;
+    return request<import("./map-view").UnplacedPage>({ method: "GET", path: "/map/unplaced", params: clean, suppressNetworkLog: true });
+  },
 };
 
 const maintenanceSchedule = {

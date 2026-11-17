@@ -30,3 +30,5 @@ docker compose exec -T postgres psql -U toir_local -d toir_local < zz_leftovers.
 `zz_lib.py` dagi `BASE`/`REPO` va `browser/*.mjs` dagi `SC`/`BASE` yo'llarini o'z muhitingizga moslang.
 
 `dq.sql` va `wagons.sql` — faqat o'qiydigan ma'lumot sifati tekshiruvlari.
+
+`python t11_map_verify.py` endi `/map/unplaced` ni ham tekshiradi (faqat GET); brauzer: `node browser/b05_map.mjs` (xarita) va `node browser/b06_unplaced.mjs` («Без координат» sahifasi).

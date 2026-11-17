@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import {
-  ageText, boundsOf, filterPoints, googleEmbedUrl, googleMapsLink, markerColor, trainText, typeOptions, type MapPoint,
+  ageText, boundsOf, filterPoints, googleEmbedUrl, googleMapsLink, markerColor, trainText, typeOptions, candidateText, dateText, durationText, reasonExplanation, sinceText, sourceText, DETAIL_LABEL, DETAIL_ORDER, type MapPoint, type UnplacedItem,
 } from "./map-view.ts"
 
 const point = (over: Partial<MapPoint>): MapPoint => ({
@@ -65,5 +65,68 @@ describe("map helpers", () => {
       { value: "wagon", label: "Вагон", count: 2 },
       { value: "diesel", label: "Тепловоз", count: 1 },
     ])
+  })
+})
+
+const NOW = new Date("2026-11-17T12:00:00Z")
+const item = (over: Partial<UnplacedItem>): UnplacedItem => ({
+  asset_id: "x", inv_number: "38742", name: "Вагон 38742", asset_type: "wagon", status: "operational", group: "no_link", reason: "no_link", ...over,
+})
+
+describe("unplaced explanations", () => {
+  it("formats dates and durations", () => {
+    assert.equal(dateText("2026-11-04T08:00:00Z"), "04.11.2026")
+    assert.equal(dateText(null), "")
+    assert.equal(dateText("not a date"), "")
+    assert.equal(durationText("2026-11-17T08:00:00Z", NOW), "сегодня")
+    assert.equal(durationText("2026-11-09T12:00:00Z", NOW), "8 дн.")
+    assert.equal(durationText("2026-06-17T12:00:00Z", NOW), "5 мес.")
+    assert.equal(durationText("2024-11-17T12:00:00Z", NOW), "2 г.")
+    assert.equal(durationText(undefined, NOW), "")
+  })
+
+  it("has a short label for every reason", () => {
+    for (const code of DETAIL_ORDER) assert.ok(DETAIL_LABEL[code].length > 0)
+    assert.equal(new Set(DETAIL_ORDER).size, 7)
+  })
+
+  it("explains an unlinked wagon, with and without a GTK candidate, and an unlinked locomotive", () => {
+    assert.match(reasonExplanation(item({})), /нет вагона с таким инвентарным или регистрационным номером/)
+    const withCandidate = item({ candidate: { gtk_id: 1, name: "2ВС-115 00019427", reg_number: "00019427", inventory_number: "38742", is_active: true, has_coordinates: true, match: "inv_and_reg" } })
+    assert.match(reasonExplanation(withCandidate), /есть похожий вагон/)
+    assert.equal(candidateText(withCandidate.candidate), "Возможно, это вагон GTK «2ВС-115 00019427» (инв. 38742, рег. 00019427): совпали инв. и рег. номер; в GTK у него есть координаты.")
+    assert.match(reasonExplanation(item({ asset_type: "diesel" })), /юниту Wialon/)
+  })
+
+  it("flags a candidate that is already linked to another asset", () => {
+    const text = candidateText({ gtk_id: 2, is_active: true, has_coordinates: false, match: "reg", taken_by_inv_number: "OTHER" })
+    assert.match(text ?? "", /уже привязан к активу OTHER: возможно, дубликат/)
+    assert.equal(candidateText(null), null)
+  })
+
+  it("says since when and from where for each linked reason", () => {
+    const gtk = item({
+      group: "no_position", reason: "gtk_no_coords", gtk_external_id: "7", gtk_carriage_id: 7, gtk_carriage_name: "NOCOORDS",
+      gtk_first_seen_at: "2026-11-04T08:00:00Z", gtk_last_synced_at: "2026-11-17T11:00:00Z",
+    })
+    assert.equal(sinceText(gtk, NOW), "GTK видит вагон с 04.11.2026 (13 дн.); последняя синхронизация 1 ч назад")
+    assert.equal(sourceText(gtk), "GTK: «NOCOORDS» (7)")
+    const nofix = item({
+      group: "no_position", reason: "wialon_no_fix", wialon_external_id: "u1", wialon_unit_id: "u1", wialon_unit_name: "Unit 1",
+      wialon_first_seen_at: "2026-11-10T00:00:00Z", wialon_last_message_at: null,
+    })
+    assert.match(sinceText(nofix, NOW), /Юнит в Wialon виден с 10\.11\.2026 \(7 дн\.\); сообщений от юнита не было/)
+    assert.equal(sourceText(nofix), "Wialon: «Unit 1» (u1)")
+    const missing = item({ group: "no_position", reason: "wialon_unit_missing", wialon_external_id: "u9", wialon_linked_at: "2026-11-01T00:00:00Z" })
+    assert.equal(sourceText(missing), "Wialon: (u9, не найден)")
+    assert.match(reasonExplanation(missing), /юнита нет в данных последней синхронизации Wialon/)
+    assert.equal(sourceText(item({})), "нет привязок")
+    assert.match(sinceText(item({ asset_created_at: "2026-11-09T12:00:00Z" }), NOW), /^В системе с 09\.11\.2026 \(8 дн\.\); привязки не было$/)
+  })
+
+  it("explains a wagon in a train whose locomotive has no GPS, and a train without a locomotive", () => {
+    const base = { group: "no_position" as const, reason: "train_no_gps" as const, train_number: "T-9" }
+    assert.match(reasonExplanation(item({ ...base, train_has_locomotive: true })), /№ T-9, но у локомотива состава нет GPS/)
+    assert.match(reasonExplanation(item({ ...base, train_has_locomotive: false })), /№ T-9, в котором нет локомотива/)
   })
 })

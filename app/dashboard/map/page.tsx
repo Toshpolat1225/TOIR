@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { api, type AssetMapSummary } from "@/lib/api"
 import {
@@ -101,15 +102,16 @@ export default function MapPage() {
             В составе: <b>{summary.by_source.train ?? 0}</b>
           </span>
           {summary.unplaced > 0 && (
-            <span
-              className="rounded-full bg-amber-50 px-3 py-1 text-amber-900 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900"
-              title="Эти единицы не нарисованы: для них нет координат"
+            <Link
+              href="/dashboard/map/unplaced"
+              className="rounded-full bg-amber-50 px-3 py-1 text-amber-900 ring-1 ring-amber-200 hover:bg-amber-100 hover:underline dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900 dark:hover:bg-amber-950"
+              title="Нажмите: подробности — какие объекты, почему, как давно и откуда должна приходить позиция"
             >
               Без координат: <b>{summary.unplaced}</b>
               {" ("}
               {Object.entries(summary.unplaced_reasons).map(([reason, count]) => `${UNPLACED_LABEL[reason] ?? reason}: ${count}`).join("; ")}
-              {")"}
-            </span>
+              {") ›"}
+            </Link>
           )}
         </div>
       )}

@@ -1276,3 +1276,18 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 
 ### NOT TESTED
 - Google kaliti bilan xarita (kalit yo'q). Sostav lokomotivi o'zgarganda (GTK sinxronidan keyin) xarita yangilanishi faqat 60 s avtoyangilash bilan; alohida sinov o'tkazilmadi. O'zgarishlar commit qilinmagan.
+
+## Karta: «Без координат» tafsilot sahifasi (2026-11-17)
+
+### Verified (buyruq natijasi ko'rilgan)
+- Jonli: 419 koordinatasiz aktiv = 401 bog'lanmagan (248 vagon, 129 sisterna, 24 platforma) + 18 vagon (GTK da bor, GTK koordinata bermaydi; 04.11.2026 dan beri ko'rinadi). 44 ta bog'lanmagan vagon uchun GTK da inv. va rег. raqami mos BO'SH vagon bor (bog'lash mumkin). 3 ta platforma uchun mos vagon bor, lekin u boshqa aktivga bog'langan (dublikat bo'lishi mumkin).
+- `GET /map/unplaced` va sahifa `/dashboard/map/unplaced`: jonli API 50/50 (t11), Edge b05 11/11 va b06 11/11, backend 581 test (1 eski sanaga bog'liq xato), 75 unit, tsc/eslint 0 xato, ZZTEST qoldig'i 0.
+- Serverdagi `GOOGLE_MAPS_API_KEY` Google formatida emas (qiymat `AIza` bilan boshlanmaydi; qiymat ko'rilmadi) va Google `InvalidKeyMapError` beradi; sahifa OpenStreetMap ga o'tadi (tekshirilgan).
+
+### Next task
+- To'g'ri Google Maps JavaScript API kalitini `.env` ga qo'yish (yoki qatorni o'chirish), keyin `docker compose build frontend` + `up -d --no-deps frontend`.
+- 44 ta vagonni GTK ga bog'lash (karta ОС, «привязки»); 129 sisterna va 24 platforma GTK da yo'q (boshqa manba kerak).
+- `test_maintenance_schedule_interval_km_pg` (sanaga bog'liq eski xato) ni tuzatish.
+
+### NOT TESTED
+- Haqiqiy Google kaliti bilan xarita. Bog'lash tugmasi yo'q (faqat qo'lda, karta ОС orqali). O'zgarishlar commit qilinmagan.

@@ -8,6 +8,10 @@ import {
 
 const SCRIPT_ID = "toir-google-maps-script"
 let loader: Promise<void> | null = null
+// Google reports a refused key (InvalidKeyMapError, referrer, billing...) AFTER the script has loaded, so it needs its own channel.
+let authFailed = false
+const authListeners = new Set<() => void>()
+const AUTH_MESSAGE = "Google Maps отклонил ключ API"
 
 /** Loads the Google Maps JavaScript API once. Rejects when the key is refused or the network is blocked. */
 function loadGoogleMaps(apiKey: string): Promise<void> {
@@ -18,7 +22,11 @@ function loadGoogleMaps(apiKey: string): Promise<void> {
     const callbackName = "__toirGoogleMapsReady"
     ;(window as unknown as Record<string, unknown>)[callbackName] = () => resolve()
     // Google calls this when the key is invalid / the referrer is not allowed.
-    ;(window as unknown as Record<string, unknown>).gm_authFailure = () => reject(new Error("Google Maps отклонил ключ API"))
+    ;(window as unknown as Record<string, unknown>).gm_authFailure = () => {
+      authFailed = true
+      authListeners.forEach((listener) => listener())
+      reject(new Error(AUTH_MESSAGE))
+    }
     const script = document.createElement("script")
     script.id = SCRIPT_ID
     script.async = true
@@ -73,6 +81,9 @@ export function GoogleAssetMap({ apiKey, points, selectedId, onSelect, onError }
   // 1) load the API and create the map once
   useEffect(() => {
     let cancelled = false
+    const onAuthFailure = () => !cancelled && onError(AUTH_MESSAGE)
+    authListeners.add(onAuthFailure)
+    if (authFailed) onAuthFailure()
     loadGoogleMaps(apiKey)
       .then(async () => {
         if (cancelled || !containerRef.current) return
@@ -90,6 +101,7 @@ export function GoogleAssetMap({ apiKey, points, selectedId, onSelect, onError }
       .catch((error: Error) => !cancelled && onError(error.message))
     return () => {
       cancelled = true
+      authListeners.delete(onAuthFailure)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey])

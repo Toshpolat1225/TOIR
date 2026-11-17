@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.permissions import require_permission
 from app.models.identity import User
-from app.schemas.asset_map import AssetMapRead
+from app.schemas.asset_map import AssetMapRead, AssetUnplacedPage
 from app.services import asset_map as service
 
 router = APIRouter(tags=["map"])
@@ -26,3 +26,29 @@ async def read_asset_map(
     q: Annotated[str | None, Query(max_length=100)] = None,
 ) -> AssetMapRead:
     return await service.get_asset_map(db, user, asset_type=asset_type, source=source, section_id=section_id, q=q)
+
+
+@router.get("/map/unplaced", response_model=AssetUnplacedPage)
+async def read_unplaced_assets(
+    user: MapViewer,
+    db: DatabaseSession,
+    reason: Annotated[
+        Literal[
+            "no_link", "no_position", "wialon_unit_missing", "wialon_no_fix", "gtk_locomotive_only", "gtk_carriage_missing", "gtk_no_coords",
+            "train_no_gps",
+        ] | None,
+        Query(),
+    ] = None,
+    asset_type: Annotated[str | None, Query(max_length=40)] = None,
+    section_id: Annotated[UUID | None, Query()] = None,
+    q: Annotated[str | None, Query(max_length=100)] = None,
+    only_linkable: Annotated[bool, Query()] = False,
+    sort_by: Annotated[str, Query(max_length=20)] = "reason",
+    sort_dir: Annotated[Literal["asc", "desc"], Query()] = "asc",
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AssetUnplacedPage:
+    return await service.get_unplaced(
+        db, user, reason=reason, asset_type=asset_type, section_id=section_id, q=q, only_linkable=only_linkable,
+        sort_by=sort_by, descending=sort_dir == "desc", limit=limit, offset=offset,
+    )
