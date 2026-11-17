@@ -380,3 +380,9 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 - Qo'shildi: `leaflet`, `leaflet.markercluster` (+tiplar), `app/dashboard/map/_components/OsmAssetMap.tsx`, `app/dashboard/map/page.tsx` (Google → OSM → eski embed), `browser/b05_map.mjs` (OSM tekshiruvlari).
 - Tested: `tsc` 0 xato, `eslint` 0 xato, 68 unit, `npm run build` OK; frontend jonli qayta qurildi (healthy); Edge 10/10 (OSM plitkalari 9/9 yuklandi, klaster, popup, filtr, master doirasi, telefon eni); ZZTEST qoldig'i 0. NOT tested: Google kaliti bilan xarita.
 - Keyingi qadam: (ixtiyoriy) Google kaliti; 401 bog'lanmagan aktivni bog'lash.
+
+## 2026-11-17: Karta — vagonlar lokomotiv bilan (GTK sostavi)
+- Task: vagonlarda GPS yo'q; sostavdagi tortuvchi lokomotiv (elektrovoz/teplovoz) joyida vagonlarni ham xaritada ko'rsatish.
+- O'zgardi: `backend/app/{repositories,services,schemas,routers}/asset_map.py` (yangi manba `train`, `list_train_positions`), `lib/map-view.ts`, `lib/api.ts`, `app/dashboard/map/page.tsx`, `GoogleAssetMap.tsx`, `OsmAssetMap.tsx`, testlar (`test_asset_map.py` 21, `map-view.test.ts`), `e2e_live/t11_map_verify.py`, `browser/b05_map.mjs`.
+- Tested: backend `test_asset_map.py` 21 (PG bilan); to'liq to'plam 573 o'tdi, 1 yiqildi (`test_maintenance_schedule_interval_km_pg`, sana bog'liq, mening o'zgarishimga aloqasi yo'q); tsc/eslint 0 xato; 69 unit; build OK; backend+frontend jonli qayta qurildi (healthy); jonli API 25/25, Edge 11/11; ZZTEST qoldig'i 0. Jonli natija: Wialon 87, sostav 478, GTK 91.
+- Keyingi qadam: `test_maintenance_schedule_interval_km_pg` ni tuzatish (17-noyabrdan boshlab yiqiladi, sanani 16-noyabrga qo'ysak o'tadi).

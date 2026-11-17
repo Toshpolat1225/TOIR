@@ -30,8 +30,24 @@ def _valid(lat, lon) -> bool:
     return lat is not None and lon is not None and abs(lat) <= 90 and abs(lon) <= 180 and not (lat == 0 and lon == 0)
 
 
-def build_points(rows: list[dict], since, source: str | None = None) -> AssetMapRead:
-    """Pure part: choose the best position of every row and count what cannot be drawn."""
+def _train_for(row: dict, trains: dict[str, dict]) -> dict | None:
+    """The train position of a wagon (never of a locomotive: GTK locomotive and carriage ids are different spaces)."""
+    external_id = row.get("gtk_external_id")
+    if external_id is None or row["asset_type"] in repository.LOCOMOTIVE_TYPES:
+        return None
+    train = trains.get(str(external_id))
+    return train if train is not None and _valid(train["lat"], train["lon"]) else None
+
+
+def build_points(
+    rows: list[dict], since, source: str | None = None, trains: dict[str, dict] | None = None, scope_section_id: UUID | None = None,
+) -> AssetMapRead:
+    """Pure part: choose the best position of every row and count what cannot be drawn.
+
+    Order: the asset's own Wialon fix, then (wagons only) the position of the locomotive pulling its open GTK train, then the
+    carriage's own GTK coordinate. `scope_section_id` is a master's section: a locomotive of another section is not named.
+    """
+    trains = trains or {}
     points: list[AssetMapPoint] = []
     summary = AssetMapSummary(total_assets=len(rows))
     for row in rows:
@@ -42,6 +58,17 @@ def build_points(rows: list[dict], since, source: str | None = None) -> AssetMap
                 **common, lat=float(row["wialon_lat"]), lon=float(row["wialon_lon"]), source="wialon",
                 position_at=row["wialon_position_at"] or last, speed=row["wialon_speed"],
                 online=last is not None and last >= since,
+            )
+        elif (train := _train_for(row, trains)) is not None:
+            last = train["last_message_at"]
+            loco_visible = scope_section_id is None or train["locomotive_section_id"] == scope_section_id
+            point = AssetMapPoint(
+                **common, lat=float(train["lat"]), lon=float(train["lon"]), source="train",
+                position_at=train["position_at"] or last, speed=train["speed"], online=last is not None and last >= since,
+                train_number=train["train_number"],
+                locomotive_asset_id=train["locomotive_asset_id"] if loco_visible else None,
+                locomotive_inv_number=train["locomotive_inv_number"] if loco_visible else None,
+                locomotive_name=train["locomotive_name"] if loco_visible else None,
             )
         elif _valid(row["gtk_lat"], row["gtk_lon"]):
             point = AssetMapPoint(
@@ -73,4 +100,5 @@ async def get_asset_map(
     if scope is not None:
         section_id = scope  # a master only ever sees their own section, whatever the query says
     rows = await repository.list_asset_positions(db, asset_type=asset_type, section_id=section_id, q=q)
-    return build_points(rows, repository.online_since(), source)
+    trains = await repository.list_train_positions(db)
+    return build_points(rows, repository.online_since(), source, trains, scope)

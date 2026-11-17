@@ -39,8 +39,17 @@ rec(AREA, "map: summary adds up (placed + unplaced = total)", "PASS" if summary[
 rec(AREA, "map: per-source counts add up to placed", "PASS" if sum(summary["by_source"].values()) == summary["placed"] else "FAIL", str(summary["by_source"]), "medium")
 rec(AREA, "map: unplaced reasons add up", "PASS" if sum(summary["unplaced_reasons"].values()) == summary["unplaced"] else "FAIL", str(summary["unplaced_reasons"]), "medium")
 rec(AREA, "map: every point has valid coordinates, a known source and an asset id",
-    "PASS" if points and all(-90 <= p["lat"] <= 90 and -180 <= p["lon"] <= 180 and p["source"] in ("wialon", "gtk") and p["asset_id"] for p in points) else "FAIL", f"{len(points)} points", "high")
-rec(AREA, "map: both sources are present (Wialon for locomotives, GTK for wagons)", "PASS" if summary["by_source"].get("wialon", 0) > 0 and summary["by_source"].get("gtk", 0) > 0 else "FAIL", str(summary["by_source"]), "medium")
+    "PASS" if points and all(-90 <= p["lat"] <= 90 and -180 <= p["lon"] <= 180 and p["source"] in ("wialon", "gtk", "train") and p["asset_id"] for p in points) else "FAIL", f"{len(points)} points", "high")
+rec(AREA, "map: Wialon (locomotives) and wagons (GTK or train) are both present", "PASS" if summary["by_source"].get("wialon", 0) > 0 and summary["by_source"].get("gtk", 0) + summary["by_source"].get("train", 0) > 0 else "FAIL", str(summary["by_source"]), "medium")
+train_points = [p for p in points if p["source"] == "train"]
+rec(AREA, "map: wagons of open GTK trains are drawn at their locomotive (source train)", "PASS" if train_points and all(p["asset_type"] not in ("locomotive", "diesel", "special_self_propelled") for p in train_points) else "FAIL", f"{len(train_points)} train points", "high")
+rec(AREA, "map: a train point names its train and locomotive", "PASS" if train_points and all(p.get("train_number") and p.get("locomotive_inv_number") for p in train_points) else "FAIL", "", "medium")
+loco_pos = {p["inv_number"]: (p["lat"], p["lon"]) for p in points if p["source"] == "wialon"}
+rec(AREA, "map: every train point sits exactly where its locomotive is", "PASS" if train_points and all(loco_pos.get(p["locomotive_inv_number"]) in (None, (p["lat"], p["lon"])) for p in train_points) else "FAIL", "", "high")
+only_train = admin.get("/map/assets", params={"source": "train"}, headers=ah).json()
+rec(AREA, "map: the train filter keeps only train points", "PASS" if only_train["points"] and all(p["source"] == "train" for p in only_train["points"]) else "FAIL", "", "medium")
+by_loco = admin.get("/map/assets", params={"q": train_points[0]["locomotive_inv_number"]}, headers=ah).json() if train_points else {"points": []}
+rec(AREA, "map: searching a locomotive number lists only that locomotive (wagons are found by train number in the page)", "PASS" if by_loco["points"] else "FAIL", "", "low")
 rec(AREA, "map: wagons come from GTK, locomotives/diesels from Wialon",
     "PASS" if all(p["source"] == "gtk" for p in points if p["asset_type"] == "wagon") or any(p["asset_type"] == "wagon" for p in points) else "FAIL", "", "low")
 wialon_only = admin.get("/map/assets", params={"source": "wialon"}, headers=ah).json()

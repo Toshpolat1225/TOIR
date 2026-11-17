@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-PositionSource = Literal["wialon", "gtk"]
+PositionSource = Literal["wialon", "gtk", "train"]
 UnplacedReason = Literal["no_link", "no_position"]
 
 
@@ -22,10 +22,14 @@ class AssetMapPoint(BaseModel):
     model_name: str | None = None
     lat: float
     lon: float
-    source: PositionSource  # where THIS point comes from
+    source: PositionSource  # where THIS point comes from; "train" = a wagon placed at its locomotive (GTK train)
     position_at: datetime | None = None  # when the source recorded the position (Wialon fix / GTK last sync)
     speed: Decimal | None = None  # km/h, Wialon only
-    online: bool | None = None  # Wialon message in the last 15 minutes
+    online: bool | None = None  # Wialon message in the last 15 minutes (for a train point: of the locomotive)
+    train_number: str | None = None  # source "train": the GTK train the wagon is part of
+    locomotive_asset_id: UUID | None = None  # source "train": the locomotive pulling it (hidden from a master of another section)
+    locomotive_inv_number: str | None = None
+    locomotive_name: str | None = None
 
 
 class AssetMapSummary(BaseModel):

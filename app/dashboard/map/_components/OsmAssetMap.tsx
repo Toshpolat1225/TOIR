@@ -6,7 +6,7 @@ import "leaflet/dist/leaflet.css"
 import "leaflet.markercluster/dist/MarkerCluster.css"
 import "leaflet.markercluster/dist/MarkerCluster.Default.css"
 import {
-  SOURCE_LABEL, ageText, boundsOf, googleMapsLink, markerColor, type MapPoint,
+  SOURCE_LABEL, trainText, ageText, boundsOf, googleMapsLink, markerColor, type MapPoint,
 } from "@/lib/map-view"
 
 function escapeHtml(text: string): string {
@@ -18,7 +18,8 @@ function popupHtml(p: MapPoint): string {
     `<div style="font-weight:600;margin-bottom:2px">${escapeHtml(p.name)}</div>`,
     `<div>Инв. № ${escapeHtml(p.inv_number)}${p.section_name ? ` · ${escapeHtml(p.section_name)}` : ""}</div>`,
     p.status_name ? `<div>${escapeHtml(p.status_name)}</div>` : "",
-    `<div>Источник: ${SOURCE_LABEL[p.source]}${p.source === "wialon" ? (p.online ? " · на связи" : " · нет связи") : ""}</div>`,
+    trainText(p) ? `<div>${escapeHtml(trainText(p) as string)}</div>` : "",
+    `<div>Источник: ${SOURCE_LABEL[p.source]}${p.source !== "gtk" ? (p.online ? " · на связи" : " · нет связи") : ""}</div>`,
     `<div>Позиция: ${escapeHtml(ageText(p.position_at))}${p.speed != null && Number(p.speed) > 0 ? ` · ${Math.round(Number(p.speed))} км/ч` : ""}</div>`,
     `<div style="margin-top:4px"><a href="${googleMapsLink(p.lat, p.lon)}" target="_blank" rel="noopener noreferrer">Открыть в Google Maps</a> · ` +
       `<a href="/dashboard/directories/assets?q=${encodeURIComponent(p.inv_number)}">Карточка ОС</a></div>`,

@@ -1263,3 +1263,16 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 
 ### NOT TESTED
 - Google kaliti bilan xarita (kalit yo'q). Mijoz kompyuterlarda `tile.openstreetmap.org` ga kirish (serverdan Edge orqali tekshirildi, plitkalar yuklandi). O'zgarishlar commit qilinmagan.
+
+## Karta: vagonlar lokomotiv bilan (2026-11-17)
+
+### Verified (buyruq natijasi ko'rilgan)
+- Jonli: 37 ochiq sostavda lokomotiv bor, hammasining Wialon pozitsiyasi bor; ularda 478 vagon. Vagonning o'z GTK koordinatasi lokomotivdan o'rtacha 4,15 km farq qiladi (2 tasi 100 km+, bittasi 5543 km).
+- `/map/assets` endi: Wialon 87, sostav (vagon lokomotiv joyida) 478, GTK (sostavsiz vagonlar) 91; jami 656 o'zgarmadi, 419 koordinatasiz. Jonli API 25/25, Edge 11/11, backend `test_asset_map.py` 21, 69 unit, tsc/eslint 0 xato, ZZTEST qoldig'i 0.
+
+### Next task
+- `tests/test_maintenance_schedule_interval_km_pg.py::test_forecast_item_carries_interval_km_and_threshold` yiqiladi (to'liq to'plam: 573 o'tdi, 1 yiqildi). Sana 2026-11-16 ga qo'yilsa o'tadi, ya'ni sana bog'liq xato; `maintenance.get_schedule` / test sababini topib tuzatish. Bu xarita ishidan emas.
+- 54 ochiq sostavda lokomotiv yo'q (faqat vagonlar): ular o'z GTK koordinatasini ishlatadi. 401 bog'lanmagan aktiv hamon xaritada yo'q.
+
+### NOT TESTED
+- Google kaliti bilan xarita (kalit yo'q). Sostav lokomotivi o'zgarganda (GTK sinxronidan keyin) xarita yangilanishi faqat 60 s avtoyangilash bilan; alohida sinov o'tkazilmadi. O'zgarishlar commit qilinmagan.

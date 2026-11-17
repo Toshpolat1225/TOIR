@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { api, type AssetMapSummary } from "@/lib/api"
 import {
-  SOURCE_LABEL, UNPLACED_LABEL, ageText, filterPoints, googleEmbedUrl, googleMapsLink, markerColor, typeOptions,
+  SOURCE_LABEL, UNPLACED_LABEL, ageText, filterPoints, googleEmbedUrl, googleMapsLink, markerColor, trainText, typeOptions,
   type MapPoint, type MapSource,
 } from "@/lib/map-view"
 import { GoogleAssetMap } from "./_components/GoogleAssetMap"
@@ -61,7 +61,7 @@ export default function MapPage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Карта</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Где находится каждое основное средство: позиция из Wialon (GPS) или GTK
+            Где находится каждое основное средство: позиция из Wialon (GPS) или GTK; вагоны показаны там, где локомотив их состава
             {loadedAt ? ` · обновлено ${loadedAt.toLocaleTimeString("ru-RU")}` : ""}
           </p>
         </div>
@@ -92,6 +92,13 @@ export default function MapPage() {
           <span className="rounded-full bg-white px-3 py-1 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-gray-800">
             <span className="mr-1 inline-block h-2.5 w-2.5 rounded-full" style={{ background: markerColor({ source: "gtk" }) }} />
             GTK: <b>{summary.by_source.gtk ?? 0}</b>
+          </span>
+          <span
+            className="rounded-full bg-white px-3 py-1 shadow-sm ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-gray-800"
+            title="Вагоны без GPS: показаны там, где находится локомотив их состава (по данным GTK)"
+          >
+            <span className="mr-1 inline-block h-2.5 w-2.5 rounded-full" style={{ background: markerColor({ source: "train" }) }} />
+            В составе: <b>{summary.by_source.train ?? 0}</b>
           </span>
           {summary.unplaced > 0 && (
             <span
@@ -134,6 +141,7 @@ export default function MapPage() {
           <option value="">Все источники</option>
           <option value="wialon">{SOURCE_LABEL.wialon}</option>
           <option value="gtk">{SOURCE_LABEL.gtk}</option>
+          <option value="train">{SOURCE_LABEL.train}</option>
         </select>
         <span className="text-sm text-gray-500 dark:text-gray-400">Показано: {visible.length}</span>
       </div>
@@ -200,7 +208,7 @@ export default function MapPage() {
                       <span className="truncate font-medium text-gray-900 dark:text-white">{p.name}</span>
                     </span>
                     <span className="mt-0.5 block truncate text-xs text-gray-500 dark:text-gray-400">
-                      {`${SOURCE_LABEL[p.source]} · ${ageText(p.position_at)}${p.section_name ? ` · ${p.section_name}` : ""}`}
+                      {`${trainText(p) ?? SOURCE_LABEL[p.source]} · ${ageText(p.position_at)}${p.section_name ? ` · ${p.section_name}` : ""}`}
                     </span>
                   </button>
                   {p.asset_id === selectedId && (

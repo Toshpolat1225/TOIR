@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import {
-  ageText, boundsOf, filterPoints, googleEmbedUrl, googleMapsLink, markerColor, typeOptions, type MapPoint,
+  ageText, boundsOf, filterPoints, googleEmbedUrl, googleMapsLink, markerColor, trainText, typeOptions, type MapPoint,
 } from "./map-view.ts"
 
 const point = (over: Partial<MapPoint>): MapPoint => ({
@@ -20,6 +20,19 @@ describe("map helpers", () => {
   it("builds keyless Google links", () => {
     assert.equal(googleMapsLink(41.3111, 69.2797), "https://www.google.com/maps?q=41.311100,69.279700")
     assert.equal(googleEmbedUrl(41.3, 69.2, 10), "https://www.google.com/maps?q=41.300000,69.200000&z=10&output=embed")
+  })
+
+  it("draws a wagon at its locomotive: orange marker, a train caption, and the locomotive number finds its wagons", () => {
+    assert.equal(markerColor({ source: "train", online: true }), "#d97706")
+    const wagon = point({
+      asset_id: "w", inv_number: "9001", name: "Вагон 9001", asset_type: "wagon", source: "train", train_number: "T-7",
+      locomotive_inv_number: "37017", locomotive_name: "Тепловоз 2313",
+    })
+    assert.equal(trainText(wagon), "В составе № T-7 · локомотив 37017 (Тепловоз 2313)")
+    assert.equal(trainText({ source: "train" }), "В составе")
+    assert.equal(trainText(point({})), null)
+    assert.deepEqual(filterPoints([point({}), wagon], { q: "37017" }).map((p) => p.asset_id), ["w"])
+    assert.deepEqual(filterPoints([point({}), wagon], { source: "train" }).map((p) => p.asset_id), ["w"])
   })
 
   it("filters by text, type and source", () => {

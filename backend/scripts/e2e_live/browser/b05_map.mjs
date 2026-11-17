@@ -41,6 +41,7 @@ async function session(role, viewport = { width: 1440, height: 900 }) {
     assert.match(t, /На карте:\s*\d+\s*из\s*\d+/)
     assert.match(t, /Wialon:\s*\d+/)
     assert.match(t, /GTK:\s*\d+/)
+    assert.match(t, /В составе:\s*\d+/)
     assert.match(t, /Без координат:\s*\d+/)
   })
   await check("the list shows assets with their source and age", async () => {
@@ -62,6 +63,18 @@ async function session(role, viewport = { width: 1440, height: 900 }) {
     const t = (await page.locator(".leaflet-popup-content").first().textContent()) ?? ""
     assert.match(t, /Источник: (Wialon|GTK)/)
     assert.ok(await page.locator(".leaflet-popup a", { hasText: "Открыть в Google Maps" }).first().isVisible())
+  })
+  await check("wagons ride with their locomotive: the train filter lists wagons with a train caption, and the popup names the locomotive", async () => {
+    await page.getByLabel("Источник").selectOption("train")
+    await page.waitForTimeout(500)
+    const texts = await page.locator("aside ul li button").allInnerTexts()
+    assert.ok(texts.length > 0 && texts.every((t) => t.includes("В составе")), "not all train captions")
+    await page.locator("aside ul li button").first().click()
+    await page.waitForSelector(".leaflet-popup-content a", { timeout: 15000 })
+    await page.waitForTimeout(600)
+    const popup = (await page.locator(".leaflet-popup-content").first().textContent()) ?? ""
+    assert.match(popup, /В составе № .+ · локомотив \S+/)
+    assert.match(popup, /Источник: Состав \(по локомотиву\)/)
   })
   await check("the source filter narrows the list to GTK only", async () => {
     await page.getByLabel("Источник").selectOption("gtk")

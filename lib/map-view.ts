@@ -1,7 +1,8 @@
 // Pure helpers of the asset map page (no React, no Google): labels, colours, links, filtering, bounds.
 // Run the tests with: npm run test:unit
 
-export type MapSource = "wialon" | "gtk"
+// "train" = a wagon has no GPS: it is drawn where the locomotive of its open GTK train is
+export type MapSource = "wialon" | "gtk" | "train"
 
 export type MapPoint = {
   asset_id: string
@@ -20,18 +21,23 @@ export type MapPoint = {
   position_at?: string | null
   speed?: number | string | null
   online?: boolean | null
+  train_number?: string | null
+  locomotive_asset_id?: string | null
+  locomotive_inv_number?: string | null
+  locomotive_name?: string | null
 }
 
-export const SOURCE_LABEL: Record<MapSource, string> = { wialon: "Wialon (GPS)", gtk: "GTK" }
+export const SOURCE_LABEL: Record<MapSource, string> = { wialon: "Wialon (GPS)", gtk: "GTK", train: "Состав (по локомотиву)" }
 
 export const UNPLACED_LABEL: Record<string, string> = {
   no_link: "нет привязки к Wialon/GTK",
   no_position: "привязан, но координат нет",
 }
 
-/** Marker colours: Wialon online = green, Wialon silent = grey, GTK = blue. */
+/** Marker colours: Wialon online = green, Wialon silent = grey, GTK = blue, wagon in a train = orange. */
 export function markerColor(point: Pick<MapPoint, "source" | "online">): string {
   if (point.source === "gtk") return "#2563eb"
+  if (point.source === "train") return "#d97706"
   return point.online ? "#16a34a" : "#6b7280"
 }
 
@@ -45,12 +51,20 @@ export function googleEmbedUrl(lat: number, lon: number, zoom = 14): string {
   return `https://www.google.com/maps?q=${lat.toFixed(6)},${lon.toFixed(6)}&z=${zoom}&output=embed`
 }
 
+/** "В составе № T-1 · локомотив 37017" for a wagon drawn at its locomotive, otherwise null. */
+export function trainText(p: Pick<MapPoint, "source" | "train_number" | "locomotive_inv_number" | "locomotive_name">): string | null {
+  if (p.source !== "train") return null
+  const train = p.train_number ? ` № ${p.train_number}` : ""
+  const loco = p.locomotive_inv_number ? ` · локомотив ${p.locomotive_inv_number}${p.locomotive_name ? ` (${p.locomotive_name})` : ""}` : ""
+  return `В составе${train}${loco}`
+}
+
 export function filterPoints(points: MapPoint[], opts: { q?: string; type?: string; source?: MapSource | "" }): MapPoint[] {
   const needle = (opts.q ?? "").trim().toLowerCase()
   return points.filter((p) => {
     if (opts.type && p.asset_type !== opts.type) return false
     if (opts.source && p.source !== opts.source) return false
-    if (needle && !`${p.inv_number} ${p.name} ${p.section_name ?? ""}`.toLowerCase().includes(needle)) return false
+    if (needle && !`${p.inv_number} ${p.name} ${p.section_name ?? ""} ${p.train_number ?? ""} ${p.locomotive_inv_number ?? ""}`.toLowerCase().includes(needle)) return false
     return true
   })
 }

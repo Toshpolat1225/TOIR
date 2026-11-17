@@ -1858,7 +1858,7 @@ export type AssetMapResponse = {
 };
 
 const assetMap = {
-  async assets(params: { asset_type?: string; source?: "wialon" | "gtk"; section_id?: string; q?: string } = {}): Promise<AssetMapResponse> {
+  async assets(params: { asset_type?: string; source?: "wialon" | "gtk" | "train"; section_id?: string; q?: string } = {}): Promise<AssetMapResponse> {
     const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== "")) as Record<string, string>;
     return request<AssetMapResponse>({ method: "GET", path: "/map/assets", params: clean, suppressNetworkLog: true });
   },
