@@ -15,6 +15,7 @@ from app.repositories import wialon as repository
 from app.repositories import wialon_units as units_repo
 from app.schemas.wialon import WialonSyncResult, WialonSyncStatus
 from app.services import assets as assets_service
+from app.services import position_history
 from app.services.audit_log import set_audit_system_context
 from app.services.wialon_ingestion import ingest_wialon_reading
 logger = logging.getLogger(__name__)
@@ -126,6 +127,7 @@ async def sync_wialon_assets(db: AsyncSession) -> WialonSyncResult:
             units = await client.fetch_units()
             await units_repo.upsert_units(db, units, synced_at=synced_at)
             await db.commit()
+            await position_history.safe_record_wialon(db, units, synced_at=synced_at)
             updated_names: list[str] = []
             missing_names: list[str] = []
             gate_stats: Counter = Counter()

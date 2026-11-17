@@ -1871,6 +1871,13 @@ const assetMap = {
     const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== "" && value !== false)) as Record<string, string | number | boolean>;
     return request<import("./map-view").UnplacedPage>({ method: "GET", path: "/map/unplaced", params: clean, suppressNetworkLog: true });
   },
+  async trains(): Promise<import("./map-icons").LiveTrains> {
+    return request<import("./map-icons").LiveTrains>({ method: "GET", path: "/map/trains", suppressNetworkLog: true });
+  },
+  async history(params: { asset_id?: string; carriage_gtk_id?: number; days?: number }): Promise<import("./map-history").AssetHistory> {
+    const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== "")) as Record<string, string | number>;
+    return request<import("./map-history").AssetHistory>({ method: "GET", path: "/map/history", params: clean, suppressNetworkLog: true });
+  },
 };
 
 const scales = {

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     audit_retention_days: int = Field(default=365, ge=30, le=3650)
+    position_history_retention_days: int = Field(default=180, ge=7, le=3650)  # the track behind the map is thinned, still ~30k rows/day
     postgres_db: str
     postgres_user: str
     postgres_password: SecretStr

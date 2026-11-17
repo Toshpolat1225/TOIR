@@ -1573,3 +1573,17 @@ CREATE TABLE scale_corrections (
 );
 CREATE UNIQUE INDEX uq_scale_corrections_alias ON scale_corrections(loco_number) WHERE kind = 'loco_alias' AND is_active;
 CREATE UNIQUE INDEX uq_scale_corrections_train ON scale_corrections(train_id, kind) WHERE kind <> 'loco_alias' AND is_active;
+-- Position history (the track behind the map), migration 0036
+CREATE TABLE asset_position_history (
+    id bigserial PRIMARY KEY,
+    asset_id uuid NOT NULL REFERENCES fixed_assets(id) ON DELETE CASCADE,
+    at timestamptz NOT NULL,
+    lat numeric(10,7) NOT NULL,
+    lon numeric(10,7) NOT NULL,
+    speed numeric(6,2),
+    source text NOT NULL DEFAULT 'wialon',
+    CONSTRAINT uq_asset_position_history_point UNIQUE (asset_id, at, source),
+    CONSTRAINT ck_asset_position_history_source CHECK (source IN ('wialon','gtk')),
+    CONSTRAINT ck_asset_position_history_range CHECK (lat BETWEEN -90 AND 90 AND lon BETWEEN -180 AND 180)
+);
+CREATE INDEX ix_asset_position_history_asset_at ON asset_position_history(asset_id, at);

@@ -7,7 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.permissions import require_permission
 from app.models.identity import User
+from app.schemas.asset_history import AssetHistory
 from app.schemas.asset_map import AssetMapRead, AssetUnplacedPage
+from app.schemas.train_formation import LiveTrains
+from app.services import asset_history as history_service
+from app.services import train_formation
 from app.services import asset_map as service
 
 router = APIRouter(tags=["map"])
@@ -52,3 +56,21 @@ async def read_unplaced_assets(
         db, user, reason=reason, asset_type=asset_type, section_id=section_id, q=q, only_linkable=only_linkable,
         sort_by=sort_by, descending=sort_dir == "desc", limit=limit, offset=offset,
     )
+
+
+@router.get("/map/history", response_model=AssetHistory)
+async def read_asset_history(
+    user: MapViewer,
+    db: DatabaseSession,
+    asset_id: Annotated[UUID | None, Query()] = None,
+    carriage_gtk_id: Annotated[int | None, Query()] = None,
+    days: Annotated[int, Query(ge=1, le=90)] = 7,
+) -> AssetHistory:
+    """Where a wagon or locomotive was, behind which traction unit, and what it was doing (master: own section only, 404 otherwise)."""
+    return await history_service.asset_history(db, user, asset_id=asset_id, carriage_gtk_id=carriage_gtk_id, days=days)
+
+
+@router.get("/map/trains", response_model=LiveTrains)
+async def read_live_trains(user: MapViewer, db: DatabaseSession) -> LiveTrains:
+    """Open GTK trains drawn to scale: every vehicle (locomotive, motor car, wagons in GTK order) with its centre, heading and size."""
+    return await train_formation.live_trains(db, user)

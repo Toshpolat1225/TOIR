@@ -124,7 +124,7 @@ scripts/                  Excel/nomenklatura import, anomaliya, backup_postgres.
 | ТМЦ hujjatlari | ✅ faqat `GET /tmc-documents` | ✅ ko'rish/chop | 🟡 | Yaratish/tahrirlash **yo'q**, hozircha talab qilinmagan |
 | Dashboard | ✅ read-only | ✅ | 🟡 | Bekor qilinganlar ochiq hisoblanmaydi ✅ |
 | Весовая (`/dashboard/scales`) | ✅ `/scales/*`, `0034` | ✅ holat kartalari, reyslar, «Не распознано», korrektirovkalar | 🟢 pg + haqiqiy ma'lumotda sinov | Tarozi 93/97 → Windows kollektori → GTK/ОС bilan moslash; `docs/SCALES_ARCHITECTURE.md`; token `SCALES_INGEST_TOKEN` |
-| Karta (`/dashboard/map`) | ✅ `GET /map/assets`, `0033` | ✅ Google xarita (kalit bilan) yoki ro'yxat + kalitsiz embed | 🟢 jonli API/Edge | Wialon GPS + GTK vagon koordinatalari; `analytics.view`; kalit `GOOGLE_MAPS_API_KEY` |
+| Karta (`/dashboard/map`) | ✅ `GET /map/assets`, `GET /map/history`, `0033`, `0036` (pozitsiya tarixi) | ✅ Google xarita (kalit bilan) yoki ro'yxat + kalitsiz embed | 🟢 jonli API/Edge | Wialon GPS + GTK vagon koordinatalari; `analytics.view`; kalit `GOOGLE_MAPS_API_KEY` |
 | Analytics, hisobotlar (CSV) | ✅ | ✅ | 🟡 | `/reports/{work-orders\|fixed-assets\|tmc-documents}` |
 | ML (RUL, anomaliya, health score) | ✅ | Analytics sahifasida `ai_insights_summary` view orqali; `/ml/*` endpointlari frontendda to'g'ridan-to'g'ri chaqirilmaydi | 🟡 | `/ml/analyze`, `/ml/insights` |
 | Tarjima (i18n) | Rus tiliga qisqartirilgan `0025` | — | 🟡 | `/translations` router qoldiq sifatida turibdi |

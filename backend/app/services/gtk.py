@@ -30,6 +30,7 @@ from app.repositories import gtk as repository
 from app.models.assets import FixedAsset
 from app.schemas.gtk import GtkLinkBatchRequest, GtkLinkItem
 from app.services import assets as assets_service
+from app.services import position_history
 from app.services import asset_links as asset_links_service
 from app.services import asset_passport
 from app.services import asset_field_changes as field_changes_service
@@ -222,6 +223,7 @@ async def sync_gtk(db: AsyncSession) -> GtkSyncRun | None:
                     }
             if not is_suspicious:
                 await _run_gtk_passport_proposals(snapshot)
+                await position_history.safe_record_gtk(db, synced_at=run_at)
             _consecutive_login_failures = 0
             logger.info("GTK sync finished with status=%s counts=%s", run.status, counts)
             return run

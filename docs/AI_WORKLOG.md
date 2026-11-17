@@ -432,3 +432,16 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 - O'zgardi: yangi `services/scales_insights.py`, `schemas/scales_insights.py`, endpointlar `/scales/overview`, `/trains/{id}`, `/wagon-card`, `/loco-card/{id}`; frontend `lib/scales-insights.ts` (+test), `_components/{viz,Overview,cards}.tsx`, sahifalar `train/[id]`, `wagon/[key]`, `loco/[id]`, asosiy sahifa qayta tuzildi, jadvallar havolali; e2e `t12` (+30 tekshiruv), `b08_scales_cards.mjs`.
 - Tested: `test_scales_insights.py` + `test_scales.py` 16; backend toza bazada 597 o'tdi (+1 eski xato); tsc/eslint 0 xato, 89 unit, build OK; jonli API t12: 57 PASS (faqat «kollektor jim» FAIL: doimiy vazifa yo'q); Edge b07 11/11, b08 11/11 (telefon kengligi ham); skrinshotlar ko'rib chiqildi; ZZTEST qoldig'i 0.
 - Keyingi qadam: `install_task.ps1`; vagonlarni ОС ga bog'lash.
+
+## 2026-11-17 (kech): Karta qayta dizayn va pozitsiya tarixi
+- Task: karta sahifasini Весовая kabi kuchli qilish; «qaysi vagon qachon qayerda edi, qaysi tortuv agregat bilan, nima qilgan».
+- O'zgardi: yangi `0036_position_history`, `models/position_history.py`, `services/position_history.py` (yozish qoidasi, Wialon/GTK kancalari, backfill), `WialonClient.fetch_tracks`, CLI `wialon-track-backfill`, `services/asset_history.py` + `GET /map/history`, retention; frontend `lib/map-history.ts` (+test), `TrackMap.tsx`, sahifa `map/history/[key]`, `map/page.tsx` qayta tuzildi (KPI, filtrlar, Составы/Единицы/Сводка, inspektor); e2e `t13`, `b09`, `b05` yangi interfeysga moslandi.
+- Tested: backend toza bazada 601 o'tdi (+1 eski xato), `test_asset_history.py` 4; tsc/eslint 0 xato, 97 unit, build OK; jonli: t11 44 PASS, t13 25 PASS, Edge b05 11/11, b06 11/11, b09 12/12; Wialon backfill 87 birlik/206 704 nuqta; ZZTEST qoldig'i 0.
+- Topildi/tuzatildi: sinxron testi commit sonini sanaydi (kanca commit qilmasligi kerak); telefonda grid elementi `min-w-0`siz kengayardi; «trek boshlanishi» global minimum edi (endi shu aktivlar bo'yicha).
+- Backup: `backups/pre_poshist_20261117_2055.dump`.
+
+## 2026-11-17 (kech): Xaritada ikonkalar va masshtabdagi poyezdlar
+- Task: nuqtalar o'rniga elektrovoz/teplovoz/vagon ikonkalari; poyezd aniq ketma-ketlik va kerakli o'lchamda.
+- O'zgardi: `services/train_formation.py` + `schemas/train_formation.py` + `GET /map/trains`; frontend `lib/map-icons.ts` (+test), `OsmAssetMap.tsx` qayta yozildi (ikonkalar, poyezd ikonkasi, zoom ≥16 masshtabdagi formatsiya, tanlash/popup), `map/page.tsx` (legenda, poyezdlar), e2e `t14`, `b10`, `b05` moslandi.
+- Tested: backend toza bazada 606 o'tdi (+1 eski xato), `test_train_formation.py` 5; tsc/eslint 0 xato, 105 unit, build OK; jonli: t14 16 PASS, Edge b05 11/11 (2 marta), b06 11/11, b09 12/12, b10 8/8; ZZTEST qoldig'i 0; skrinshotlar ko'rildi (poyezd temir yo'l izi bo'ylab).
+- Topildi/tuzatildi: tanlash har safar hamma markerni qayta chizardi va popup bilan poyga holati bergan (`getRootNode`); endi faqat ikkita ikonka almashadi.

@@ -38,16 +38,18 @@ async function session(role, viewport = { width: 1440, height: 900 }) {
   const body = () => page.locator("body").innerText()
   await check("the map page shows the summary (on the map / Wialon / GTK / without coordinates)", async () => {
     const t = await body()
-    assert.match(t, /На карте:\s*\d+\s*из\s*\d+/)
-    assert.match(t, /Wialon:\s*\d+/)
+    assert.match(t, /на карте\s*\d+\s*из\s*\d+/i)
+    assert.match(t, /Wialon \(GPS\):\s*\d+/)
     assert.match(t, /GTK:\s*\d+/)
-    assert.match(t, /В составе:\s*\d+/)
-    assert.match(t, /Без координат:\s*\d+/)
+    assert.match(t, /Состав \(по локомотиву\):\s*\d+/)
+    assert.match(t, /без координат\s*\d+/i)
   })
   await check("the list shows assets with their source and age", async () => {
+    await page.getByRole("tab", { name: /Единицы/ }).click()
+    await page.waitForTimeout(500)
     const items = page.locator("aside ul li button")
     assert.ok((await items.count()) > 20, "list too short")
-    assert.match(await items.first().innerText(), /Wialon|GTK/)
+    assert.match(await items.first().innerText(), /Wialon|GTK|Состав|составе/)
   })
   await check("without a Google key the OpenStreetMap map (Leaflet) is shown with all points as clusters/markers", async () => {
     await page.waitForSelector(".leaflet-container", { timeout: 15000 })
@@ -62,10 +64,11 @@ async function session(role, viewport = { width: 1440, height: 900 }) {
     await page.waitForTimeout(600)
     const t = (await page.locator(".leaflet-popup-content").first().textContent()) ?? ""
     assert.match(t, /Источник: (Wialon|GTK)/)
-    assert.ok(await page.locator(".leaflet-popup a", { hasText: "Открыть в Google Maps" }).first().isVisible())
+    assert.ok(await page.locator(".leaflet-popup a", { hasText: "Google Maps" }).first().isVisible())
+    assert.ok(await page.locator(".leaflet-popup a", { hasText: "Где был и с кем" }).first().isVisible())
   })
   await check("wagons ride with their locomotive: the train filter lists wagons with a train caption, and the popup names the locomotive", async () => {
-    await page.getByLabel("Источник").selectOption("train")
+    await page.getByRole("button", { name: /Состав \(по локомотиву\):/ }).click()
     await page.waitForTimeout(500)
     const texts = await page.locator("aside ul li button").allInnerTexts()
     assert.ok(texts.length > 0 && texts.every((t) => t.includes("В составе")), "not all train captions")
@@ -73,17 +76,19 @@ async function session(role, viewport = { width: 1440, height: 900 }) {
     await page.waitForSelector(".leaflet-popup-content a", { timeout: 15000 })
     await page.waitForTimeout(600)
     const popup = (await page.locator(".leaflet-popup-content").first().textContent()) ?? ""
-    assert.match(popup, /В составе № .+ · локомотив \S+/)
-    assert.match(popup, /Источник: Состав \(по локомотиву\)/)
+    assert.match(popup, /\d+ вагонов · \d+ м/)  // the train caption: how many cars, how long it is
+    assert.match(popup, /\d+-й от локомотива/)  // which car of the formation was chosen
+    assert.match(await page.locator("[data-testid=inspector]").innerText(), /Состав \(по локомотиву\)/)
   })
   await check("the source filter narrows the list to GTK only", async () => {
-    await page.getByLabel("Источник").selectOption("gtk")
+    await page.getByRole("button", { name: "Все", exact: true }).click()
+    await page.getByRole("button", { name: /GTK:/ }).click()
     await page.waitForTimeout(500)
     const texts = await page.locator("aside ul li button").allInnerTexts()
     assert.ok(texts.length > 0 && texts.every((t) => t.includes("GTK")), "not all GTK")
   })
   await check("search narrows the list", async () => {
-    await page.getByLabel("Источник").selectOption("")
+    await page.getByRole("button", { name: "Все", exact: true }).click()
     await page.getByLabel("Поиск").fill("zzzz-no-such-asset")
     await page.waitForTimeout(400)
     assert.match(await body(), /Нет единиц с координатами/)
@@ -101,7 +106,7 @@ async function session(role, viewport = { width: 1440, height: 900 }) {
   await page.waitForTimeout(2000)
   await check("a master (empty ZZTEST section) sees an empty map, not the other sections", async () => {
     const t = await page.locator("body").innerText()
-    assert.match(t, /На карте:\s*0\s*из\s*0/)
+    assert.match(t, /на карте\s*0\s*из\s*0/i)
   })
   await context.close()
 }

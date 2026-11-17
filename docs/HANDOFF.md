@@ -1338,3 +1338,15 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 - Verified: jonli API (57 PASS), Edge `b07` 11/11 va `b08` 11/11; yangi sahifalar: `/dashboard/scales/{train,wagon,loco}/...`. Tafsilot: `docs/SCALES_ARCHITECTURE.md` 6b.
 - Next task: `install_task.ps1` (kollektor doimiy); vagon/lokomotivlarni ОС ga bog'lash, shunda kartochkalarda ТО va naryadlar to'liq chiqadi; keyin ТО intervaliga tonna/reys (qaror).
 - NOT TESTED: Task Scheduler; yirik yillik davr (365 kun) da vagon kartochkasi tezligi; ОС bilan bog'langan vagon kartochkasida ТО/naryad bloklari jonli ma'lumot bilan (hozir jonli bazada bog'langan vagonlarning ТО rejasi/naryadi yo'q).
+
+### Karta: qayta dizayn va tarix (2026-11-17, kech)
+- Verified: jonli `/map/history` (t13 25 PASS), Edge b05/b06/b09 (11, 11, 12). Migratsiya `0036_position_history` jonli; Wialon'dan 7 kunlik trek yuklangan (87 birlik, 206 704 nuqta). Backup `backups/pre_poshist_20261117_2055.dump`.
+- Cheklov (aniq): vagon qayerdaligi = lokomotivi treki; GTK tarkib tarixi 04.11.2026 dan; GTK vagon koordinatalari faqat sinxron paytidan. Tarix 7 kundan eskisi uchun: `docker compose exec -T backend python -m app.cli wialon-track-backfill --days 30` (60 gacha).
+- Next task: ixtiyoriy 30 kunlik backfill; bog'lanmagan 401 vagonni GTK ga bog'lash (ularning tarixi bo'sh qoladi); Google kaliti.
+- NOT TESTED: haqiqiy Google xaritasida trek (faqat OpenStreetMap); 180 kunlik retention jobi (kod testlanmagan, kunlik ishga tushadi); GTK sinxronidan keyingi `record_gtk` jonli (GTK sinxron yoqilgan bo'lsa) .
+
+### Xarita: ikonkalar va masshtabdagi poyezdlar (2026-11-17, kech)
+- Verified: jonli `/map/trains` (t14 16 PASS), Edge b05/b06/b09/b10. Migratsiya yo'q.
+- Cheklov: o'lchamlar tipik (katalog) qiymatlar; vagon yo'li lokomotiv treki bo'yicha (trek yo'q lokomotivda yo'nalish shartli); GTK vagonlari «yuklangan/bo'sh» ma'lumoti yo'q (`is_loaded` hammasi false), shuning uchun vagon rangi bir xil.
+- Next task: vagon turi/modeli bo'yicha aniq o'lchamlarni ma'lumotnomaga kiritish (ixtiyoriy); Google xaritasi uchun ham xuddi shu chizma (kalit to'g'rilangach).
+- NOT TESTED: Google xaritasida ikonkalar (kalit rad etiladi); telefonda masshtabdagi poyezd (faqat sahifa yon siljimasligi tekshirilgan).

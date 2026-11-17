@@ -658,6 +658,28 @@ async def _wialon_probe() -> int:
     return 0
 
 
+async def _wialon_track_backfill(days: int) -> int:
+    from app.services import position_history
+
+    if settings.wialon_host is None or settings.wialon_token is None:
+        print("Wialon is not configured", file=sys.stderr)
+        return 2
+    client = WialonClient(settings.wialon_host, settings.wialon_token.get_secret_value())
+    try:
+        async with SessionFactory() as session:
+            stats = await position_history.backfill_wialon_tracks(
+                session, client, days=max(1, min(days, 60)),
+                progress=lambda unit, raw, kept: print(f"unit {unit}: {raw} messages -> {kept} stored points", flush=True),
+            )
+        print(json.dumps(stats))
+        return 0
+    except WialonClientError as exc:
+        print(f"Wialon error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        await engine.dispose()
+
+
 async def _scales_rematch() -> int:
     from app.services import scales as scales_service
 
@@ -681,6 +703,11 @@ def main() -> int:
         help="Idempotently recalculate plans for operational locomotive and diesel assets",
     )
     subparsers.add_parser("wialon-probe", help="Read safe Wialon unit diagnostics")
+    track_parser = subparsers.add_parser(
+        "wialon-track-backfill",
+        help="Load the past GPS track of every linked Wialon unit into the position history (idempotent; a day at a time, thinned)",
+    )
+    track_parser.add_argument("--days", type=int, default=7)
     subparsers.add_parser(
         "scales-rematch",
         help="Recompute every derived weighing-scale column from the raw rows, GTK history and corrections (idempotent)",
@@ -799,6 +826,8 @@ def main() -> int:
         return asyncio.run(_recalculate_plans())
     if arguments.command == "wialon-probe":
         return asyncio.run(_wialon_probe())
+    if arguments.command == "wialon-track-backfill":
+        return asyncio.run(_wialon_track_backfill(arguments.days))
     if arguments.command == "scales-rematch":
         return asyncio.run(_scales_rematch())
     if arguments.command == "wagon-mileage-run":

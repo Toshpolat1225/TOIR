@@ -41,6 +41,7 @@ _OPERATIONAL_TABLES = {
     "gtk_wagon_mileage_log",
     "gtk_locomotive_mileage_checkpoints",
     # weighing-scale feed (re-derived on every pull; operator corrections `scale_corrections` ARE audited)
+    "asset_position_history",  # movement-thinned track rows written by the syncs
     "scale_posts",
     "scale_cargo",
     "scale_trains",
@@ -427,12 +428,27 @@ def _discard_pending_audit_changes(session: Session) -> None:
     session.info.pop(_AUDIT_PENDING, None)
 
 
+async def delete_expired_positions() -> int:
+    from sqlalchemy import delete
+
+    from app.models.position_history import AssetPositionHistory
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.position_history_retention_days)
+    async with SessionFactory() as session:
+        result = await session.execute(delete(AssetPositionHistory).where(AssetPositionHistory.at < cutoff))
+        await session.commit()
+        return result.rowcount or 0
+
+
 async def run_audit_retention() -> None:
     while True:
         try:
             deleted = await delete_expired_audit_logs()
             if deleted:
                 logger.info("Audit retention removed %s expired events", deleted)
+            purged = await delete_expired_positions()
+            if purged:
+                logger.info("Position history retention removed %s old points", purged)
         except SQLAlchemyError as exc:
             logger.error("Audit retention cleanup failed (%s)", type(exc).__name__)
         await asyncio.sleep(24 * 60 * 60)

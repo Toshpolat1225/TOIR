@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from enum import IntFlag
 from typing import Any
@@ -424,6 +424,57 @@ class WialonClient:
 
     async def fetch_diagnostic_items(self) -> list[dict[str, Any]]:
         return await self._fetch_items(retry_expired_session=False)
+
+    async def fetch_tracks(self, unit_ids: list[str], t_from: datetime, t_to: datetime, *, chunk_hours: int = 24):
+        """Past positions of units, one login for all of them: yields (unit_id, [(time, lat, lon, speed)]) or (unit_id, None) when a unit failed.
+
+        Wialon `messages/load_interval` returns every message of the interval; a unit that reports every few seconds is many rows,
+        so the interval is asked in `chunk_hours` pieces and the caller thins the result.
+        """
+        async with httpx.AsyncClient(base_url=self._host, timeout=httpx.Timeout(max(self._timeout_seconds, 60.0)), transport=self._transport) as client:
+            eid = await self._login(client)
+            try:
+                for unit_id in unit_ids:
+                    try:
+                        fixes: list[tuple[datetime, float, float, float | None]] = []
+                        cursor = t_from
+                        while cursor < t_to:
+                            end = min(cursor + timedelta(hours=chunk_hours), t_to)
+                            payload = await self._request(
+                                client, "messages/load_interval",
+                                {"itemId": int(unit_id), "timeFrom": int(cursor.timestamp()), "timeTo": int(end.timestamp()), "flags": 0, "flagsMask": 65280, "loadCount": 100000},
+                                session_id=eid,
+                            )
+                            fixes.extend(parse_track_messages(payload))
+                            cursor = end
+                        yield unit_id, fixes
+                    except (WialonClientError, ValueError):
+                        logger.warning("Wialon track of unit %s failed", unit_id)
+                        yield unit_id, None
+            finally:
+                try:
+                    await self._request(client, "core/logout", {}, session_id=eid)
+                except WialonClientError:
+                    logger.warning("Wialon logout failed")
+
+
+def parse_track_messages(payload: object) -> list[tuple[datetime, float, float, float | None]]:
+    """`{"messages": [{"t": unix, "pos": {"y": lat, "x": lon, "s": speed}}]}`; messages without a position are skipped."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("messages"), list):
+        return []
+    out: list[tuple[datetime, float, float, float | None]] = []
+    for message in payload["messages"]:
+        if not isinstance(message, dict) or not isinstance(message.get("pos"), dict):
+            continue
+        pos = message["pos"]
+        try:
+            at = datetime.fromtimestamp(int(message["t"]), tz=timezone.utc)
+            lat, lon = float(pos["y"]), float(pos["x"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        speed = pos.get("s")
+        out.append((at, lat, lon, float(speed) if isinstance(speed, (int, float)) else None))
+    return out
 
 
 def _error_message(service: str, payload: object) -> WialonClientError | None:
