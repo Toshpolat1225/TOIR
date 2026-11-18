@@ -21,6 +21,8 @@ type Props = {
   selectedId?: string | null
   onSelect?: (id: string) => void
   onError: (message: string) => void
+  /** Called (after the user or a fit moved the view) with the visible bounds [[south, west], [north, east]]. */
+  onViewChange?: (bounds: [[number, number], [number, number]]) => void
   testId: string
   ariaLabel: string
   /** The view is fitted to the data when this key changes (and once at the start). */
@@ -29,16 +31,18 @@ type Props = {
 }
 
 /** A small OpenStreetMap pane: coloured fix markers and/or polylines. Used by the GPS comparison page and the detail page. */
-export function GpsMap({ markers = [], lines = [], selectedId = null, onSelect, onError, testId, ariaLabel, fitKey = "", className = "" }: Props) {
+export function GpsMap({ markers = [], lines = [], selectedId = null, onSelect, onError, onViewChange, testId, ariaLabel, fitKey = "", className = "" }: Props) {
   const container = useRef<HTMLDivElement | null>(null)
   const lib = useRef<typeof Leaflet | null>(null)
   const map = useRef<Leaflet.Map | null>(null)
   const layer = useRef<Leaflet.LayerGroup | null>(null)
   const fitted = useRef<string | number | null>(null)
   const pick = useRef(onSelect)
+  const viewChange = useRef(onViewChange)
   const selectedRef = useRef(selectedId)
   const [ready, setReady] = useState(false)
   pick.current = onSelect
+  viewChange.current = onViewChange
   selectedRef.current = selectedId
 
   useEffect(() => {
@@ -53,6 +57,10 @@ export function GpsMap({ markers = [], lines = [], selectedId = null, onSelect, 
           maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
         }).addTo(m)
         layer.current = L.layerGroup().addTo(m)
+        m.on("moveend", () => {
+          const b = m.getBounds()
+          viewChange.current?.([[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]])
+        })
         map.current = m
         setReady(true)
       } catch (error) {

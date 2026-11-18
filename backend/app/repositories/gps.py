@@ -33,7 +33,7 @@ async def list_loco_positions(
     statement = (
         select(
             FixedAsset.id.label("asset_id"), FixedAsset.inv_number, fixed_asset_name_expression().label("name"), FixedAsset.asset_type,
-            type_name.label("asset_type_name"), AssetModel.name.label("model_name"), FixedAsset.section_id, Section.name.label("section_name"),
+            type_name.label("asset_type_name"), AssetModel.name.label("model_name"), FixedAsset.model_id.label("model_id"), FixedAsset.section_id, Section.name.label("section_name"),
             wl.id.label("wialon_link_id"), gl.id.label("gtk_link_id"), GtkGpsUnit.gtk_id.label("gtk_id"),
             WialonUnitRecord.lat.label("w_lat"), WialonUnitRecord.lon.label("w_lon"), WialonUnitRecord.speed.label("w_speed"),
             func.coalesce(WialonUnitRecord.position_at, WialonUnitRecord.last_message_at).label("w_at"),
@@ -107,7 +107,7 @@ async def feed_health(db: AsyncSession) -> dict[str, Any]:
     # a run that has not finished yet (placeholder status) is not a result: show the last FINISHED one and say that one is running
     run = (await db.execute(select(GtkGpsRun).where(GtkGpsRun.finished_at.is_not(None)).order_by(GtkGpsRun.started_at.desc()).limit(1))).scalar_one_or_none()
     running = (
-        await db.execute(select(func.count()).select_from(GtkGpsRun).where(GtkGpsRun.finished_at.is_(None), GtkGpsRun.started_at > func.now() - text("interval '3 hours'")))
+        await db.execute(select(func.count()).select_from(GtkGpsRun).where(GtkGpsRun.finished_at.is_(None), func.coalesce(GtkGpsRun.heartbeat_at, GtkGpsRun.started_at) > func.now() - text("interval '15 minutes'")))
     ).scalar_one() > 0
     units_synced = (await db.execute(select(func.max(GtkGpsUnit.last_synced_at)))).scalar_one()
     wialon_synced = (await db.execute(select(func.max(WialonUnitRecord.last_synced_at)))).scalar_one()

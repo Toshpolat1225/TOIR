@@ -5,8 +5,10 @@ The track points themselves live in `asset_position_history` with source = 'gtk_
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, Index, Integer, Numeric, Text, func, text
-from sqlalchemy.dialects.postgresql import JSONB
+import uuid
+
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, Numeric, Text, UniqueConstraint, func, text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -71,3 +73,70 @@ class GtkGpsRun(Base):
     tracks_failed: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     points_stored: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     error_code: Mapped[str | None] = mapped_column(Text)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # bumped by every committed batch: a run without one for a while is dead
+
+
+class GpsDayAssessment(Base):
+    """Per locomotive and local day: both trackers' distances side by side, the cause of a difference, the fused distance and the confidence."""
+
+    __tablename__ = "gps_day_assessment"
+    __table_args__ = (Index("ix_gps_day_assessment_day", "day"),)
+
+    asset_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("fixed_assets.id", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    wialon_m: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    wialon_points: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    gtk_m: Mapped[int | None] = mapped_column(Integer)
+    gtk_points: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    gtk_raw_points: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    gtk_final: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    gtk_collected: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    verdict: Mapped[str] = mapped_column(Text, nullable=False)
+    ratio: Mapped[Decimal | None] = mapped_column(Numeric(8, 3))
+    diff_m: Mapped[int | None] = mapped_column(Integer)
+    fused_m: Mapped[int | None] = mapped_column(Integer)
+    unknown_gap_m: Mapped[int | None] = mapped_column(Integer)
+    wialon_cov_h: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    gtk_cov_h: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    wialon_gap_h: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    gtk_gap_h: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    cause: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[Decimal | None] = mapped_column(Numeric(3, 2))
+    idle_events: Mapped[int | None] = mapped_column(Integer)
+    odo_m: Mapped[int | None] = mapped_column(Integer)  # Wialon odometer delta over the day (interpolated at the day edges)
+    odo_agrees: Mapped[bool | None] = mapped_column(Boolean)  # the odometer corroborates the Wialon track (within 15%)
+    is_final: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    algorithm_version: Mapped[str] = mapped_column(Text, nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class GpsWagonSegment(Base):
+    """A wagon's stay behind one locomotive (GTK membership) with the four distance candidates and the selected one (never summed or averaged)."""
+
+    __tablename__ = "gps_wagon_segments"
+    __table_args__ = (
+        UniqueConstraint("carriage_gtk_id", "train_gtk_id", "period_from", name="uq_gps_wagon_segments_key"),
+        Index("ix_gps_wagon_segments_wagon", "wagon_asset_id", "period_from"),
+        Index("ix_gps_wagon_segments_loco", "loco_asset_id", "period_from"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    wagon_asset_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("fixed_assets.id", ondelete="SET NULL"))
+    carriage_gtk_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    train_gtk_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    loco_asset_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("fixed_assets.id", ondelete="SET NULL"))
+    loco_gtk_id: Mapped[int | None] = mapped_column(Integer)
+    period_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    period_to: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    is_open: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    km_odometer: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
+    km_wialon: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
+    km_gtk: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
+    km_fused: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
+    selected_km: Mapped[Decimal | None] = mapped_column(Numeric(10, 3))
+    basis: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[str] = mapped_column(Text, nullable=False)
+    coverage: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
+    flags: Mapped[list | None] = mapped_column(JSONB)
+    algorithm_version: Mapped[str] = mapped_column(Text, nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

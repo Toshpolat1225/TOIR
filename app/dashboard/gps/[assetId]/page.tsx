@@ -8,10 +8,11 @@ import {
   DISTANCE_HINT, DISTANCE_LABEL, POSITION_HINT, POSITION_LABEL, ageMinText, distText, kmText, positionColor, positionSentence, ratioText, signedDistText, speedText,
   timeText, dayShort, type GpsAssetDetail, type GpsFix, type GpsTrackPoint, type PositionVerdict,
 } from "@/lib/gps-view"
+import { CAUSE_HINT, confidenceText, confidenceTone, filterTrackToDay, fusedText, hoursText, isCause, okShareText, sumGap, worstDay } from "@/lib/gps-analytics"
 import { Empty, Panel, Stat } from "../../scales/_components/viz"
 import { ArrowLeft, Loader2 } from "@/components/ui/icons"
 import { GpsMap, type GpsLine, type GpsMarker } from "../_components/GpsMap"
-import { Chip, DailyKmChart, DistanceChip, GTK_COLOR, PositionChip, SourceLegend, WIALON_COLOR } from "../_components/parts"
+import { CauseChip, Chip, DailyKmChart, DistanceChip, GTK_COLOR, HealthChip, PositionChip, SourceLegend, WIALON_COLOR } from "../_components/parts"
 
 const DAY_OPTIONS = [1, 3, 7, 14, 31]
 const TRACK_OPTIONS = [1, 2, 3, 7, 14]
@@ -26,6 +27,7 @@ export default function GpsDetailPage() {
   const [data, setData] = useState<GpsAssetDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mapError, setMapError] = useState<string | null>(null)
+  const [selectedDay, setSelectedDay] = useState<string | null>(null) // a local day picked in the table: the three maps show only that day
 
   useEffect(() => {
     let cancelled = false
@@ -37,12 +39,15 @@ export default function GpsDetailPage() {
   }, [assetId, days, trackDays])
 
   const row = data?.row
-  const wialonLine = useMemo<GpsLine[]>(() => (data ? [{ id: "w", points: toLine(data.wialon_track), color: WIALON_COLOR, ends: true, label: "Wialon" }] : []), [data])
-  const gtkLine = useMemo<GpsLine[]>(() => (data ? [{ id: "g", points: toLine(data.gtk_track), color: GTK_COLOR, ends: true, label: "GTK" }] : []), [data])
+  const offsetHours = data?.feed.utc_offset_hours ?? 5
+  const wialonPts = useMemo(() => (data ? (selectedDay ? filterTrackToDay(data.wialon_track, selectedDay, offsetHours) : data.wialon_track) : []), [data, selectedDay, offsetHours])
+  const gtkPts = useMemo(() => (data ? (selectedDay ? filterTrackToDay(data.gtk_track, selectedDay, offsetHours) : data.gtk_track) : []), [data, selectedDay, offsetHours])
+  const wialonLine = useMemo<GpsLine[]>(() => (data ? [{ id: "w", points: toLine(wialonPts), color: WIALON_COLOR, ends: true, label: "Wialon" }] : []), [data, wialonPts])
+  const gtkLine = useMemo<GpsLine[]>(() => (data ? [{ id: "g", points: toLine(gtkPts), color: GTK_COLOR, ends: true, label: "GTK" }] : []), [data, gtkPts])
   const overlayLines = useMemo<GpsLine[]>(() => (data ? [
-    { id: "w", points: toLine(data.wialon_track), color: WIALON_COLOR, weight: 5, label: "Wialon" },
-    { id: "g", points: toLine(data.gtk_track), color: GTK_COLOR, weight: 3, label: "GTK" },
-  ] : []), [data])
+    { id: "w", points: toLine(wialonPts), color: WIALON_COLOR, weight: 5, label: "Wialon" },
+    { id: "g", points: toLine(gtkPts), color: GTK_COLOR, weight: 3, label: "GTK" },
+  ] : []), [data, wialonPts, gtkPts])
   const fixMarkers = useMemo<GpsMarker[]>(() => {
     if (!row) return []
     const out: GpsMarker[] = []
@@ -62,11 +67,14 @@ export default function GpsDetailPage() {
   if (!data || !row) return <div className="p-6 text-sm text-gray-500"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Сравниваю трекеры…</div>
 
   const verdict = row.position.verdict as PositionVerdict
-  const totals = row.days.reduce((a, d) => ({ w: a.w + (d.wialon_m ?? 0), g: a.g + (d.gtk_m ?? 0), u: a.u + (d.unified_m ?? 0) }), { w: 0, g: 0, u: 0 })
+  const totals = row.days.reduce((a, d) => ({ w: a.w + (d.wialon_m ?? 0), g: a.g + (d.gtk_m ?? 0), u: a.u + (d.fused_m ?? d.unified_m ?? 0) }), { w: 0, g: 0, u: 0 })
+  const gap = sumGap(row.days)
+  const worst = worstDay(row.days)
+  const dayNote = selectedDay ? ` · ${dayShort(selectedDay)}` : ""
   const maps: { key: string; title: string; note: string; markers: GpsMarker[]; lines: GpsLine[]; testId: string }[] = [
-    { key: "w", title: "Трек Wialon", note: `${data.wialon_track.length} сохранённых точек`, markers: fixMarkers.filter((m) => m.id === "fix-w"), lines: wialonLine, testId: "gps-detail-map-wialon" },
-    { key: "g", title: "Трек GTK", note: `${data.gtk_track.length} сохранённых точек`, markers: fixMarkers.filter((m) => m.id === "fix-g"), lines: gtkLine, testId: "gps-detail-map-gtk" },
-    { key: "t", title: "Карта TOIR (единая): оба трека", note: "синий — Wialon, оранжевый — GTK; кружки — живые позиции", markers: fixMarkers, lines: overlayLines, testId: "gps-detail-map-toir" },
+    { key: "w", title: `Трек Wialon${dayNote}`, note: `${wialonPts.length} сохранённых точек`, markers: fixMarkers.filter((m) => m.id === "fix-w"), lines: wialonLine, testId: "gps-detail-map-wialon" },
+    { key: "g", title: `Трек GTK${dayNote}`, note: `${gtkPts.length} сохранённых точек`, markers: fixMarkers.filter((m) => m.id === "fix-g"), lines: gtkLine, testId: "gps-detail-map-gtk" },
+    { key: "t", title: `Карта TOIR (единая): оба трека${dayNote}`, note: "синий — Wialon, оранжевый — GTK; кружки — живые позиции", markers: fixMarkers, lines: overlayLines, testId: "gps-detail-map-toir" },
   ]
 
   return (
@@ -94,7 +102,8 @@ export default function GpsDetailPage() {
           <div className="min-w-0">
             <div className="text-xs uppercase tracking-wide text-sky-100/70">{row.asset_type_name ?? "Локомотив"}{row.model_name ? ` · ${row.model_name}` : ""}{row.section_name ? ` · ${row.section_name}` : ""}</div>
             <h1 className="truncate text-2xl font-bold sm:text-3xl">{row.inv_number} · {row.name}</h1>
-            <div className="mt-2 flex flex-wrap items-center gap-2"><PositionChip verdict={verdict} /><span className="text-sm text-sky-100/80">{POSITION_HINT[verdict]}</span></div>
+            <div className="mt-2 flex flex-wrap items-center gap-2"><PositionChip verdict={verdict} /><span data-testid="gps-detail-health"><HealthChip health={row.health?.health_class} /></span><span className="text-sm text-sky-100/80">{row.explanation ?? POSITION_HINT[verdict]}</span></div>
+            {row.health && <p className="mt-1 text-xs text-sky-100/70">Трекер GTK за окно: {okShareText(row.health)}{row.health.km_lost_m > 0 ? ` · потеряно ${kmText(row.health.km_lost_m)}` : ""}</p>}
           </div>
           <div className="flex shrink-0 flex-wrap gap-2 text-sm">
             <Link href={`/dashboard/map/history/${row.asset_id}`} className="rounded-lg bg-white/10 px-3 py-2 font-medium ring-1 ring-white/20 hover:bg-white/20">Где был и с кем →</Link>
@@ -117,8 +126,8 @@ export default function GpsDetailPage() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label={`Км Wialon · ${days} дн.`} value={kmText(totals.w)} />
         <Stat label={`Км GTK · ${days} дн.`} value={kmText(totals.g)} hint={totals.w > 0 ? `${ratioText(totals.g / totals.w)} от Wialon` : undefined} />
-        <Stat label="Единый пробег" value={kmText(totals.u)} hint="совпало — среднее, провал — полный источник" tone="good" />
-        <Stat label="Проблемных дней" value={`${row.distance_issues} из ${row.days.length}`} tone={row.distance_issues > 0 ? "warn" : "good"} hint="разница или провал одного из трекеров" />
+        <Stat label="Единый пробег" value={fusedText(totals.u, gap)} hint={row.week_confidence != null ? `уверенность: ${confidenceText(row.week_confidence)}` : "единый трек: Wialon + заполнение из GTK"} tone="good" />
+        <Stat label="Проблемных дней" value={`${row.distance_issues} из ${row.days.length}`} tone={row.distance_issues > 0 ? "warn" : "good"} hint={worst ? `хуже всего: ${dayShort(worst.day)}` : "разница или провал одного из трекеров"} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -127,7 +136,7 @@ export default function GpsDetailPage() {
             <header className="mb-2 px-1"><h2 className="text-sm font-semibold text-gray-900 dark:text-white">{m.title}</h2><p className="text-xs text-gray-500 dark:text-gray-400">{m.note}</p></header>
             <div className="h-[42vh] min-h-[300px] min-w-0 overflow-hidden rounded-xl">
               {mapError ? <div className="flex h-full items-center justify-center p-4 text-center text-sm text-amber-800">{`Карта OpenStreetMap недоступна: ${mapError}`}</div>
-                : <GpsMap markers={m.markers} lines={m.lines} onError={setMapError} testId={m.testId} ariaLabel={`${m.title} (OpenStreetMap)`} fitKey={`${assetId}-${trackDays}-${data.track_from}`} />}
+                : <GpsMap markers={m.markers} lines={m.lines} onError={setMapError} testId={m.testId} ariaLabel={`${m.title} (OpenStreetMap)`} fitKey={`${assetId}-${trackDays}-${data.track_from}-${selectedDay ?? "all"}`} />}
             </div>
           </section>
         ))}
@@ -138,27 +147,37 @@ export default function GpsDetailPage() {
         <div className="mt-2"><SourceLegend /></div>
       </Panel>
 
-      <Panel title="День за днём" hint="Новые дни сверху. Точки — сохранённые (с прореживанием); «исходных» — сколько точек вернул GTK.">
+      <Panel title="День за днём" hint="Новые дни сверху. Нажмите на день: три карты покажут только его. Точки — сохранённые (с прореживанием); «исходных» — сколько точек вернул GTK.">
+        {selectedDay && <div className="mb-2 flex items-center gap-2 text-sm"><Chip tone="info">Выбран день {dayShort(selectedDay)}</Chip><button type="button" onClick={() => setSelectedDay(null)} className="text-xs text-blue-600 underline" data-testid="gps-detail-day-clear">показать весь период</button></div>}
         {row.days.length === 0 ? <Empty text="Нет дней в периоде" /> : (
           <div className="-mx-1 overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm" data-testid="gps-detail-days">
+            <table className="w-full min-w-[1180px] text-left text-sm" data-testid="gps-detail-days">
               <thead className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 <tr>
                   <th className="px-2 py-2">День</th><th className="px-2 py-2 text-right">Wialon, км</th><th className="px-2 py-2 text-right">GTK, км</th>
-                  <th className="px-2 py-2 text-right">GTK / Wialon</th><th className="px-2 py-2 text-right">Разница</th><th className="px-2 py-2">Вердикт</th>
-                  <th className="px-2 py-2 text-right">Единый, км</th><th className="px-2 py-2 text-right">Точек W / G</th><th className="px-2 py-2 text-right">Остановок GTK</th>
+                  <th className="px-2 py-2 text-right">GTK / Wialon</th><th className="px-2 py-2 text-right">Разница</th><th className="px-2 py-2">Вердикт</th><th className="px-2 py-2">Причина</th>
+                  <th className="px-2 py-2 text-right">Единый, км ±</th><th className="px-2 py-2 text-right" title="Дельта одометра Wialon за сутки: третий независимый источник">Одометр, км</th><th className="px-2 py-2">Уверенность</th><th className="px-2 py-2 text-right">Покрытие W / G</th><th className="px-2 py-2 text-right">Точек W / G</th><th className="px-2 py-2 text-right">Остановок GTK</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {row.days.map((d) => (
-                  <tr key={d.day} data-testid="gps-detail-day" data-verdict={d.verdict}>
-                    <td className="px-2 py-2 font-medium">{dayShort(d.day)}{!d.gtk_final && d.verdict !== "not_collected" && <span className="ml-2"><Chip tone="info" title="Сутки ещё не закончились (или GTK не закрыт): цифра может вырасти.">день не закрыт</Chip></span>}</td>
+                  <tr key={d.day} data-testid="gps-detail-day" data-verdict={d.verdict} data-cause={d.cause} className={selectedDay === d.day ? "bg-indigo-50 dark:bg-indigo-950/40" : ""}>
+                    <td className="px-2 py-2 font-medium"><button type="button" aria-pressed={selectedDay === d.day} onClick={() => setSelectedDay(selectedDay === d.day ? null : d.day)} className="rounded px-1 text-blue-700 underline-offset-2 hover:underline dark:text-blue-400" data-testid="gps-detail-day-pick" title="Показать этот день на картах">{dayShort(d.day)}</button>{!d.gtk_final && d.verdict !== "not_collected" && <span className="ml-2"><Chip tone="info" title="Сутки ещё не закончились (или GTK не закрыт): цифра может вырасти.">день не закрыт</Chip></span>}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{kmText(d.wialon_m, false)}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{kmText(d.gtk_m, false)}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{ratioText(d.ratio)}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{signedDistText(d.diff_m)}</td>
                     <td className="px-2 py-2"><DistanceChip verdict={d.verdict} /></td>
-                    <td className="px-2 py-2 text-right font-semibold tabular-nums">{kmText(d.unified_m, false)}</td>
+                    <td className="px-2 py-2">
+                      <CauseChip cause={d.cause} />
+                      {(d.explanation || (d.cause && isCause(d.cause) && d.cause !== "ok")) && <div className="mt-0.5 max-w-[260px] text-xs leading-tight text-gray-500 dark:text-gray-400" data-testid="gps-detail-explanation">{d.explanation ?? (isCause(d.cause) ? CAUSE_HINT[d.cause] : "")}</div>}
+                    </td>
+                    <td className="px-2 py-2 text-right font-semibold tabular-nums">{fusedText(d.fused_m ?? d.unified_m, d.unknown_gap_m)}</td>
+                    <td className="px-2 py-2 text-right tabular-nums" data-testid="gps-detail-odo">
+                      {d.odo_m == null ? "—" : <span className="inline-flex items-center justify-end gap-1">{kmText(d.odo_m, false)}{d.odo_agrees === true ? <Chip tone="ok">✓</Chip> : d.odo_agrees === false ? <Chip tone="bad">≠</Chip> : null}</span>}
+                    </td>
+                    <td className="px-2 py-2">{d.confidence == null ? <span className="text-xs text-gray-400">—</span> : <Chip tone={confidenceTone(d.confidence)}>{confidenceText(d.confidence)}</Chip>}</td>
+                    <td className="px-2 py-2 text-right text-xs tabular-nums">{hoursText(d.wialon_cov_h)} / {hoursText(d.gtk_cov_h)}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{d.wialon_points} / {d.gtk_points} <span className="text-xs text-gray-400">({d.gtk_raw_points})</span></td>
                     <td className="px-2 py-2 text-right tabular-nums">{d.idle_events ?? "—"}</td>
                   </tr>

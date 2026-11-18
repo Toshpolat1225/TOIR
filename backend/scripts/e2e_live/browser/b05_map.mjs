@@ -26,10 +26,10 @@ async function session(role, viewport = { width: 1440, height: 900 }) {
 
 {
   const { context, page, errors } = await session("admin")
-  await check("the sidebar has «Карта» right after «Аналитика»", async () => {
+  await check("the sidebar has «Карта» right after «GPS: Wialon ↔ GTK»", async () => {
     const labels = await page.locator("nav a").allInnerTexts()
     const clean = labels.map((t) => t.trim())
-    const i = clean.indexOf("Аналитика")
+    const i = clean.indexOf("GPS: Wialon ↔ GTK")
     assert.ok(i >= 0 && clean[i + 1] === "Карта", clean.join(" | "))
   })
   await page.locator("nav a", { hasText: "Карта" }).first().click()

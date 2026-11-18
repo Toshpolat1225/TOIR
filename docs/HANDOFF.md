@@ -1351,6 +1351,17 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 - Next task: vagon turi/modeli bo'yicha aniq o'lchamlarni ma'lumotnomaga kiritish (ixtiyoriy); Google xaritasi uchun ham xuddi shu chizma (kalit to'g'rilangach).
 - NOT TESTED: Google xaritasida ikonkalar (kalit rad etiladi); telefonda masshtabdagi poyezd (faqat sahifa yon siljimasligi tekshirilgan).
 
+## GPS analitikasi va vagonlar (2026-11-18)
+### Verified
+- Jonli bazada `0039_gps_odometer_heartbeat`; 31 kunlik baholar odometr bilan qayta hisoblangan; yetim sinxron yozuvlari yopilgan.
+- `/gps/*` (t15 73/73), `/dashboard/gps`, `/dashboard/gps/wagons` (b11 17, b12 15 x3), eski xarita testlari yashil; backend 671 o'tdi, 0 xato.
+- GTK GPS Wialon'dan mustaqil; odometr trekni 91% kunda tasdiqlaydi; farq sababi 90% GTK yo'qolishi (DECISIONS #60, #62).
+- Vagon dry-run: tanlangan/ledger mediana 0,981; trek-zaxira dry-run: HELD 13 → 0 (DECISIONS #61, #62).
+### Next task
+- QAROR (foydalanuvchi): vagon probegi trek-zaxirasini yoqish. Yoqish: `.env` ga `WAGON_MILEAGE_TRACK_FALLBACK=true`, so'ng `docker compose up -d --no-deps backend`; keyingi GTK sikli (yoki `wagon-mileage-run`) HELD davrlarni to'ldiradi. Qaytarish: `false`.
+- GTK 14 kunlik tarixi tugagach: `docker compose exec backend python -m app.cli gps-analytics --days 31 --wagons`.
+- NOT TESTED: trek-zaxira yoqilgan jonli holat; operator/management brauzer menyusi; GTK tarixini to'liq yuklash tezligi.
+
 ## GTK GPS + birlashgan xarita (2026-11-17)
 ### Verified
 - Jonli bazada `0037_gtk_gps`; GTK GPS sinxroni ishlaydi (242 birlik, 76 lokomotiv treki); `/gps/*` API, `/dashboard/gps`, `/dashboard/gps/[id]`, xarita verdiktlari: t15 40/40, brauzer b11 17/17 (qarang DECISIONS #58, #59).

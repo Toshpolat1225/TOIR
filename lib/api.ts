@@ -19,9 +19,11 @@ type ApiRequestOptions = {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   body?: unknown;
-  params?: Record<string, string | number | boolean>;
+  params?: Record<string, string | number | boolean | string[]>;
   isPublic?: boolean;
   responseType?: "json" | "blob";
+  /** Lets the caller cancel a request that is no longer wanted (a refresh superseded by a newer one). */
+  signal?: AbortSignal;
   suppress404Log?: boolean;
   suppressNetworkLog?: boolean;
 };
@@ -269,12 +271,14 @@ function formatErrorDetail(detail: unknown, status: number): string {
 }
 
 async function request<T>(options: ApiRequestOptions): Promise<T> {
-  const { method, path, body, params, isPublic = false, responseType = "json", suppress404Log = false, suppressNetworkLog = false } = options;
+  const { method, path, body, params, isPublic = false, responseType = "json", suppress404Log = false, suppressNetworkLog = false, signal } = options;
 
   const url = new URL(`${apiBaseUrl()}${path}`);
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
+      if (Array.isArray(value)) {
+        for (const item of value) url.searchParams.append(key, String(item)); // a repeated key: ?verdict=a&verdict=b
+      } else if (value !== undefined && value !== null) {
         url.searchParams.append(key, String(value));
       }
     });
@@ -300,6 +304,7 @@ async function request<T>(options: ApiRequestOptions): Promise<T> {
       headers,
       credentials: "include",
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
     });
 
     if (!response.ok) {
@@ -337,6 +342,7 @@ async function request<T>(options: ApiRequestOptions): Promise<T> {
 
     return (responseType === "blob" ? await response.blob() : await response.json()) as T;
   } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error; // cancelled on purpose: not an API failure
     const isSuppressed404 = suppress404Log && error instanceof ApiHttpError && error.status === 404;
     const isSuppressedNetworkError = suppressNetworkLog && error instanceof TypeError;
     if (!isSuppressed404 && !isSuppressedNetworkError) {
@@ -1860,17 +1866,31 @@ export type AssetMapResponse = {
 };
 
 const gps = {
-  /** Every locomotive with the Wialon and the GTK tracker side by side (master: own section only). */
-  async overview(
-    params: { days?: number; q?: string; section_id?: string; verdict?: import("./gps-view").PositionVerdict; only_issues?: boolean; limit?: number; offset?: number } = {},
-  ): Promise<import("./gps-view").GpsOverview> {
-    const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== "" && value !== false)) as Record<string, string | number | boolean>;
-    return request<import("./gps-view").GpsOverview>({ method: "GET", path: "/gps/overview", params: clean, suppressNetworkLog: true });
+  /** Every locomotive with the Wialon and the GTK tracker side by side (master: own section only). Arrays become repeated keys. */
+  async overview(params: import("./gps-view").ApiParams = {}, signal?: AbortSignal): Promise<import("./gps-view").GpsOverview> {
+    return request<import("./gps-view").GpsOverview>({ method: "GET", path: "/gps/overview", params: cleanParams(params), suppressNetworkLog: true, signal });
+  },
+  /** The same filtered list as a file (CSV or XLSX). */
+  async exportOverview(params: import("./gps-view").ApiParams = {}, format: "csv" | "xlsx" = "csv"): Promise<Blob> {
+    return request<Blob>({ method: "GET", path: "/gps/overview/export", params: cleanParams({ ...params, format }), responseType: "blob" });
+  },
+  /** The GTK tracker health ranking (worst first by default). */
+  async health(params: import("./gps-view").ApiParams = {}, signal?: AbortSignal): Promise<import("./gps-view").GpsHealthPage> {
+    return request<import("./gps-view").GpsHealthPage>({ method: "GET", path: "/gps/health", params: cleanParams(params), suppressNetworkLog: true, signal });
   },
   /** One locomotive: both live fixes, the day-by-day table and both stored tracks. */
   async asset(assetId: string, params: { days?: number; track_days?: number } = {}): Promise<import("./gps-view").GpsAssetDetail> {
     const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined)) as Record<string, number>;
     return request<import("./gps-view").GpsAssetDetail>({ method: "GET", path: `/gps/assets/${encodeURIComponent(assetId)}`, params: clean, suppressNetworkLog: true });
+  },
+  /** Wagons derived from the train their locomotive pulls (a wagon has no GPS of its own). */
+  async wagons(params: import("./gps-view").ApiParams = {}, signal?: AbortSignal): Promise<import("./gps-view").GpsWagonPage> {
+    return request<import("./gps-view").GpsWagonPage>({ method: "GET", path: "/gps/wagons", params: cleanParams(params), suppressNetworkLog: true, signal });
+  },
+  /** One wagon: its segments with the four distance candidates. `key` is the asset UUID or «gtk-<carriage id>». */
+  async wagon(key: string, params: { days?: number } = {}): Promise<import("./gps-view").GpsWagonDetail> {
+    const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined)) as Record<string, number>;
+    return request<import("./gps-view").GpsWagonDetail>({ method: "GET", path: `/gps/wagons/${encodeURIComponent(key)}`, params: clean, suppressNetworkLog: true });
   },
 };
 
@@ -1950,8 +1970,10 @@ export type WagonLedgerParams = {
   sort_by?: string; sort_dir?: "asc" | "desc"; limit?: number; offset?: number;
 };
 
-function cleanParams(params: Record<string, unknown>): Record<string, string | number | boolean> {
-  return Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== "" && value !== false)) as Record<string, string | number | boolean>;
+function cleanParams(params: Record<string, unknown>): Record<string, string | number | boolean | string[]> {
+  return Object.fromEntries(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== "" && value !== false && !(Array.isArray(value) && value.length === 0)),
+  ) as Record<string, string | number | boolean | string[]>;
 }
 
 const maintenanceSchedule = {

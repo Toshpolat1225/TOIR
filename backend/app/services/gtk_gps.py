@@ -15,7 +15,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -157,12 +157,26 @@ async def _fetch_all(client: GtkGpsClient, jobs: list[tuple[int, date, DayWindow
     return list(await asyncio.gather(*(one(j) for j in jobs)))
 
 
+STALE_RUN = timedelta(minutes=15)  # a run that has not committed a batch for this long is dead (its process was killed)
+
+
+async def close_stale_runs(db: AsyncSession, now: datetime) -> int:
+    """Finish the rows of runs whose process died (a restart, a kill): otherwise they look «running» for ever."""
+    result = await db.execute(
+        update(GtkGpsRun)
+        .where(GtkGpsRun.finished_at.is_(None), func.coalesce(GtkGpsRun.heartbeat_at, GtkGpsRun.started_at) < now - STALE_RUN)
+        .values(finished_at=now, status="failed", error_code="interrupted")
+    )
+    return result.rowcount or 0
+
+
 async def sync_gtk_gps(
     db: AsyncSession, *, now: datetime | None = None, backfill_days: int = 0, progress: Callable[[str], None] | None = None,
 ) -> GtkGpsRun:
     """One cycle. Never raises for a GTK problem: the run row says what happened."""
     now = now or datetime.now(timezone.utc)
-    run = GtkGpsRun(status="failed", started_at=now)
+    await close_stale_runs(db, now)
+    run = GtkGpsRun(status="failed", started_at=now, heartbeat_at=now)
     db.add(run)
     await db.flush()
     offset = settings.gtk_utc_offset_hours
@@ -192,6 +206,7 @@ async def sync_gtk_gps(
                         db, gtk_id=gtk_id, asset_id=targets[gtk_id], day=day, track=track, final=is_final_day(day, now, offset), now=now,
                     )
                     run.tracks_ok += 1
+                run.heartbeat_at = datetime.now(timezone.utc)
                 await db.commit()
                 if progress:
                     progress(f"{min(start + BATCH, len(jobs))}/{len(jobs)} tracks, points={run.points_stored}, failed={run.tracks_failed}")
@@ -207,12 +222,28 @@ async def sync_gtk_gps(
     return run
 
 
+async def _analytics_cycle() -> None:
+    """After a GTK GPS cycle: refresh the per-day assessments and the wagon segments. Never breaks the sync loop."""
+    from app.services import gps_assessment, wagon_gps  # local import: these import this module
+
+    try:
+        async with SessionFactory() as db:
+            await gps_assessment.assess_recent(db)
+        async with SessionFactory() as db:
+            await wagon_gps.compute_segments(db, back_days=3)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        logger.error("GPS analytics refresh failed (%s)", type(exc).__name__)
+
+
 async def run_periodic_gtk_gps_sync() -> None:
     while True:
         if settings.gtk_gps_pull_enabled:
             try:
                 async with SessionFactory() as db:
                     await sync_gtk_gps(db)
+                await _analytics_cycle()
             except asyncio.CancelledError:
                 raise
             except Exception as exc:

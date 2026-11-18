@@ -1629,6 +1629,64 @@ CREATE TABLE gtk_gps_runs (
     tracks_failed integer NOT NULL DEFAULT 0,
     points_stored integer NOT NULL DEFAULT 0,
     error_code text,
+    heartbeat_at timestamptz,
     CONSTRAINT ck_gtk_gps_runs_status CHECK (status IN ('success','partial','failed'))
 );
 CREATE INDEX ix_gtk_gps_runs_started_at ON gtk_gps_runs(started_at);
+
+-- GPS analytics (per-day assessment of both trackers, wagon segments with distance candidates), migration 0038
+CREATE TABLE gps_day_assessment (
+    asset_id uuid NOT NULL REFERENCES fixed_assets(id) ON DELETE CASCADE,
+    day date NOT NULL,
+    wialon_m integer NOT NULL DEFAULT 0,
+    wialon_points integer NOT NULL DEFAULT 0,
+    gtk_m integer,
+    gtk_points integer NOT NULL DEFAULT 0,
+    gtk_raw_points integer NOT NULL DEFAULT 0,
+    gtk_final boolean NOT NULL DEFAULT false,
+    gtk_collected boolean NOT NULL DEFAULT false,
+    verdict text NOT NULL,
+    ratio numeric(8,3),
+    diff_m integer,
+    fused_m integer,
+    unknown_gap_m integer,
+    wialon_cov_h numeric(5,2),
+    gtk_cov_h numeric(5,2),
+    wialon_gap_h numeric(5,2),
+    gtk_gap_h numeric(5,2),
+    cause text NOT NULL,
+    confidence numeric(3,2),
+    idle_events integer,
+    odo_m integer,
+    odo_agrees boolean,
+    is_final boolean NOT NULL DEFAULT false,
+    algorithm_version text NOT NULL,
+    computed_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (asset_id, day)
+);
+CREATE INDEX ix_gps_day_assessment_day ON gps_day_assessment(day);
+CREATE TABLE gps_wagon_segments (
+    id bigserial PRIMARY KEY,
+    wagon_asset_id uuid REFERENCES fixed_assets(id) ON DELETE SET NULL,
+    carriage_gtk_id integer NOT NULL,
+    train_gtk_id integer NOT NULL,
+    loco_asset_id uuid REFERENCES fixed_assets(id) ON DELETE SET NULL,
+    loco_gtk_id integer,
+    period_from timestamptz NOT NULL,
+    period_to timestamptz NOT NULL,
+    is_open boolean NOT NULL DEFAULT false,
+    km_odometer numeric(10,3),
+    km_wialon numeric(10,3),
+    km_gtk numeric(10,3),
+    km_fused numeric(10,3),
+    selected_km numeric(10,3),
+    basis text NOT NULL,
+    confidence text NOT NULL,
+    coverage numeric(4,3),
+    flags jsonb,
+    algorithm_version text NOT NULL,
+    computed_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_gps_wagon_segments_key UNIQUE (carriage_gtk_id, train_gtk_id, period_from)
+);
+CREATE INDEX ix_gps_wagon_segments_wagon ON gps_wagon_segments(wagon_asset_id, period_from);
+CREATE INDEX ix_gps_wagon_segments_loco ON gps_wagon_segments(loco_asset_id, period_from);

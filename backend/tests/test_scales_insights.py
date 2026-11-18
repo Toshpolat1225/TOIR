@@ -28,7 +28,9 @@ async def test_cards_and_overview_join_scales_gtk_assets_and_maintenance():
     base = 700_000 + int(tag[:4], 16) % 90_000
     loco_gtk, train_gtk, cars = base, base, [base + 1, base + 2, base + 3]
     section, loco, w1, w2 = uuid4(), uuid4(), uuid4(), uuid4()
-    start = datetime.now(UTC).replace(second=0, microsecond=0) - timedelta(minutes=40)
+    # the page counts «today» in the LOCAL day (UTC+5): never start before local midnight, or the test depends on the hour it runs at
+    local_midnight = (datetime.now(UTC) + timedelta(hours=5)).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(hours=5)
+    start = max(datetime.now(UTC).replace(second=0, microsecond=0) - timedelta(minutes=40), local_midnight + timedelta(minutes=5))
     yesterday = date.today() - timedelta(days=1)
     async with SessionFactory() as db:
         db.add(Section(id=section, name=f"INS-{tag}"))

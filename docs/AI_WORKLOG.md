@@ -460,3 +460,17 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 
 
 - 2026-11-17: menyu qayta guruhlandi: «GPS: Wialon ↔ GTK» ostida «Карта», «Данные GTK», «Данные Wialon» (ichkarida); brauzerda admin/master uchun ko'rildi.
+
+## 2026-11-18 (tun): GPS analitikasi (sabab, yagona trek, sog'lik), filtrlar/drawer/eksport, vagonlar bo'limi
+- Task: `docs/ROADMAP_GPS_PROBEG_2026-11-18.md` bo'yicha P0–P3, P4 (faqat dry-run), P5 (AI siz: qoidali belgilar va izohlar).
+- O'zgardi: migratsiya `0038_gps_analytics`; `services/{gps_analytics,gps_assessment,wagon_gps,gps_wagons,gps_overview}.py`, `routers/gps.py`, `schemas/gps.py`, `repositories/gps.py`, models, CLI `gps-analytics`, `gtk_gps` sikliga ulandi; frontend `/dashboard/gps` (filtr/facet/drawer/URL/eksport/sog'lik paneli), `/dashboard/gps/wagons`, `/dashboard/gps/wagons/[key]`, menyu (Карта, Данные GTK, Данные Wialon, Вагоны); e2e `t15` (70), `b11`, `b12`; testlar `test_gps_analytics.py`, `test_gps_analytics_pg.py`.
+- Tested: backend 667 o'tdi (+1 eski xato), tsc/eslint 0 xato, 149 unit, build OK; jonli: t15 70/70, t11/t13/t14 85/86 (1 INFO), brauzer b05 11, b09 12, b10 8, b11 17, b12 15; ZZTEST qoldig'i 0. Backup `backups/pre_gpsanalytics_20261118_0033.dump`.
+- Topildi/tuzatildi: faqat GTK bor birlikda haversine GTK'ning o'z masofasidan 19–27% katta chiqdi -> GTK `distance`i; vagon dry-run dastlab ledger oynasi mos emasligi uchun 15× farq ko'rsatdi -> ledger davrlari bo'yicha proporsional; wagons sahifasi telefonda yon aylanardi (`min-w-0`); bash heredoc xatolari -> fayl orqali.
+- Ochiq: ledger'ga ulash (P4 oxirgi qadam) tasdiq kutadi; GTK 30 kunlik tarixi qayta yuklanmoqda (orqa fonda).
+
+## 2026-11-18 (ertalab): aniqlangan kamchiliklarni tuzatish va rejalarni yakunlash
+- Task: GTK mustaqilligini tekshirish; odometrni uchinchi manba qilish; yetim «ishlayotgan» yozuvlar; eski test xatolari; 31 kunlik tezlik; vagon dvigateli (P4) integratsiyasi.
+- O'zgardi: migratsiya `0039_gps_odometer_heartbeat`; `gps_analytics` (odometr, ishonch), `gps_assessment` (odometr yuklash/saqlash/izoh), `gtk_gps` (`close_stale_runs`, heartbeat), `audit_log` (retention), `wagon_gps.make_track_fallback` + `wagon_mileage_run` (bayroq ortida), config/compose; frontend odometr ustuni; testlar (`test_gps_analytics*.py`, `test_gtk_gps_pg.py`, `test_wagon_mileage_run_pg.py` +1, 2 ta eski test tuzatildi); e2e `t15` (73), `b12` (sinxronlash mustahkamlandi).
+- Tested: backend 671 o'tdi, 0 xato; tsc 0 xato; jonli: t15 73/73, b05 11, b09 12, b10 8, b11 17, b12 15 (3 marta ketma-ket); sahifa tezligi 0,33 s (31 kun, facets), sog'liq 0,14 s; yetim run'lar yopildi (0 ta tugamagan). Backup `backups/pre_gps0039_20261118_0803.dump`.
+- Topildi: (1) jonli bazada o'z-o'ziga qo'shilish bilan diagnostika so'rovi ~10 daqiqa yuk berdi -> darhol to'xtatildi (bundan keyin jonli bazada faqat chegaralangan so'rovlar, statement_timeout bilan); (2) uzoq GTK tarix yuklash juda sekin (GTK eski oynalarga sekin javob beradi) — 14 kunga qisqartirib qayta ishga tushirildi.
+- Ochiq: trek-zaxirani yoqish (qaror foydalanuvchida).

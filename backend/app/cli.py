@@ -695,6 +695,25 @@ async def _gtk_gps_backfill(days: int) -> int:
         await engine.dispose()
 
 
+async def _gps_analytics(days: int, wagons: bool, diff: bool) -> int:
+    from app.services import gps_assessment, wagon_gps
+
+    try:
+        async with SessionFactory() as session:
+            if diff:
+                print(json.dumps(await wagon_gps.diff_against_ledger(session, days), ensure_ascii=False, default=str))
+                return 0
+            n = await gps_assessment.assess_range(session, max(1, min(days, 90)))
+            print(json.dumps({"day_assessments": n}), flush=True)
+        if wagons:
+            async with SessionFactory() as session:
+                m = await wagon_gps.compute_segments(session, back_days=max(1, min(days, 60)), progress=lambda line: print(line, flush=True))
+                print(json.dumps({"wagon_segments": m}))
+        return 0
+    finally:
+        await engine.dispose()
+
+
 async def _scales_rematch() -> int:
     from app.services import scales as scales_service
 
@@ -728,6 +747,13 @@ def main() -> int:
         help="Fetch GTK's own GPS tracks for the last N local days of every linked locomotive (read-only towards GTK)",
     )
     gtk_gps_parser.add_argument("--days", type=int, default=30)
+    gps_an_parser = subparsers.add_parser(
+        "gps-analytics",
+        help="Recompute the per-day GPS assessments (and with --wagons the wagon segments) for the last N days; --diff compares wagon segments with the mileage ledger (read-only)",
+    )
+    gps_an_parser.add_argument("--days", type=int, default=31)
+    gps_an_parser.add_argument("--wagons", action="store_true")
+    gps_an_parser.add_argument("--diff", action="store_true")
     subparsers.add_parser(
         "scales-rematch",
         help="Recompute every derived weighing-scale column from the raw rows, GTK history and corrections (idempotent)",
@@ -850,6 +876,8 @@ def main() -> int:
         return asyncio.run(_wialon_track_backfill(arguments.days))
     if arguments.command == "gtk-gps-backfill":
         return asyncio.run(_gtk_gps_backfill(arguments.days))
+    if arguments.command == "gps-analytics":
+        return asyncio.run(_gps_analytics(arguments.days, arguments.wagons, arguments.diff))
     if arguments.command == "scales-rematch":
         return asyncio.run(_scales_rematch())
     if arguments.command == "wagon-mileage-run":

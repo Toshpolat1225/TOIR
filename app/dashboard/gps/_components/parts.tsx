@@ -5,6 +5,11 @@ import {
   DISTANCE_HINT, DISTANCE_LABEL, POSITION_HINT, POSITION_LABEL, POSITION_TONE, DISTANCE_TONE, TONE_CHIP, TONE_COLOR, dayShort, distanceColor, groupedBars,
   kmText, miniBarHeights, positionColor, stackSegments, type DistanceVerdict, type GpsDayRow, type PositionVerdict, type Tone,
 } from "@/lib/gps-view"
+import {
+  BASIS_HINT, CAUSE_HINT, CONFIDENCE_HINT, HEALTH_HINT, FLAG_HINT, basisLabel, basisTone, causeLabel, causeTone, confidenceLabel, flagLabel, flagTone, healthLabel, healthTone,
+  isBasis, isCause, isConfidence, isFlag, isHealth,
+} from "@/lib/gps-analytics"
+import { CONFIDENCE_TONE } from "@/lib/gps-analytics"
 
 export const WIALON_COLOR = "#2563eb"
 export const GTK_COLOR = "#f97316"
@@ -21,13 +26,38 @@ export function DistanceChip({ verdict }: { verdict: DistanceVerdict }) {
   return <Chip tone={DISTANCE_TONE[verdict]} title={DISTANCE_HINT[verdict]}>{DISTANCE_LABEL[verdict]}</Chip>
 }
 
+export function CauseChip({ cause, title }: { cause?: string | null; title?: string }) {
+  if (!cause) return <span className="text-xs text-gray-400">—</span>
+  return <Chip tone={causeTone(cause)} title={title ?? (isCause(cause) ? CAUSE_HINT[cause] : undefined)} testId={`cause-${cause}`}>{causeLabel(cause)}</Chip>
+}
+
+export function HealthChip({ health }: { health?: string | null }) {
+  if (!health) return <span className="text-xs text-gray-400">—</span>
+  return <Chip tone={healthTone(health)} title={isHealth(health) ? HEALTH_HINT[health] : undefined}>{healthLabel(health)}</Chip>
+}
+
+export function ConfidenceChip({ level }: { level?: string | null }) {
+  if (!level || !isConfidence(level)) return <span className="text-xs text-gray-400">—</span>
+  return <Chip tone={CONFIDENCE_TONE[level]} title={CONFIDENCE_HINT[level]}>{confidenceLabel(level)}</Chip>
+}
+
+export function FlagChip({ flag }: { flag: string }) {
+  return <Chip tone={flagTone(flag)} title={isFlag(flag) ? FLAG_HINT[flag] : undefined}>{flagLabel(flag)}</Chip>
+}
+
+export function BasisChip({ basis }: { basis: string }) {
+  return <Chip tone={basisTone(basis)} title={isBasis(basis) ? BASIS_HINT[basis] : undefined}>{basisLabel(basis)}</Chip>
+}
+
 /** One horizontal bar cut into proportional segments; the legend under it is a list of buttons (when `onPick` is given). */
 export function StackBar<K extends string>({
   order, counts, label, color, hint, active, onPick, testIdPrefix,
 }: {
   order: K[]; counts: Record<string, number>; label: (k: K) => string; color: (k: K) => string; hint?: (k: K) => string
-  active?: string | null; onPick?: (k: K) => void; testIdPrefix: string
+  active?: string | string[] | null; onPick?: (k: K) => void; testIdPrefix: string
 }) {
+  const isOn = (k: string) => (Array.isArray(active) ? active.includes(k) : active === k)
+  const anyOn = Array.isArray(active) ? active.length > 0 : !!active
   const W = 600
   const segs = stackSegments(order, counts, W)
   const total = order.reduce((s, k) => s + (counts[k] ?? 0), 0)
@@ -36,7 +66,7 @@ export function StackBar<K extends string>({
       {total === 0 ? <div className="h-4 rounded-full bg-gray-100 dark:bg-gray-800" /> : (
         <svg viewBox={`0 0 ${W} 18`} className="h-4 w-full" preserveAspectRatio="none" role="img" aria-label="распределение вердиктов">
           {segs.map((s) => (
-            <rect key={s.key} x={s.x} y={0} width={Math.max(0, s.w - 1.5)} height={18} rx={4} fill={color(s.key)} opacity={active && active !== s.key ? 0.3 : 1}>
+            <rect key={s.key} x={s.x} y={0} width={Math.max(0, s.w - 1.5)} height={18} rx={4} fill={color(s.key)} opacity={anyOn && !isOn(s.key) ? 0.3 : 1}>
               <title>{`${label(s.key)}: ${s.value} (${Math.round(s.pct)}%)`}</title>
             </rect>
           ))}
@@ -54,7 +84,7 @@ export function StackBar<K extends string>({
           return (
             <li key={k}>
               {onPick
-                ? <button type="button" aria-pressed={active === k} title={hint?.(k)} data-testid={`${testIdPrefix}-${k}`} onClick={() => onPick(k)} className={`inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 ring-1 transition ${active === k ? "bg-gray-100 ring-gray-400 dark:bg-gray-800" : "ring-transparent hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{body}</button>
+                ? <button type="button" aria-pressed={isOn(k)} title={hint?.(k)} data-testid={`${testIdPrefix}-${k}`} onClick={() => onPick(k)} className={`inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 ring-1 transition ${isOn(k) ? "bg-gray-100 ring-gray-400 dark:bg-gray-800" : "ring-transparent hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{body}</button>
                 : <span title={hint?.(k)} data-testid={`${testIdPrefix}-${k}`} className="inline-flex items-center gap-1.5 px-1.5 py-0.5">{body}</span>}
             </li>
           )

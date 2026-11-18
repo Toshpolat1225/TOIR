@@ -433,9 +433,15 @@ async def delete_expired_positions() -> int:
 
     from app.models.position_history import AssetPositionHistory
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.position_history_retention_days)
+    from app.models.gtk_gps import GpsWagonSegment, GtkGpsRun
+
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=settings.position_history_retention_days)
     async with SessionFactory() as session:
         result = await session.execute(delete(AssetPositionHistory).where(AssetPositionHistory.at < cutoff))
+        # the derived GPS rows follow the same retention (wagon segments), the run log is kept for 90 days
+        await session.execute(delete(GpsWagonSegment).where(GpsWagonSegment.period_to < cutoff))
+        await session.execute(delete(GtkGpsRun).where(GtkGpsRun.started_at < now - timedelta(days=90)))
         await session.commit()
         return result.rowcount or 0
 

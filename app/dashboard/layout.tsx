@@ -12,6 +12,7 @@ import {
   MapPin,
   Gauge,
   Target,
+  Container,
 } from "@/components/ui/icons"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
@@ -22,10 +23,11 @@ import { ThemeSwitcher } from "@/components/theme-switcher"
 const ALL_NAV = [
   { href: "/dashboard",             label: "Дашборд",        icon: LayoutDashboard, permission: "dashboard.view",         exact: true },
   { href: "/dashboard/analytics",   label: "Аналитика",      icon: BarChart3,       permission: "analytics.view"                    },
-  { href: "/dashboard/gps",         label: "GPS: Wialon ↔ GTK", icon: Target,       permission: "analytics.view"                    },
+  { href: "/dashboard/gps",         label: "GPS: Wialon ↔ GTK", icon: Target,       permission: "analytics.view", excludePrefix: "/dashboard/gps/wagons" },
   { href: "/dashboard/map",         label: "Карта",          icon: MapPin,          permission: "analytics.view", child: true       },
   { href: "/dashboard/os/gtk",      label: "Данные GTK",     icon: Radio,           permission: "gtk.view", exact: true, child: true },
   { href: "/dashboard/os/wialon",   label: "Данные Wialon", icon: Radio,           permission: "assets.view", child: true          },
+  { href: "/dashboard/gps/wagons",  label: "Вагоны (по составу)", icon: Container,  permission: "analytics.view", child: true       },
   { href: "/dashboard/scales",     label: "Весовая",        icon: Gauge,           permission: "scales.view"                       },
   { href: "/dashboard/maintenance", label: "ТО и ремонты",   icon: Wrench,          permission: "maintenance.view"                    },
   { href: "/dashboard/work-orders", label: "Наряд-заказы",   icon: ClipboardList,   permission: "work_orders.view"            },
@@ -203,7 +205,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   )
   const badge    = ROLE_BADGE[role] ?? ROLE_BADGE.operator
   const isAdmin  = role === "admin"
-  const currentPage = navItems.find((item) =>
+  const currentPage = [...navItems].sort((a, b) => b.href.length - a.href.length).find((item) =>
     item.exact ? pathname === item.href : pathname.startsWith(item.href)
   )
 
@@ -238,7 +240,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="px-5 pb-2 pt-6 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 dark:text-gray-500">РАБОЧЕЕ ПРОСТРАНСТВО</div>
           <nav aria-label="Основная навигация" className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
             {navItems.map((item) => {
-              const active = item.exact ? pathname === item.href : pathname.startsWith(item.href)
+              const active = item.exact ? pathname === item.href : pathname.startsWith(item.href) && !(item.excludePrefix && pathname.startsWith(item.excludePrefix))
               return (
                 <Link key={item.href} href={item.href} onClick={() => setMobileNavOpen(false)} aria-current={active ? "page" : undefined}
                   className={cn(

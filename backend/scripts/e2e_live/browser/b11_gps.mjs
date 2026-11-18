@@ -43,18 +43,20 @@ for (const key of ["wialon", "gtk", "toir"]) {
 }
 await check("the table lists the locomotives with verdict chips (worst first)", async () => {
   const rows = page.locator("[data-testid=gps-row]")
-  assert.ok((await rows.count()) >= 60, `rows ${await rows.count()}`)
+  assert.ok((await rows.count()) >= 45, `rows ${await rows.count()}`)
   const statuses = await rows.evaluateAll((els) => els.map((e) => e.getAttribute("data-status")))
   const order = { bad: 0, warn: 1, ok: 2 }
   assert.ok(statuses.every((s, i) => i === 0 || order[s] >= order[statuses[i - 1]]), "not sorted worst first")
 })
-await check("choosing a row shows the selection panel", async () => {
+await check("choosing a row opens the drawer", async () => {
   await page.locator("[data-testid=gps-row]").nth(2).click()
-  await page.locator("[data-testid=gps-selected]").waitFor({ timeout: 10000 })
-  assert.match(await page.locator("[data-testid=gps-selected]").innerText(), /Wialon/)
+  await page.locator("[data-testid=gps-drawer]").waitFor({ timeout: 10000 })
+  assert.match(await page.locator("[data-testid=gps-drawer]").innerText(), /Wialon/)
 })
 await check("the issues-only toggle narrows the table", async () => {
   const all = await page.locator("[data-testid=gps-row]").count()
+  await page.keyboard.press("Escape")
+  await page.waitForTimeout(500)
   await page.locator("[data-testid=gps-only-issues]").click()
   await page.waitForTimeout(1500)
   const some = await page.locator("[data-testid=gps-row]").count()

@@ -171,6 +171,27 @@ async def test_a_gtk_login_failure_is_recorded_and_does_not_raise(monkeypatch):
         await db.commit()
 
 
+@pytest.mark.pg
+@pytest.mark.asyncio
+async def test_a_run_whose_process_died_is_closed_and_a_live_one_is_left_alone():
+    now = datetime.now(UTC)
+    async with SessionFactory() as db:
+        dead = GtkGpsRun(status="failed", started_at=now - timedelta(hours=2), heartbeat_at=now - timedelta(hours=1, minutes=50))
+        alive = GtkGpsRun(status="failed", started_at=now - timedelta(hours=2), heartbeat_at=now - timedelta(minutes=2))  # a long backfill that still commits batches
+        db.add_all([dead, alive])
+        await db.flush()
+        ids = [dead.id, alive.id]
+        closed = await gtk_gps.close_stale_runs(db, now)
+        await db.commit()
+        assert closed >= 1
+        rows = {r.id: r for r in (await db.execute(select(GtkGpsRun).where(GtkGpsRun.id.in_(ids)))).scalars()}
+        assert rows[ids[0]].finished_at is not None and rows[ids[0]].error_code == "interrupted"
+        assert rows[ids[1]].finished_at is None
+    async with SessionFactory() as db:
+        await db.execute(delete(GtkGpsRun).where(GtkGpsRun.id.in_(ids)))
+        await db.commit()
+
+
 def test_day_planning_is_local_and_finalises_after_the_grace():
     now = datetime(2026, 11, 17, 19, 30, tzinfo=UTC)  # 2026-11-18 00:30 local (UTC+5)
     assert gtk_gps.local_now(now, 5) == datetime(2026, 11, 18, 0, 30)

@@ -9,7 +9,7 @@ from sqlalchemy import delete
 
 from app.core.database import SessionFactory
 from app.models.assets import FixedAsset
-from app.models.maintenance import MaintenanceInterval
+from app.models.maintenance import AssetMaintenanceBaseline, MaintenanceInterval
 from app.services import maintenance
 
 pytestmark = [pytest.mark.pg, pytest.mark.asyncio]
@@ -25,17 +25,22 @@ async def test_forecast_item_carries_interval_km_and_threshold():
                                    interval_km=Decimal("5000"), warn_percent=Decimal("60"),
                                    asset_types=["locomotive"], is_active=True))
         await db.commit()
+        # an item reaches the schedule only when it is overdue or its planned date falls in the month (an asset with no pace history has
+        # no forecast date since the living plan): the service was done at 2000 km, so at 7300 km the 5000 km interval is overdue
+        db.add(AssetMaintenanceBaseline(asset_id=asset_id, interval_id=interval_id, km=Decimal("2000"), source="import"))
+        await db.commit()
     try:
         user = SimpleNamespace(role="admin", section_id=None)
         async with SessionFactory() as db:
             result = await maintenance.get_schedule(db, user, date.today().strftime("%Y-%m"))
         item = next(i for i in result.schedule if i.interval_id == interval_id)
-        # next threshold is the next multiple of 5000 above 7300, not an absolute-odometer ratio
-        assert item.nextThreshold == Decimal("10000")
+        # the threshold is baseline + interval (not an absolute-odometer ratio) and the interval length travels with the item
+        assert item.nextThreshold == Decimal("7000")
         assert item.intervalKm == Decimal("5000")
-        assert item.remainingKm == Decimal("2700")
-        # progress inside the current interval = 1 - remaining / interval = 46 %
-        assert round((1 - item.remainingKm / item.intervalKm) * 100) == 46
+        assert item.remainingKm == Decimal("-300")
+        assert item.status == "overdue"
+        # progress inside the current interval = 1 - remaining / interval = 106 % (over the limit)
+        assert round((1 - item.remainingKm / item.intervalKm) * 100) == 106
     finally:
         async with SessionFactory() as db:
             await db.execute(delete(MaintenanceInterval).where(MaintenanceInterval.id == interval_id))

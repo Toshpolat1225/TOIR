@@ -283,7 +283,19 @@ def _candidate_decisions(
     return decision, selection.reason
 
 
-async def _proposals(inputs):
+UNRECOVERABLE_HELD = {"approved_opening_balance_missing", "no_linked_locomotive", "locomotive_handoff_time_unknown"}
+
+
+async def _fallback(db: AsyncSession):
+    """The GPS-track fallback for HELD periods when `WAGON_MILEAGE_TRACK_FALLBACK` is on (None otherwise: the run is unchanged)."""
+    if not settings.wagon_mileage_track_fallback:
+        return None
+    from app.services import wagon_gps  # local import: wagon_gps imports gps services that import models only
+
+    return await wagon_gps.make_track_fallback(db)
+
+
+async def _proposals(inputs, fallback=None):
     (
         wagon_rows,
         locomotive_rows,
@@ -333,6 +345,21 @@ async def _proposals(inputs):
                 locomotive_rows=train_locomotives,
                 by_locomotive=by_locomotive,
             )
+        track_fallback = None
+        if (
+            fallback is not None
+            and opening is not None
+            and train_locomotives
+            and decision.classification == "HELD"
+            and decision.reason not in UNRECOVERABLE_HELD
+        ):
+            # the odometer could not serve this period: the locomotive's GPS tracks can (an estimate, with the basis on the row)
+            main = min(train_locomotives, key=lambda row: (not row[0].is_main, row[0].ord))
+            track_fallback = await fallback(main[3], start, end)
+            if track_fallback is not None and track_fallback["km"] >= 0:
+                decision = SegmentDecision(
+                    "ESTIMATED", True, track_fallback["km"], main[3], (), f"gps_track_fallback:{track_fallback['basis']}"
+                )
         if opening is None:
             pending_assets.add(wagon_asset_id)
             decision = _held("approved_opening_balance_missing")
@@ -360,6 +387,11 @@ async def _proposals(inputs):
             )
 
         details = _decision_payload(decision) | {
+            "track_fallback": (
+                {k: (str(v) if isinstance(v, Decimal) else v) for k, v in track_fallback.items()}
+                if track_fallback is not None and decision.reason.startswith("gps_track_fallback")
+                else None
+            ),
             "selection_reason": selection_reason,
             "gtk_membership_id": member.id,
             "gtk_boundary_exact": boundaries_exact,
@@ -476,9 +508,11 @@ async def run_wagon_mileage(
     """
     if dry_run:
         inputs = await _load_inputs(db)
-        proposals, pending_assets, _readings = await _proposals(inputs)
+        proposals, pending_assets, _readings = await _proposals(inputs, await _fallback(db))
         report = _report(proposals, pending_assets)
         report["dry_run"] = True
+        report["track_fallback_enabled"] = settings.wagon_mileage_track_fallback
+        report["track_fallback_used"] = sum(1 for p in proposals if p["decision"].reason.startswith("gps_track_fallback"))
         report["watermark"] = await _input_watermark(db)
         await db.rollback()
         return report
@@ -523,7 +557,7 @@ async def _fail_run(db: AsyncSession, run_id: UUID, exc: Exception) -> None:
 
 async def _execute_run(db: AsyncSession) -> dict[str, Any]:
     inputs = await _load_inputs(db)
-    proposals, pending_assets, reading_rows = await _proposals(inputs)
+    proposals, pending_assets, reading_rows = await _proposals(inputs, await _fallback(db))
     report = _report(proposals, pending_assets)
     report["dry_run"] = False
     watermark = await _input_watermark(db)

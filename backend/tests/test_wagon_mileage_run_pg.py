@@ -437,3 +437,36 @@ async def test_legacy_overlapping_active_rows_are_cleaned_up_by_the_next_run():
         rows = await _rows(s["wagon_id"])
         assert len([r for r in rows if r.status == "active"]) == 1
         assert await _mileage(s["wagon_id"]) == Decimal("1020.00")
+
+
+async def test_gps_track_fallback_serves_a_period_the_odometer_cannot_and_is_off_by_default():
+    """The locomotive has no usable odometer readings (HELD) but a GPS track: with the flag the period is ESTIMATED from the track, with the basis recorded."""
+    from app.core.config import settings
+    from app.models.position_history import AssetPositionHistory
+
+    async with scenario(-10) as s:
+        async with SessionFactory() as db:
+            await db.execute(delete(WialonOdometerReading).where(WialonOdometerReading.asset_id == s["loco_id"]))
+            for i in range(5):  # a fix every 30 s along the track, ~111 m apart: ~0.44 km over the 2 minutes
+                db.add(AssetPositionHistory(asset_id=s["loco_id"], at=s["start"] + timedelta(seconds=30 * i), lat=Decimal(str(round(40.80 + 0.001 * i, 7))), lon=Decimal("69.57"), source="wialon"))
+            await db.commit()
+        try:
+            async with SessionFactory() as db:
+                off = await run_wagon_mileage(db, dry_run=True)
+            assert off["track_fallback_enabled"] is False and off["track_fallback_used"] == 0
+            with patch.object(settings, "wagon_mileage_track_fallback", True):
+                async with SessionFactory() as db:
+                    dry = await run_wagon_mileage(db, dry_run=True)
+                assert dry["track_fallback_enabled"] is True and dry["track_fallback_used"] >= 1
+                result = await _run()
+                s["run_ids"].append(result.get("run_id")) if isinstance(result, dict) and result.get("run_id") else None
+            rows = await _rows(s["wagon_id"])
+            active = [r for r in rows if r.status == "active"]
+            assert len(active) == 1 and active[0].classification == "ESTIMATED" and active[0].estimated is True
+            assert 0.3 < float(active[0].distance_km) < 0.6, active[0].distance_km
+            assert str(active[0].calculation_details["reason"]).startswith("gps_track_fallback:")
+            assert active[0].calculation_details["track_fallback"]["basis"] in {"fused_track", "track", "single_source", "conflict"}
+        finally:
+            async with SessionFactory() as db:
+                await db.execute(delete(AssetPositionHistory).where(AssetPositionHistory.asset_id == s["loco_id"]))
+                await db.commit()

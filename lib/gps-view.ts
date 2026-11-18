@@ -10,31 +10,77 @@ export type DistanceVerdict = "match" | "minor_diff" | "gtk_gap" | "wialon_gap" 
 
 export type GpsFix = { lat: number; lon: number; at?: string | null; speed?: number | null; age_min?: number | null; fresh: boolean }
 export type GpsPositionCheck = { verdict: PositionVerdict; diff_m?: number | null; lag_s?: number | null; tolerance_m?: number | null; best?: "wialon" | "gtk" | null }
+
+export type CauseCode =
+  | "ok" | "method" | "day_open" | "gtk_dead" | "gtk_no_day" | "gtk_gaps" | "gtk_sparse" | "wialon_gaps" | "both_gaps" | "not_collected" | "idle" | "no_data"
+export type HealthClass = "ok" | "intermittent" | "dead" | "frozen" | "no_gtk"
+export type Confidence = "high" | "medium" | "low" | "none"
+export type WagonFlag = "two_trains" | "stale_membership" | "loco_silent" | "no_loco" | "no_history"
+export type WagonBasis = "fused_track" | "track" | "odometer" | "conflict" | "single_source" | "held"
+
 export type GpsDayRow = {
   day: string; wialon_m?: number | null; wialon_points: number; gtk_m?: number | null; gtk_points: number; gtk_raw_points: number; gtk_final: boolean
-  verdict: DistanceVerdict; ratio?: number | null; diff_m?: number | null; unified_m?: number | null; idle_events?: number | null
+  verdict: DistanceVerdict; ratio?: number | null; diff_m?: number | null; unified_m?: number | null; idle_events?: number | null; odo_m?: number | null; odo_agrees?: boolean | null
+  cause?: CauseCode | string; fused_m?: number | null; unknown_gap_m?: number | null; wialon_cov_h?: number | null; gtk_cov_h?: number | null
+  confidence?: number | null; explanation?: string | null
+}
+export type GpsHealth = {
+  health_class: HealthClass; window_days: number; active_days: number; ok_days: number; partial_days: number; none_days: number
+  last_gtk_fix_age_h?: number | null; km_lost_m: number; ok_share?: number | null
 }
 export type GpsAssetRow = {
   asset_id: string; inv_number: string; name: string; asset_type: string; asset_type_name?: string | null; model_name?: string | null
   section_id?: string | null; section_name?: string | null; wialon_linked: boolean; gtk_linked: boolean
   wialon: GpsFix | null; gtk: GpsFix | null; position: GpsPositionCheck; days: GpsDayRow[]
   week_wialon_m: number; week_gtk_m: number; week_unified_m: number; distance_issues: number; severity: number; status: "ok" | "warn" | "bad"
+  health?: GpsHealth | null; top_cause?: CauseCode | string | null; week_fused_m?: number; week_confidence?: number | null; moving?: boolean
+  section_name_short?: string | null; model_id?: string | null; explanation?: string | null
 }
 export type GpsSummary = {
   assets: number; both_sources: number; position_verdicts: Record<string, number>; distance_verdicts: Record<string, number>
   week_wialon_m: number; week_gtk_m: number; week_unified_m: number; ok: number; warn: number; bad: number
+  cause_counts?: Record<string, number>; health_counts?: Record<string, number>; week_fused_m?: number; km_lost_m?: number
 }
 export type GpsFeedHealth = {
-  gtk_enabled: boolean; gtk_last_run_at?: string | null; gtk_last_status?: string | null; gtk_last_error?: string | null
+  gtk_enabled: boolean; gtk_last_run_at?: string | null; gtk_last_status?: string | null; gtk_last_error?: string | null; gtk_running?: boolean
   gtk_units: number; gtk_tracks_failed: number; gtk_units_synced_at?: string | null; wialon_units_synced_at?: string | null
   gtk_track_points: number; wialon_track_points: number; gtk_track_from?: string | null; wialon_track_from?: string | null; utc_offset_hours: number
 }
 export type GpsOverview = {
   items: GpsAssetRow[]; total: number; limit: number; offset: number; summary: GpsSummary; feed: GpsFeedHealth
-  days: number; date_from: string; date_to: string
+  days: number; date_from: string; date_to: string; facets?: Record<string, Record<string, number>>
 }
 export type GpsTrackPoint = { at: string; lat: number; lon: number; speed?: number | null }
 export type GpsAssetDetail = { row: GpsAssetRow; wialon_track: GpsTrackPoint[]; gtk_track: GpsTrackPoint[]; track_from: string; track_to: string; feed: GpsFeedHealth }
+
+export type GpsHealthRow = {
+  asset_id: string; inv_number: string; name: string; asset_type_name?: string | null; model_name?: string | null; section_id?: string | null
+  section_name?: string | null; gtk_linked: boolean; gtk_id?: number | null; health: GpsHealth; last_gtk_fix_at?: string | null
+  anomaly?: "frozen" | "silent" | string | null; explanation?: string | null
+}
+export type GpsHealthPage = { items: GpsHealthRow[]; total: number; limit: number; offset: number; counts: Record<string, number> }
+
+export type WagonSegment = {
+  train_gtk_id: number; train_number?: string | null; loco_asset_id?: string | null; loco_inv_number?: string | null
+  period_from: string; period_to: string; open: boolean
+  km_odometer?: number | null; km_wialon?: number | null; km_gtk?: number | null; km_fused?: number | null; selected_km?: number | null
+  basis: WagonBasis; confidence: Confidence; coverage?: number | null; flags: string[]
+}
+export type GpsWagonRow = {
+  asset_id?: string | null; carriage_gtk_id: number; inv_number?: string | null; name: string; asset_type?: string | null; asset_type_name?: string | null
+  section_id?: string | null; section_name?: string | null; in_train: boolean; train_gtk_id?: number | null; train_number?: string | null; since?: string | null
+  loco_asset_id?: string | null; loco_inv_number?: string | null; loco_name?: string | null
+  position?: GpsFix | null; position_source?: "wialon" | "gtk_gps" | string | null; position_verdict?: PositionVerdict | string | null
+  confidence: Confidence; flags: string[]; km_period: number; segments_n: number; basis_counts: Record<string, number>
+}
+export type GpsWagonSummary = {
+  wagons: number; in_train: number; confidence_counts: Record<string, number>; flag_counts: Record<string, number>; km_period: number; history_from?: string | null
+}
+export type GpsWagonPage = { items: GpsWagonRow[]; total: number; limit: number; offset: number; summary: GpsWagonSummary; days: number }
+export type GpsWagonDetail = { row: GpsWagonRow; segments: WagonSegment[]; explanation?: string | null }
+
+/** Query parameters as the API client accepts them (arrays become repeated keys). */
+export type ApiParams = Record<string, string | number | boolean | string[] | undefined>
 
 // ---- thresholds the backend uses (shown to the user in the explanation strip) ---------------------------------------
 export const FRESH_MIN = 30

@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     wagon_mileage_max_bracket_gap_min: int = Field(default=240, ge=1)
     wagon_mileage_idle_min_minutes: int = Field(default=30, ge=1)
     wagon_mileage_engine_enabled: bool = False
+    # When the odometer path of a wagon's period is HELD (no usable readings), fill it from the locomotive's GPS tracks (Wialon / GTK / fused),
+    # as an ESTIMATED value with the basis recorded. Off by default: it changes ledger numbers.
+    wagon_mileage_track_fallback: bool = False
     # D8 policy: when true, the same administrator may propose and approve an
     # opening balance. Default false (maker != checker).
     opening_balance_allow_self_approval: bool = False
@@ -200,6 +203,11 @@ class Settings(BaseSettings):
     @classmethod
     def default_empty_gtk_offset(cls, value: object) -> object:
         return 5 if value is None or not str(value).strip() else value
+
+    @field_validator("wagon_mileage_track_fallback", mode="before")
+    @classmethod
+    def default_empty_track_fallback(cls, value: object) -> object:
+        return False if value is None or not str(value).strip() else value
 
     @property
     def gtk_gps_pull_enabled(self) -> bool:
