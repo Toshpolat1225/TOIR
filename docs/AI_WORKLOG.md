@@ -474,3 +474,15 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 - Tested: backend 671 o'tdi, 0 xato; tsc 0 xato; jonli: t15 73/73, b05 11, b09 12, b10 8, b11 17, b12 15 (3 marta ketma-ket); sahifa tezligi 0,33 s (31 kun, facets), sog'liq 0,14 s; yetim run'lar yopildi (0 ta tugamagan). Backup `backups/pre_gps0039_20261118_0803.dump`.
 - Topildi: (1) jonli bazada o'z-o'ziga qo'shilish bilan diagnostika so'rovi ~10 daqiqa yuk berdi -> darhol to'xtatildi (bundan keyin jonli bazada faqat chegaralangan so'rovlar, statement_timeout bilan); (2) uzoq GTK tarix yuklash juda sekin (GTK eski oynalarga sekin javob beradi) — 14 kunga qisqartirib qayta ishga tushirildi.
 - Ochiq: trek-zaxirani yoqish (qaror foydalanuvchida).
+
+## 2026-11-18 (kun): Ovozli buyruq markazi (qoidali, lokal, tekin)
+- Task: `docs/ROADMAP_OVOZLI_YORDAMCHI_2026-11-18.md` P0–P4: yozma va ovozli buyruqlar bilan tizimni boshqarish, erkin suhbatsiz.
+- O'zgardi: migratsiya `0040_assistant`; `services/assistant/{normalize,numbers,entities,parser,catalog,engine,registry,types,speech}.py` va `handlers/*` (27 niyat, 3 yozuv executori); `routers/assistant.py`; `schemas/assistant.py`; `whisper/` konteyneri + compose; frontend `components/assistant/*`, `lib/assistant.ts`, admin sahifa; e2e `t16`, `b13`; testlar `test_assistant_{parser,engine_pg,handlers_pg,speech}.py`.
+- Tested: backend 813 o'tdi (0 xato), 123 oltin jumla (uz/ru) va katalogning barcha misollari o'z niyatiga tushadi.
+- Topildi/tuzatildi: katalog to'qnashuvlari (nav/summary/gps.km/mileage...), ko'p so'zli ibora va qisqa o'zak (`*`) muammolari; naryad raqami faqat «naryad N» ko'rinishida (oldindagi raqam texnika); `gtk_gps_runs` audit shovqini (11 501 qator/kun) — auditdan chiqarildi.
+
+## 2026-11-18 (kechqurun): Ovoz tushunish darajasi
+- Task: foydalanuvchi: buyruqlar 40–50% aniqlanyapti va tasdiqlashga majbur. Majburiy tasdiq olib tashlandi, parserga xato-tuzatuvchi qatlam, Whisper `small` + til tanlash + prompt.
+- O'zgardi: `services/assistant/repair.py` (yangi), `parser.py`, `speech.py` (prompt_uz/ru), `whisper/{app.py,Dockerfile}`, `docker-compose.yml` (model small), `lib/assistant.ts` (+test), `components/assistant/AssistantCenter.tsx` («Исправить»), testlar (`GARBLED`, engine PG).
+- Tested: backend 853 o'tdi, tsc + 165 unit; backend/frontend jonli joylandi. NOT TESTED: o'zbekcha real aniqlik, `small` kechikishi.
+- Keyingi: whisper `small` image'ini joylash va o'zbekcha yozuvlar bilan o'lchash.

@@ -22,6 +22,7 @@ from app.routers.asset_links import router as asset_links_router
 from app.routers.analytics import router as analytics_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.asset_map import router as asset_map_router
+from app.routers.assistant import router as assistant_router
 from app.routers.gps import router as gps_router
 from app.routers.health import router as health_router
 from app.routers.gtk import router as gtk_router
@@ -146,6 +147,7 @@ async def _record_untracked_mutation(request: Request, response: Response) -> No
         or path.startswith("/api/v1/audit-logs")
         or path.startswith("/api/v1/auth/")
         or path == "/api/v1/scales/ingest"  # the collector's own feed (every minute); its data is the record, not an audit event
+        or path in ("/api/v1/assistant/command", "/api/v1/assistant/transcribe")  # questions are logged in assistant_queries; a confirmed write is audited by its own service
         or method not in {"POST", "PUT", "PATCH", "DELETE"}
         or response.status_code >= 400
         or getattr(request.state, "audit_model_changes", False)
@@ -293,6 +295,7 @@ app.include_router(work_orders_router, prefix="/api/v1")
 app.include_router(maintenance_router, prefix="/api/v1")
 app.include_router(asset_map_router, prefix="/api/v1")
 app.include_router(gps_router, prefix="/api/v1")
+app.include_router(assistant_router, prefix="/api/v1")
 app.include_router(scales_router, prefix="/api/v1")
 app.include_router(localization_router, prefix="/api/v1")
 app.include_router(asset_catalogs_router, prefix="/api/v1")

@@ -45,3 +45,7 @@ docker compose exec -T postgres psql -U toir_local -d toir_local < zz_leftovers.
 `t15_gps_verify.py` (faqat GET, 40 tekshiruv: Wialon↔GTK GPS, `/gps/*`, birlashgan xarita, rollar) va `browser/b11_gps.mjs` (Edge: 3 xarita, tafsilot, verdikt chiplari, telefon kengligi). Tarixni yuklash: `docker compose exec -d backend python -m app.cli gtk-gps-backfill --days 30`.
 
 `t15_gps_verify.py` endi 70 tekshiruv (sabablar, facets, filtrlar, eksport, sog'lik, vagonlar); `browser/b12_gps_analytics.mjs` (Edge, 15). `docker compose exec backend python -m app.cli gps-analytics --days 31 --wagons` — tahlilni qayta hisoblash; `--days 14 --diff` — vagon nomzodlarini ledger bilan solishtirish (faqat o'qish).
+
+## Ovozli buyruq markazi (2026-11-18)
+`t16_assistant_verify.py` (64 tekshiruv: niyatlar uz/ru, raqam so'zlari, kontekst, ruxsat va uchastka, ikki bosqichli yozuv ZZTEST aktiv/xodim bilan, tezlik cheklovi; oxirida 429 sinovi uchun 61 s kutadi) va `browser/b13_assistant.mjs` (Edge, soxta mikrofon; t16 dan keyin `B13_WAIT_MS=65000` bering).
+

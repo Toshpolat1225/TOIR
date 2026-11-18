@@ -1690,3 +1690,37 @@ CREATE TABLE gps_wagon_segments (
 );
 CREATE INDEX ix_gps_wagon_segments_wagon ON gps_wagon_segments(wagon_asset_id, period_from);
 CREATE INDEX ix_gps_wagon_segments_loco ON gps_wagon_segments(loco_asset_id, period_from);
+
+-- Command centre (voice/text assistant): question log (text only) and pending confirmations of write actions, migration 0040
+CREATE TABLE assistant_queries (
+    id bigserial PRIMARY KEY,
+    user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+    text text NOT NULL,
+    locale text NOT NULL DEFAULT 'uz',
+    source text NOT NULL DEFAULT 'text',
+    intent text,
+    best_intent text,
+    status text NOT NULL,
+    ms integer NOT NULL DEFAULT 0,
+    stt_confidence double precision,
+    entities jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_assistant_queries_source CHECK (source IN ('text','voice'))
+);
+CREATE INDEX ix_assistant_queries_created_at ON assistant_queries(created_at);
+CREATE INDEX ix_assistant_queries_status ON assistant_queries(status, created_at);
+CREATE TABLE assistant_pending (
+    token text PRIMARY KEY,
+    user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind text NOT NULL,
+    payload jsonb NOT NULL,
+    summary text NOT NULL,
+    locale text NOT NULL DEFAULT 'uz',
+    risk text NOT NULL DEFAULT 'low',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    used_at timestamptz,
+    outcome text
+);
+CREATE INDEX ix_assistant_pending_user ON assistant_pending(user_id, expires_at);
+

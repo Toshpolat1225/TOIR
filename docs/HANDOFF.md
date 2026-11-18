@@ -1351,6 +1351,22 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 - Next task: vagon turi/modeli bo'yicha aniq o'lchamlarni ma'lumotnomaga kiritish (ixtiyoriy); Google xaritasi uchun ham xuddi shu chizma (kalit to'g'rilangach).
 - NOT TESTED: Google xaritasida ikonkalar (kalit rad etiladi); telefonda masshtabdagi poyezd (faqat sahifa yon siljimasligi tekshirilgan).
 
+## Ovozli buyruq markazi (2026-11-18)
+### Verified
+- Jonli bazada `0040_assistant`; `/assistant/*` (command, confirm, transcribe, status, help, unmatched) ishlaydi: backend testlari 813+ o'tdi; 123 oltin jumla (uz/ru) va katalog misollari; jonli `t16` va brauzer `b13` (13/13: Ctrl+K, yordam, texnika savoli, tavsiya chiplari, navigatsiya, tasdiq UI, mikrofon bilan bosib gapirish (soxta mikrofon), admin sahifa, telefon kengligi).
+- Topilgan va tuzatilgan: Caddy `Permissions-Policy microphone=()` mikrofonni bloklardi -> `microphone=(self)`; kontekstdagi texnika sahifa buyrug'ini buzardi («xaritani och») -> `pronoun_only`; keyword'siz niyat (nav) bare-raqam qidiruvini o'chirib qo'yardi; `gtk_gps_runs` audit shovqini (11 580 qator) tozalandi.
+### Next task
+- Whisper lokal PC'da ishlaydi (compose `whisper`, healthy, backend ko'radi). SERVERGA: `docker compose up -d --build whisper` (build ~30 daqiqa, model yuklanadi; internetsiz serverda `docker save | docker load`, qarang `whisper/README.md`). O'zbekcha 10 jumlani yozib `t17_voice_pipeline.py --language uz` bilan o'lchash. Katalogni «Помощник: непонятые» ro'yxatidan kengaytirish.
+- Ovoz: ruscha 10 haqiqiy yozuv -> niyat 10/10, kechikish ~0,6 s (DECISIONS #65). NOT TESTED: o'zbekcha Whisper aniqligi, haqiqiy mikrofon/shovqin, server CPU'sidagi tezlik, yozuvchi buyruqlar jonli naryadlarda (faqat ZZTEST).
+
+## Ovozli buyruq: tushunish darajasi (2026-11-18, kechqurun)
+### Verified
+- Backend testlari 853 o'tdi (rehearsal PG, Alembic head 0040): 27 ta buzilgan-gap testi (`GARBLED`), to'g'ri gapga tegmaslik, qisqa so'zni buyruqqa aylantirmaslik, engine testi (aralash alifbo ovozli gap -> `gps.where`). Frontend: `tsc` xatosiz, 165 unit test.
+- Backend va frontend jonli PC'da qayta joylandi (`--no-deps`), healthy.
+### Next task
+- Whisper `small` image'ini joylash: `docker compose up -d --no-deps whisper` (build tugagach), keyin `t17_voice_pipeline.py --language uz` o'z yozuvlari bilan va `/dashboard/admin/assistant` «непонятые» ro'yxatini ko'rish.
+- NOT TESTED: o'zbekcha ovozda real aniqlik foizi, `small` kechikishi (Rus namunalarda ~1,6 s o'lchangan), serverda ishlash.
+
 ## GPS analitikasi va vagonlar (2026-11-18)
 ### Verified
 - Jonli bazada `0039_gps_odometer_heartbeat`; 31 kunlik baholar odometr bilan qayta hisoblangan; yetim sinxron yozuvlari yopilgan.
@@ -1358,7 +1374,8 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 - GTK GPS Wialon'dan mustaqil; odometr trekni 91% kunda tasdiqlaydi; farq sababi 90% GTK yo'qolishi (DECISIONS #60, #62).
 - Vagon dry-run: tanlangan/ledger mediana 0,981; trek-zaxira dry-run: HELD 13 → 0 (DECISIONS #61, #62).
 ### Next task
-- QAROR (foydalanuvchi): vagon probegi trek-zaxirasini yoqish. Yoqish: `.env` ga `WAGON_MILEAGE_TRACK_FALLBACK=true`, so'ng `docker compose up -d --no-deps backend`; keyingi GTK sikli (yoki `wagon-mileage-run`) HELD davrlarni to'ldiradi. Qaytarish: `false`.
+- HOLAT 2026-11-18: foydalanuvchi `WAGON_MILEAGE_TRACK_FALLBACK=true` ni yoqdi (konteynerda tasdiqlandi). Dry-run: HELD 0, trek-zaxira 13 davrda ishlatiladi, ESTIMATED 133 065 km. LEKIN vagon dvigatelining o'zi o'chiq (`WAGON_MILEAGE_ENGINE_ENABLED` yo'q, ledger oxirgi marta 2026-11-16 da yozilgan), shuning uchun ledger hali o'zgarmagan. Real run: dvigatelni yoqish yoki bir martalik `docker compose exec -e WAGON_MILEAGE_ENGINE_ENABLED=true backend python -m app.cli wagon-mileage-run` (foydalanuvchi qarori).
+- (eski qaror) vagon probegi trek-zaxirasini yoqish. Yoqish: `.env` ga `WAGON_MILEAGE_TRACK_FALLBACK=true`, so'ng `docker compose up -d --no-deps backend`; keyingi GTK sikli (yoki `wagon-mileage-run`) HELD davrlarni to'ldiradi. Qaytarish: `false`.
 - GTK 14 kunlik tarixi tugagach: `docker compose exec backend python -m app.cli gps-analytics --days 31 --wagons`.
 - NOT TESTED: trek-zaxira yoqilgan jonli holat; operator/management brauzer menyusi; GTK tarixini to'liq yuklash tezligi.
 

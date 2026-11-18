@@ -53,6 +53,8 @@ services:
       GTK_GPS_SYNC_INTERVAL_MINUTES: ${GTK_GPS_SYNC_INTERVAL_MINUTES:-10}
       GTK_UTC_OFFSET_HOURS: ${GTK_UTC_OFFSET_HOURS:-5}
       WAGON_MILEAGE_TRACK_FALLBACK: ${WAGON_MILEAGE_TRACK_FALLBACK:-false}
+      WHISPER_URL: ${WHISPER_URL:-http://whisper:9000}
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
       DAILY_KM_ESTIMATE: ${DAILY_KM_ESTIMATE:-200}
       AD_AUTH_ENABLED: ${AD_AUTH_ENABLED:-false}
     networks: [internal]
@@ -113,6 +115,24 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  # Local speech-to-text for the voice command centre (CPU, free). Internal only (no published port); the backend does NOT depend on it:
+  # without it the assistant simply has no microphone. The model is baked into the image at build time (see whisper/README.md).
+  whisper:
+    build:
+      context: ./whisper
+      args:
+        WHISPER_MODEL: ${WHISPER_MODEL:-small}
+    mem_limit: ${WHISPER_MEM:-1536m}
+    cpus: ${WHISPER_CPUS:-2.0}
+    networks: [internal]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,json,sys; d=json.load(urllib.request.urlopen('http://127.0.0.1:9000/health', timeout=4)); sys.exit(0 if d.get('loaded') else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
   # Nightly verified database dumps into ./backups (auto-*.dump); see scripts/backup_loop.sh.
   backup:

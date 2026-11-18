@@ -13,7 +13,9 @@ import {
   Gauge,
   Target,
   Container,
+  Mic,
 } from "@/components/ui/icons"
+import { AssistantCenter } from "@/components/assistant/AssistantCenter"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 import { SectionViewProvider, useSectionView } from "@/lib/section-view-context"
@@ -36,6 +38,7 @@ const ALL_NAV = [
   { href: "/dashboard/directories", label: "Справочники",    icon: FolderOpen,      permission: "organization.view"                    },
   { href: "/dashboard/admin/users",    label: "Пользователи", icon: Users,      permission: "users.manage_users" },
   { href: "/dashboard/admin/audit-logs", label: "Журнал логов", icon: Activity, permission: "users.manage_users" },
+  { href: "/dashboard/admin/assistant", label: "Помощник: непонятые", icon: Mic, permission: "users.manage_users" },
 ]
 
 const ROLE_BADGE: Record<string, { label: string; cls: string }> = {
@@ -276,7 +279,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <p className="hidden text-xs text-slate-500 sm:block dark:text-gray-400">Система управления техническим обслуживанием</p>
               </div>
             </div>
-            <div className="ml-3 flex shrink-0 items-center gap-3">
+            <div className="ml-3 flex shrink-0 items-center gap-1 sm:gap-3">
+              <AssistantCenter />
               <ThemeSwitcher />
             </div>
           </header>

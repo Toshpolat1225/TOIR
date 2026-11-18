@@ -42,6 +42,14 @@ _OPERATIONAL_TABLES = {
     "gtk_locomotive_mileage_checkpoints",
     # weighing-scale feed (re-derived on every pull; operator corrections `scale_corrections` ARE audited)
     "asset_position_history",  # movement-thinned track rows written by the syncs
+    # GPS channel and the command centre: telemetry / per-question logs (a confirmed WRITE is audited by the service that performs it)
+    "gtk_gps_units",
+    "gtk_gps_days",
+    "gtk_gps_runs",
+    "gps_day_assessment",
+    "gps_wagon_segments",
+    "assistant_queries",
+    "assistant_pending",
     "scale_posts",
     "scale_cargo",
     "scale_trains",
@@ -442,6 +450,11 @@ async def delete_expired_positions() -> int:
         # the derived GPS rows follow the same retention (wagon segments), the run log is kept for 90 days
         await session.execute(delete(GpsWagonSegment).where(GpsWagonSegment.period_to < cutoff))
         await session.execute(delete(GtkGpsRun).where(GtkGpsRun.started_at < now - timedelta(days=90)))
+        # the command centre: questions are kept 180 days (the unmatched list is the catalogue's backlog), confirmation tokens a week
+        from app.models.assistant import AssistantPending, AssistantQuery
+
+        await session.execute(delete(AssistantQuery).where(AssistantQuery.created_at < now - timedelta(days=180)))
+        await session.execute(delete(AssistantPending).where(AssistantPending.created_at < now - timedelta(days=7)))
         await session.commit()
         return result.rowcount or 0
 

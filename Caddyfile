@@ -12,7 +12,7 @@
         X-Content-Type-Options "nosniff"
         X-Frame-Options "DENY"
         Referrer-Policy "strict-origin-when-cross-origin"
-        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Permissions-Policy "camera=(), microphone=(self), geolocation=()"
         # Only the directives that cannot break the Next.js pages: no framing, no foreign <base>/forms/plugins.
         Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
         -Server

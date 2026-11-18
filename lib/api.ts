@@ -19,6 +19,8 @@ type ApiRequestOptions = {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   body?: unknown;
+  /** A multipart upload (the voice recording): sent as is, the browser sets the Content-Type boundary itself. */
+  formData?: FormData;
   params?: Record<string, string | number | boolean | string[]>;
   isPublic?: boolean;
   responseType?: "json" | "blob";
@@ -271,7 +273,7 @@ function formatErrorDetail(detail: unknown, status: number): string {
 }
 
 async function request<T>(options: ApiRequestOptions): Promise<T> {
-  const { method, path, body, params, isPublic = false, responseType = "json", suppress404Log = false, suppressNetworkLog = false, signal } = options;
+  const { method, path, body, formData, params, isPublic = false, responseType = "json", suppress404Log = false, suppressNetworkLog = false, signal } = options;
 
   const url = new URL(`${apiBaseUrl()}${path}`);
   if (params) {
@@ -285,9 +287,10 @@ async function request<T>(options: ApiRequestOptions): Promise<T> {
   }
 
   const headers: HeadersInit = {
-    "Content-Type": "application/json",
     "Accept-Language": "ru",
   };
+  if (!formData) headers["Content-Type"] = "application/json";
+  const requestBody = formData ?? (body === undefined ? undefined : JSON.stringify(body));
 
   if (!isPublic) {
     if (!inMemoryAccessToken) {
@@ -303,7 +306,7 @@ async function request<T>(options: ApiRequestOptions): Promise<T> {
       method,
       headers,
       credentials: "include",
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: requestBody,
       signal,
     });
 
@@ -323,7 +326,7 @@ async function request<T>(options: ApiRequestOptions): Promise<T> {
             method,
             headers,
             credentials: "include",
-            body: body === undefined ? undefined : JSON.stringify(body),
+            body: requestBody,
           });
           if (!retryResponse.ok) throw new Error(errorData.detail || `HTTP error! status: ${retryResponse.status}`);
           if (retryResponse.status === 204) return null as T;
@@ -2539,9 +2542,56 @@ async function fetchAllPaginated<T>(
 //   },
 // };
 
+// --- Voice / text command centre ---
+
+export type {
+  AssistantCard,
+  AssistantCardItem,
+  AssistantCardRow,
+  AssistantCommandIn,
+  AssistantCommandOut,
+  AssistantConfirmIn,
+  AssistantContext,
+  AssistantEntityRef,
+  AssistantHelpOut,
+  AssistantStatusOut,
+  AssistantTranscribeOut,
+  AssistantUnmatchedPage,
+} from "./assistant";
+
+const assistant = {
+  /** One sentence (typed or recognised from speech) -> cards, a page to open, or a confirmation request. */
+  async command(body: import("./assistant").AssistantCommandIn, signal?: AbortSignal): Promise<import("./assistant").AssistantCommandOut> {
+    return request<import("./assistant").AssistantCommandOut>({ method: "POST", path: "/assistant/command", body, signal, suppressNetworkLog: true });
+  },
+  /** Answer a confirmation card (a write: new work order, status, comment). */
+  async confirm(body: import("./assistant").AssistantConfirmIn, signal?: AbortSignal): Promise<import("./assistant").AssistantCommandOut> {
+    return request<import("./assistant").AssistantCommandOut>({ method: "POST", path: "/assistant/confirm", body, signal, suppressNetworkLog: true });
+  },
+  /** Speech to text: the recording goes to the local recogniser; nothing is stored. */
+  async transcribe(audio: Blob, filename: string, language?: "uz" | "ru", signal?: AbortSignal): Promise<import("./assistant").AssistantTranscribeOut> {
+    const formData = new FormData();
+    formData.append("audio", audio, filename);
+    if (language) formData.append("language", language);
+    return request<import("./assistant").AssistantTranscribeOut>({ method: "POST", path: "/assistant/transcribe", formData, signal, suppressNetworkLog: true });
+  },
+  async status(signal?: AbortSignal): Promise<import("./assistant").AssistantStatusOut> {
+    return request<import("./assistant").AssistantStatusOut>({ method: "GET", path: "/assistant/status", signal, suppressNetworkLog: true });
+  },
+  async help(signal?: AbortSignal): Promise<import("./assistant").AssistantHelpOut> {
+    return request<import("./assistant").AssistantHelpOut>({ method: "GET", path: "/assistant/help", signal, suppressNetworkLog: true });
+  },
+  /** Phrases the assistant did not understand (admin only), most frequent first. */
+  async unmatched(params: { limit?: number; offset?: number } = {}, signal?: AbortSignal): Promise<import("./assistant").AssistantUnmatchedPage> {
+    const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined)) as Record<string, number>;
+    return request<import("./assistant").AssistantUnmatchedPage>({ method: "GET", path: "/assistant/unmatched", params: clean, signal, suppressNetworkLog: true });
+  },
+};
+
 // --- Main API Export ---
 
 export const api = {
+  assistant,
   auth,
   users,
   permissions,

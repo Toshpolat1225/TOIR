@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     # When the odometer path of a wagon's period is HELD (no usable readings), fill it from the locomotive's GPS tracks (Wialon / GTK / fused),
     # as an ESTIMATED value with the basis recorded. Off by default: it changes ledger numbers.
     wagon_mileage_track_fallback: bool = False
+    # Local speech-to-text service of the voice assistant (compose service `whisper`); empty = no microphone, the text assistant works anyway
+    whisper_url: str | None = None
+    whisper_model: str = "base"
     # D8 policy: when true, the same administrator may propose and approve an
     # opening balance. Default false (maker != checker).
     opening_balance_allow_self_approval: bool = False
@@ -203,6 +206,16 @@ class Settings(BaseSettings):
     @classmethod
     def default_empty_gtk_offset(cls, value: object) -> object:
         return 5 if value is None or not str(value).strip() else value
+
+    @field_validator("whisper_url", mode="before")
+    @classmethod
+    def empty_whisper_url_is_none(cls, value: object) -> object:
+        return None if value is None or not str(value).strip() else str(value).strip().rstrip("/")
+
+    @field_validator("whisper_model", mode="before")
+    @classmethod
+    def default_empty_whisper_model(cls, value: object) -> object:
+        return "base" if value is None or not str(value).strip() else str(value).strip()
 
     @field_validator("wagon_mileage_track_fallback", mode="before")
     @classmethod

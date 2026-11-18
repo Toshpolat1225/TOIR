@@ -10,6 +10,15 @@ export type IconProps = Omit<SVGProps<SVGSVGElement>, "color" | "ref"> & {
 
 const iconNames = {
   Activity: "activity",
+  Mic: "mic",
+  MicFill: "mic-fill",
+  Volume2: "volume-up",
+  VolumeX: "volume-mute",
+  Send: "send",
+  HelpCircle: "question-circle",
+  Sparkles: "stars",
+  StopFill: "stop-fill",
+  Terminal: "terminal",
   AlertCircle: "exclamation-circle",
   AlertTriangle: "exclamation-triangle",
   ArrowLeft: "arrow-left",
@@ -219,3 +228,12 @@ export const X = createIcon(iconNames.X)
 export const XCircle = createIcon(iconNames.XCircle)
 export const XIcon = createIcon(iconNames.XIcon)
 export const Zap = createIcon(iconNames.Zap)
+export const Mic = createIcon(iconNames.Mic)
+export const MicFill = createIcon(iconNames.MicFill)
+export const Volume2 = createIcon(iconNames.Volume2)
+export const VolumeX = createIcon(iconNames.VolumeX)
+export const Send = createIcon(iconNames.Send)
+export const HelpCircle = createIcon(iconNames.HelpCircle)
+export const Sparkles = createIcon(iconNames.Sparkles)
+export const StopFill = createIcon(iconNames.StopFill)
+export const Terminal = createIcon(iconNames.Terminal)

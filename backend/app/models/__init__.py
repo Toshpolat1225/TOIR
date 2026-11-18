@@ -24,6 +24,7 @@ from app.models.gtk import (
     GtkTrain,
     GtkTrainMember,
 )
+from app.models.assistant import AssistantPending, AssistantQuery
 from app.models.gtk_gps import GpsDayAssessment, GpsWagonSegment, GtkGpsDay, GtkGpsRun, GtkGpsUnit
 from app.models.position_history import AssetPositionHistory
 from app.models.scales import ScaleCargo, ScaleCorrection, ScalePost, ScaleTrain, ScaleTrainCarriage, ScaleWeighing
