@@ -72,8 +72,9 @@ test("assetIdFromPath reads the asset of the open GPS pages only", () => {
 
 test("buildContext carries the page, the page asset and the last entity", () => {
   const last = { kind: "asset" as const, id: UUID, label: "37919", asset_type: "locomotive" }
-  assert.deepEqual(buildContext(`/dashboard/gps/${UUID}`, last), { page: `/dashboard/gps/${UUID}`, asset_id: UUID, last_entity: last })
-  assert.deepEqual(buildContext("/dashboard/map", null), { page: "/dashboard/map", asset_id: null, last_entity: null })
+  assert.deepEqual(buildContext(`/dashboard/gps/${UUID}`, last), { page: `/dashboard/gps/${UUID}`, asset_id: UUID, last_entity: last, dialog: null })
+  assert.deepEqual(buildContext("/dashboard/map", null), { page: "/dashboard/map", asset_id: null, last_entity: null, dialog: null })
+  assert.deepEqual(buildContext("/dashboard/map", null, { intent: "wo.create", base: "naryad och" }).dialog, { intent: "wo.create", base: "naryad och" })
   assert.equal(buildContext("/x".repeat(300), null).page?.length, 200)
 })
 

@@ -206,3 +206,23 @@ async def test_fleet_count_and_work_types_answer_from_the_database_and_a_master_
             assert types_out.intent == "to.types" and types_out.status == "ok"
     finally:
         await _cleanup(w)
+
+
+async def test_an_unfinished_command_is_completed_by_the_next_short_answer(fake_handlers):
+    from app.schemas.assistant import AssistantContext
+
+    tag = uuid4().hex[:6]
+    w = await _world(tag)
+    try:
+        async with SessionFactory() as db:
+            first = await engine.run_command(db, w["admin"], CommandIn(text="yangi naryad yarat"))
+            assert first.status == "needs_clarification" and first.intent == "wo.create" and first.dialog is not None
+            ctx = AssistantContext(dialog=first.dialog)
+            second = await engine.run_command(db, w["admin"], CommandIn(text=w["inv"][0], context=ctx))  # just the number: it completes the order
+            assert second.intent == "wo.create" and second.status == "needs_confirm" and second.confirm is not None and second.dialog is None
+            assert fake_handlers["create"] == 1
+            # a real new command during the dialog is not swallowed by it
+            other = await engine.run_command(db, w["admin"], CommandIn(text="xaritani och", context=AssistantContext(dialog=first.dialog)))
+            assert other.intent == "nav.open"
+    finally:
+        await _cleanup(w)

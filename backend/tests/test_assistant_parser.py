@@ -239,3 +239,18 @@ def test_repair_does_not_turn_short_words_into_commands():
     from app.services.assistant.repair import repair_token
 
     assert repair_token("hello") == "hello" and repair_token("yeti") == "yeti" and repair_token("12345") == "12345"
+
+
+def test_a_standard_or_a_year_is_not_a_unit_number():
+    for text, expected in (
+        ("37919 GOST 33421-2015 qayerda", ["37919"]), ("naryad 1024 ga izoh qo'sh GOST 33421 bo'yicha", ["1024"]),
+        ("sostav 439 2015 yil", ["439"]), ("37919 25 mart necha km yurdi", ["37919", "25"]), ("vagon 35656 4-marta yuk tashidi", ["35656"]),
+        ("37919 2026", ["37919", "2026"]),  # a bare 4-digit number stays a number (it may be an inventory number)
+    ):
+        assert entities.numbers_in(canonical(text).split()) == expected, text
+
+
+def test_a_create_verb_without_a_unit_asks_for_the_unit_and_a_bare_open_still_opens_the_page():
+    assert simulate("yangi naryad yarat")[:2] == ("wo.create", ["asset"])
+    assert simulate("создай наряд")[:2] == ("wo.create", ["asset"])
+    assert simulate("naryad och")[0] == "nav.open" and simulate("открой наряды")[0] == "nav.open"

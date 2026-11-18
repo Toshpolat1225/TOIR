@@ -17,6 +17,13 @@ class EntityRef(BaseModel):
     asset_type: str | None = None  # asset only: locomotive | diesel | wagon | tank_car | platform | ...
 
 
+class DialogState(BaseModel):
+    """An unfinished command waiting for its missing piece: the next short answer is appended to `base` and parsed again (the server keeps no state)."""
+
+    intent: str = Field(max_length=60)
+    base: str = Field(max_length=400)
+
+
 class AssistantContext(BaseModel):
     """Where the user is and what was talked about last: "bu lokomotiv", "uni xaritada ko'rsat"."""
 
@@ -24,6 +31,7 @@ class AssistantContext(BaseModel):
     asset_id: UUID | None = None
     train_gtk_id: int | None = None
     last_entity: EntityRef | None = None
+    dialog: DialogState | None = None
 
 
 class CommandIn(BaseModel):
@@ -88,6 +96,7 @@ class CommandOut(BaseModel):
     entities: list[EntityRef] = Field(default_factory=list)  # what was resolved: becomes `context.last_entity`
     ms: int = 0
     query_id: int | None = None
+    dialog: DialogState | None = None  # set when the command still lacks something: the client sends it back with the next answer
 
 
 class ConfirmIn(BaseModel):

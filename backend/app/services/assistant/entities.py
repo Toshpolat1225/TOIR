@@ -70,8 +70,22 @@ def detect_page(text: str) -> str | None:
     return best[1] if best else None
 
 
+_STANDARD_WORDS = ("gost", "гост", "ost", "ост", "iso", "din", "tu", "ту")
+_YEAR_WORDS = ("yil", "йил", "год", "года", "г")
+
+
 def numbers_in(tokens: list[str]) -> list[str]:
-    return [t for t in tokens if _NUMBER.match(t)]
+    """The numbers of the sentence that may name a unit: a standard («GOST 33421 2015») and a year («2015 yil») are not unit numbers."""
+    skip: set[int] = set()
+    for i, t in enumerate(tokens):
+        if t in _STANDARD_WORDS or (len(t) >= 4 and t.startswith(("gost", "гост"))):
+            j = i + 1
+            while j < len(tokens) and j <= i + 2 and _NUMBER.match(tokens[j]):
+                skip.add(j)
+                j += 1
+        if _NUMBER.match(t) and len(t) == 4 and 1900 <= int(t) <= 2100 and i + 1 < len(tokens) and tokens[i + 1].startswith(_YEAR_WORDS):
+            skip.add(i)
+    return [t for i, t in enumerate(tokens) if i not in skip and _NUMBER.match(t)]
 
 
 def after_keyword_number(tokens: list[str], words: tuple[str, ...], reach: int = 2) -> str | None:

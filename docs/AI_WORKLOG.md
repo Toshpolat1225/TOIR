@@ -486,3 +486,9 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 - O'zgardi: `services/assistant/repair.py` (yangi), `parser.py`, `speech.py` (prompt_uz/ru), `whisper/{app.py,Dockerfile}`, `docker-compose.yml` (model small), `lib/assistant.ts` (+test), `components/assistant/AssistantCenter.tsx` («Исправить»), testlar (`GARBLED`, engine PG).
 - Tested: backend 853 o'tdi, tsc + 165 unit; backend/frontend jonli joylandi. NOT TESTED: o'zbekcha real aniqlik, `small` kechikishi.
 - Keyingi: whisper `small` image'ini joylash va o'zbekcha yozuvlar bilan o'lchash.
+
+## 2026-11-18 (kech): AGMK tahlili asosida tekshiruv
+- `entities.numbers_in`: standart (GOST/ГОСТ/ISO…) va «yil» raqamlari chiqarildi; yangi test. Backend 862 o'tdi, backend jonli joylandi (`--no-deps`). Ko'p bosqichli naryad dialogi qilinmadi (tasdiq kerak).
+
+## 2026-11-18 (kech): ko'p bosqichli dialog
+- `schemas/assistant.py` (DialogState), `engine.py`, `parser.py` (create fe'li), `lib/assistant.ts`, `AssistantCenter.tsx`; testlar: backend 864 o'tdi, frontend 165, tsc xatosiz. Backend+frontend jonli joylandi (`--no-deps`). Wake word va LLM/RAG qilinmadi.

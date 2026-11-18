@@ -19,6 +19,7 @@ import {
   appendHistory,
   audioFileName,
   buildContext,
+  type AssistantDialog,
   detectConfirmReply,
   formatCountdown,
   mapAssistantError,
@@ -102,6 +103,7 @@ export function AssistantCenter() {
   const busyRef = useRef(false)
   const historyRef = useRef<HistoryEntry[]>([])
   const lastEntityRef = useRef<AssistantEntityRef | null>(null)
+  const dialogRef = useRef<AssistantDialog | null>(null)
   const langRef = useRef<AssistantLang>("auto")
   const ttsRef = useRef(false)
   const pathRef = useRef<string | null>(null)
@@ -205,6 +207,7 @@ export function AssistantCenter() {
   const handleResult = useCallback(
     (out: AssistantCommandOut) => {
       setLastEntity((previous) => nextLastEntity(previous, out))
+      dialogRef.current = out.dialog ?? null // an unfinished command: the next answer completes it
       speak(out)
       const target = safeNavigate(out.navigate)
       if (target) setNavPending(target)
@@ -263,7 +266,7 @@ export function AssistantCenter() {
       requestRef.current = controller
       try {
         const out = await api.assistant.command(
-          { text, locale: langRef.current, source, stt_confidence: source === "voice" ? confidence : null, context: buildContext(pathRef.current, lastEntityRef.current) },
+          { text, locale: langRef.current, source, stt_confidence: source === "voice" ? confidence : null, context: buildContext(pathRef.current, lastEntityRef.current, dialogRef.current) },
           controller.signal,
         )
         addEntry({ id: newEntryId(Date.now(), counter.current++), at: new Date().toISOString(), query: text, source, out })

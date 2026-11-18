@@ -7,7 +7,8 @@ export type AssistantStatusKind = "ok" | "unmatched" | "denied" | "needs_confirm
 export type AssistantLang = "auto" | "uz" | "ru"
 
 export type AssistantEntityRef = { kind: "asset" | "train" | "work_order" | "section"; id: string; label: string; asset_type?: string | null }
-export type AssistantContext = { page?: string | null; asset_id?: string | null; train_gtk_id?: number | null; last_entity?: AssistantEntityRef | null }
+export type AssistantDialog = { intent: string; base: string }
+export type AssistantContext = { page?: string | null; asset_id?: string | null; train_gtk_id?: number | null; last_entity?: AssistantEntityRef | null; dialog?: AssistantDialog | null }
 export type AssistantCommandIn = {
   text: string
   locale: AssistantLang
@@ -52,6 +53,7 @@ export type AssistantCommandOut = {
   entities: AssistantEntityRef[]
   ms: number
   query_id?: number | null
+  dialog?: AssistantDialog | null
 }
 export type AssistantConfirmIn = { token: string; approve: boolean; context?: AssistantContext | null }
 export type AssistantTranscribeOut = { text: string; language?: string | null; confidence?: number | null; duration_s?: number | null; ms: number }
@@ -128,11 +130,12 @@ export function assetIdFromPath(pathname: string | null | undefined): string | n
   return match ? match[1].toLowerCase() : null
 }
 
-export function buildContext(pathname: string | null | undefined, lastEntity: AssistantEntityRef | null | undefined): AssistantContext {
+export function buildContext(pathname: string | null | undefined, lastEntity: AssistantEntityRef | null | undefined, dialog?: AssistantDialog | null): AssistantContext {
   return {
     page: pathname ? pathname.slice(0, 200) : null,
     asset_id: assetIdFromPath(pathname),
     last_entity: lastEntity ?? null,
+    dialog: dialog ?? null,
   }
 }
 

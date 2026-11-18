@@ -91,6 +91,9 @@ def _needs_missing(intent: Intent, slots: Slots) -> list[str]:
     return missing
 
 
+_CREATE_VERBS = ("yarat", "yangi", "создай", "создать", "оформи", "новый", "новую", "tuz")  # not «och/открой»: those mean «open the page»
+
+
 def rank(tokens: list[str], slots: Slots) -> list[Match]:
     """Pure part: every intent whose keyword groups all match, scored with the slot situation (no database)."""
     matches: list[Match] = []
@@ -110,6 +113,8 @@ def rank(tokens: list[str], slots: Slots) -> list[Match]:
         if slots.assets and "asset" in intent.needs:
             bonus += 2.0  # ambiguous but present: the handler lists the candidates
             missing = [m for m in missing if m != "asset"]
+        if intent.id == "wo.create" and any(t.startswith(_CREATE_VERBS) for t in tokens):
+            bonus += 30.0  # «yangi naryad yarat» is a create command that still lacks the unit, not a request to open the page
         matches.append(Match(intent, base + intent.priority + bonus, missing))
     matches.sort(key=lambda m: (-m.score, m.intent.id))
     return matches

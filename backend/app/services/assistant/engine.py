@@ -20,7 +20,7 @@ from app.core.permissions import user_has_permission
 from app.models.assistant import AssistantPending, AssistantQuery
 from app.models.identity import User
 from app.schemas.assistant import (
-    Card, CardRow, CommandIn, CommandOut, ConfirmIn, ConfirmOut, HelpGroup, HelpOut, Suggestion,
+    Card, CardRow, CommandIn, CommandOut, ConfirmIn, DialogState, ConfirmOut, HelpGroup, HelpOut, Suggestion,
 )
 from app.services.assistant import catalog
 from app.services.assistant import handlers as _handlers  # noqa: F401  (importing registers every handler and action)
@@ -128,10 +128,11 @@ async def _log(db: AsyncSession, user: User, row: AssistantQuery) -> int | None:
 
 
 def _out(result: Result, *, parsed: Parsed | None, canon: str, locale: str, st: str, ms: int, confirm: ConfirmOut | None = None, qid: int | None = None) -> CommandOut:
+    dialog = DialogState(intent=parsed.intent.id, base=canon[:400]) if parsed and parsed.intent and st == "needs_clarification" else None
     return CommandOut(
         ok=st in ("ok", "needs_confirm"), status=st, intent=parsed.intent.id if parsed and parsed.intent else None, heard=canon, speak=result.speak,  # type: ignore[arg-type]
         speak_lang="uz" if locale == "uz" else "ru", cards=result.cards, navigate=result.navigate, confirm=confirm,
-        suggestions=_suggestions(parsed, locale) if parsed else [], entities=result.entities, ms=ms, query_id=qid,
+        suggestions=_suggestions(parsed, locale) if parsed else [], entities=result.entities, ms=ms, query_id=qid, dialog=dialog,
     )
 
 
@@ -141,6 +142,13 @@ async def run_command(db: AsyncSession, user: User, body: CommandIn) -> CommandO
     locale: Literal["uz", "ru"] = body.locale if body.locale != "auto" else detect_locale(body.text)  # type: ignore[assignment]
     canon = canonical_for_parser(body.text)
     parsed = await parse(db, user, canon, body.context)
+    dialog = body.context.dialog if body.context else None
+    if dialog is not None and dialog.intent in catalog.INTENTS and (parsed.intent is None or parsed.fallback is not None):
+        # the answer to our question ("37919", "ehtiyot qism kutilmoqda"): it is not a command of its own, so it completes the unfinished one
+        combined = f"{dialog.base} {canon}"[:400]
+        joined = await parse(db, user, combined, body.context)
+        if joined.intent is not None and joined.intent.id == dialog.intent:
+            parsed, canon = joined, combined
     ctx = Ctx(db=db, user=user, locale=locale, context=body.context, now=now)
     st = "ok"
     result = Result()
