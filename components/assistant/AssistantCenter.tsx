@@ -6,8 +6,10 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react"
 import { createPortal } from "react-dom"
-import { HelpCircle, Loader2, Mic, MicFill, Send, StopFill, Volume2, X } from "@/components/ui/icons"
+import { ClockHistory, HelpCircle, Loader2, Mic, MicFill, PencilSquare, Robot, Send, StopFill, Volume2, X } from "@/components/ui/icons"
+import { useAuth } from "@/lib/auth-context"
 import { api, type AssistantCommandOut, type AssistantEntityRef, type AssistantHelpOut, type AssistantStatusOut } from "@/lib/api"
+import type { AssistantHistoryItem } from "@/lib/assistant"
 import {
   HISTORY_KEY,
   LANG_KEY,
@@ -91,6 +93,11 @@ export function AssistantCenter() {
   const [help, setHelp] = useState<AssistantHelpOut | null>(null)
   const [helpFailed, setHelpFailed] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [pastItems, setPastItems] = useState<AssistantHistoryItem[] | null>(null)
+  const { user } = useAuth()
+  const storeKey = user?.id ? `${HISTORY_KEY}.${user.id}` : null // the answers kept on this browser belong to ONE user
+  const [loadedKey, setLoadedKey] = useState<string | null>(null)
   const [review, setReview] = useState<Review | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
@@ -117,13 +124,19 @@ export function AssistantCenter() {
   // ---- persisted preferences and the last answers ----
   useEffect(() => {
     setMounted(true)
-    setHistory(parseHistory(readStorage(HISTORY_KEY)))
+    try { window.localStorage.removeItem(HISTORY_KEY) } catch { /* the old shared history (one list for everybody) is dropped */ }
     setLang(normalizeLang(readStorage(LANG_KEY)))
     setTts(readStorage(TTS_KEY) === "1")
   }, [])
   useEffect(() => {
-    if (mounted) writeStorage(HISTORY_KEY, JSON.stringify(history))
-  }, [history, mounted])
+    if (!mounted) return
+    setHistory(storeKey ? parseHistory(readStorage(storeKey)) : [])
+    dialogRef.current = null
+    setLoadedKey(storeKey)
+  }, [storeKey, mounted])
+  useEffect(() => {
+    if (mounted && storeKey && loadedKey === storeKey) writeStorage(storeKey, JSON.stringify(history))
+  }, [history, mounted, storeKey, loadedKey])
   useEffect(() => {
     if (mounted) writeStorage(LANG_KEY, lang)
   }, [lang, mounted])
@@ -375,40 +388,31 @@ export function AssistantCenter() {
     }
   }
 
+  const toggleHistory = () => {
+    const next = !showHistory
+    setShowHistory(next)
+    if (next) {
+      setShowHelp(false)
+      setPastItems(null)
+      api.assistant.history().then(setPastItems).catch(() => setPastItems([]))
+    }
+  }
+  const newDialog = () => {
+    setHistory([])
+    dialogRef.current = null
+    setShowHistory(false)
+    setShowHelp(false)
+    setNotice(null)
+    stopSpeaking()
+  }
+
   const lastEntry = history[history.length - 1]
   const suggestions = lastEntry?.out?.suggestions ?? []
   const empty = history.length === 0 && !busy
 
-  const header = (
-    <>
-      <button
-        type="button"
-        data-testid="assistant-open"
-        aria-label="Голосовая команда (Ctrl+K)"
-        title="Голосовая команда (Ctrl+K)"
-        onClick={() => setOpen(true)}
-        className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 dark:text-gray-300 dark:hover:bg-gray-800"
-      >
-        <Mic className="text-lg" />
-      </button>
-      <button
-        type="button"
-        data-testid="assistant-help-open"
-        onClick={() => {
-          setOpen(true)
-          setShowHelp(true)
-        }}
-        className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm text-slate-600 hover:bg-slate-100 dark:text-gray-300 dark:hover:bg-gray-800"
-      >
-        <HelpCircle />
-        <span className="hidden sm:inline">Команды</span>
-      </button>
-    </>
-  )
-
   const panel = (
     <div className="fixed inset-0 z-[70]">
-      <button type="button" aria-label="Закрыть помощника" className="absolute inset-0 bg-slate-950/40 backdrop-blur-[1px]" onClick={() => { recorder.cancel(); close() }} />
+      <button type="button" aria-label="Закрыть помощника" className="absolute inset-0 bg-slate-950/40 backdrop-blur-[1px] sm:bg-transparent sm:backdrop-blur-none" onClick={() => { recorder.cancel(); close() }} />
       <section
         role="dialog"
         aria-modal="true"
@@ -417,10 +421,18 @@ export function AssistantCenter() {
         tabIndex={-1}
         onKeyDown={onPanelKeyDown}
         onKeyUp={onPanelKeyUp}
-        className="absolute inset-y-0 right-0 flex w-full max-w-[460px] min-w-0 flex-col bg-slate-50 shadow-2xl outline-none dark:bg-gray-950"
+        className="absolute inset-0 flex min-w-0 flex-col overflow-hidden bg-slate-50 shadow-2xl outline-none sm:pointer-events-auto sm:inset-auto sm:bottom-5 sm:right-5 sm:h-[min(640px,calc(100vh-2.5rem))] sm:w-[400px] sm:rounded-2xl sm:border sm:border-slate-200 dark:bg-gray-950 dark:sm:border-gray-800"
       >
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 dark:border-gray-800 dark:bg-gray-900">
-          <h2 className="mr-auto text-sm font-semibold text-slate-900 dark:text-white">Помощник · Yordamchi</h2>
+          <div className="mr-auto flex min-w-0 items-center gap-2">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 to-violet-500 text-white"><Robot /></span>
+            <div className="min-w-0">
+              <h2 className="truncate text-sm font-semibold leading-tight text-slate-900 dark:text-white">AI yordamchi</h2>
+              <p className="flex items-center gap-1 text-[11px] leading-tight text-slate-500 dark:text-gray-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Online</p>
+            </div>
+          </div>
+          <button type="button" data-testid="assistant-history-toggle" aria-label="История запросов" title="История запросов" aria-pressed={showHistory} onClick={toggleHistory} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:text-gray-400 dark:hover:bg-gray-800"><ClockHistory /></button>
+          <button type="button" data-testid="assistant-new" aria-label="Новый диалог" title="Новый диалог" disabled={history.length === 0} onClick={newDialog} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 disabled:opacity-40 dark:text-gray-400 dark:hover:bg-gray-800"><PencilSquare /></button>
           <select data-testid="assistant-lang" aria-label="Язык распознавания" value={lang} onChange={(e) => setLang(normalizeLang(e.target.value))} className={FIELD}>
             {LANG_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -439,6 +451,25 @@ export function AssistantCenter() {
         </div>
 
         <div ref={listRef} aria-live="polite" className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-3 py-3">
+          {showHistory ? (
+            <div data-testid="assistant-history" className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
+              <p className="mb-2 text-sm font-semibold text-slate-900 dark:text-white">Мои прошлые запросы</p>
+              {pastItems === null ? <p className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="animate-spin" /> Загрузка…</p> : null}
+              {pastItems !== null && pastItems.length === 0 ? <p className="text-sm text-slate-500 dark:text-gray-400">Пока пусто.</p> : null}
+              <ul className="space-y-1">
+                {(pastItems ?? []).map((item) => (
+                  <li key={item.id}>
+                    <button type="button" data-testid="assistant-history-item" onClick={() => { setShowHistory(false); void submit(item.text) }} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-gray-100 dark:hover:bg-gray-800">
+                      {item.source === "voice" ? <Mic className="shrink-0 text-xs text-slate-400" /> : <span className="w-3 shrink-0" />}
+                      <span className="min-w-0 flex-1 break-words">{item.text}</span>
+                      <span className="shrink-0 text-[10px] text-slate-400">{new Date(item.at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           {showHelp ? (
             <div data-testid="assistant-help" className="rounded-2xl border border-indigo-200 bg-white p-3 dark:border-indigo-900 dark:bg-gray-900">
               <p className="mb-2 text-sm font-semibold text-slate-900 dark:text-white">Что можно сказать или написать</p>
@@ -459,7 +490,7 @@ export function AssistantCenter() {
             </div>
           ) : null}
 
-          {empty && !showHelp ? (
+          {empty && !showHelp && !showHistory ? (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
               <p className="font-medium text-slate-900 dark:text-white">Скажите или напишите команду</p>
               <p className="mt-1 text-xs text-slate-500 dark:text-gray-400">
@@ -657,9 +688,22 @@ export function AssistantCenter() {
     </div>
   )
 
+  const fab = (
+    <button
+      type="button"
+      data-testid="assistant-fab"
+      aria-label="AI yordamchi"
+      title="AI yordamchi (Ctrl+K)"
+      onClick={() => setOpen(true)}
+      className="fixed bottom-5 right-5 z-[60] flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 to-violet-500 text-2xl text-white shadow-lg ring-4 ring-white/70 transition hover:scale-105 focus:outline-none focus-visible:ring-indigo-300 dark:ring-gray-900/70"
+    >
+      <Robot />
+    </button>
+  )
+
   return (
     <>
-      {header}
+      {mounted && !open && user ? createPortal(fab, document.body) : null}
       {mounted && open ? createPortal(panel, document.body) : null}
     </>
   )

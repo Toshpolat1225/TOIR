@@ -82,6 +82,17 @@ class ConfirmOut(BaseModel):
     risk: Literal["low", "medium"] = "low"
 
 
+class HistoryItem(BaseModel):
+    """One of the user's own earlier questions (the sentence the parser saw); answers are not stored."""
+
+    id: int
+    text: str
+    intent: str | None = None
+    status: str
+    source: Literal["text", "voice"]
+    at: datetime
+
+
 class CommandOut(BaseModel):
     ok: bool
     status: Status

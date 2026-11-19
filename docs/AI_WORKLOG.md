@@ -492,3 +492,7 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 
 ## 2026-11-18 (kech): ko'p bosqichli dialog
 - `schemas/assistant.py` (DialogState), `engine.py`, `parser.py` (create fe'li), `lib/assistant.ts`, `AssistantCenter.tsx`; testlar: backend 864 o'tdi, frontend 165, tsc xatosiz. Backend+frontend jonli joylandi (`--no-deps`). Wake word va LLM/RAG qilinmadi.
+
+## 2026-11-19: yordamchi tugmasi va shaxsiy tarix
+- Changed: `AssistantCenter.tsx` (FAB, kichik modal, tarix ko'rinishi, foydalanuvchi kaliti), `routers/assistant.py` + `schemas` (`/assistant/history`), `lib/api.ts`, `lib/assistant.ts`, `components/ui/icons.tsx`, yangi `browser/b14_assistant_fab.mjs`.
+- Tested: backend 865, unit 165, tsc; jonli brauzer b14 7/7 va b13 13/13; ZZTEST tozalandi (qoldiq 0). Telefon haqiqiy qurilmada sinalmadi.

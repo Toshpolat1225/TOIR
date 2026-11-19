@@ -40,7 +40,7 @@ const ask = async (text) => {
 }
 
 await check("the header has the assistant button and Ctrl+K opens the panel; Esc closes it", async () => {
-  assert.ok((await page.locator("[data-testid=assistant-open]").count()) >= 1)
+  assert.ok((await page.locator("[data-testid=assistant-fab]").count()) >= 1)
   await page.keyboard.press("Control+k")
   await page.locator("[data-testid=assistant-panel]").waitFor({ timeout: 8000 })
   await page.keyboard.press("Escape")
@@ -155,7 +155,7 @@ const mp = await phone.newPage()
 await login(mp)
 await check("phone width: the panel fits (no sideways scroll)", async () => {
   await mp.goto(`${BASE}/dashboard`, { waitUntil: "networkidle" })
-  await mp.locator("[data-testid=assistant-open]").first().click()
+  await mp.locator("[data-testid=assistant-fab]").first().click()
   await mp.locator("[data-testid=assistant-panel]").waitFor({ timeout: 8000 })
   await mp.locator("[data-testid=assistant-input]").fill("yordam")
   await mp.locator("[data-testid=assistant-input]").press("Enter")

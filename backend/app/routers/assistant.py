@@ -10,7 +10,7 @@ from app.core.security import get_current_user
 from app.models.assistant import AssistantQuery
 from app.models.identity import User
 from app.schemas.assistant import (
-    AssistantStatus, CommandIn, CommandOut, ConfirmIn, HelpOut, TranscribeOut, UnmatchedItem, UnmatchedPage,
+    AssistantStatus, CommandIn, CommandOut, ConfirmIn, HelpOut, HistoryItem, TranscribeOut, UnmatchedItem, UnmatchedPage,
 )
 from app.services.assistant import engine
 
@@ -60,6 +60,30 @@ async def transcribe(
     except speech.SpeechError as exc:
         code = {"unavailable": 503, "busy": 503, "too_long": 413, "bad_audio": 422}.get(exc.code, 502)
         raise HTTPException(status_code=code, detail=f"Speech recognition: {exc.code}") from exc
+
+
+@router.get("/assistant/history", response_model=list[HistoryItem])
+async def history(user: CurrentUser, db: DatabaseSession, limit: Annotated[int, Query(ge=1, le=100)] = 40) -> list[HistoryItem]:
+    """The signed-in user's OWN earlier questions, newest first, one line per distinct sentence (nobody sees another user's history)."""
+    rows = (
+        await db.execute(
+            select(AssistantQuery.id, AssistantQuery.text, AssistantQuery.intent, AssistantQuery.status, AssistantQuery.source, AssistantQuery.created_at)
+            .where(AssistantQuery.user_id == user.id, AssistantQuery.status != "confirmed")
+            .order_by(AssistantQuery.id.desc())
+            .limit(limit * 4)
+        )
+    ).all()
+    seen: set[str] = set()
+    items: list[HistoryItem] = []
+    for r in rows:
+        key = r.text.strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append(HistoryItem(id=r.id, text=r.text, intent=r.intent, status=r.status, source=r.source, at=r.created_at))  # type: ignore[arg-type]
+        if len(items) >= limit:
+            break
+    return items
 
 
 @router.get("/assistant/status", response_model=AssistantStatus)

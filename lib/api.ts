@@ -2578,6 +2578,9 @@ const assistant = {
   async status(signal?: AbortSignal): Promise<import("./assistant").AssistantStatusOut> {
     return request<import("./assistant").AssistantStatusOut>({ method: "GET", path: "/assistant/status", signal, suppressNetworkLog: true });
   },
+  async history(signal?: AbortSignal): Promise<import("./assistant").AssistantHistoryItem[]> {
+    return request<import("./assistant").AssistantHistoryItem[]>({ method: "GET", path: "/assistant/history", signal, suppressNetworkLog: true });
+  },
   async help(signal?: AbortSignal): Promise<import("./assistant").AssistantHelpOut> {
     return request<import("./assistant").AssistantHelpOut>({ method: "GET", path: "/assistant/help", signal, suppressNetworkLog: true });
   },

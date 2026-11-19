@@ -7,6 +7,7 @@ export type AssistantStatusKind = "ok" | "unmatched" | "denied" | "needs_confirm
 export type AssistantLang = "auto" | "uz" | "ru"
 
 export type AssistantEntityRef = { kind: "asset" | "train" | "work_order" | "section"; id: string; label: string; asset_type?: string | null }
+export type AssistantHistoryItem = { id: number; text: string; intent?: string | null; status: string; source: "text" | "voice"; at: string }
 export type AssistantDialog = { intent: string; base: string }
 export type AssistantContext = { page?: string | null; asset_id?: string | null; train_gtk_id?: number | null; last_entity?: AssistantEntityRef | null; dialog?: AssistantDialog | null }
 export type AssistantCommandIn = {

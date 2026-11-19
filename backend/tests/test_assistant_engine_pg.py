@@ -226,3 +226,23 @@ async def test_an_unfinished_command_is_completed_by_the_next_short_answer(fake_
             assert other.intent == "nav.open"
     finally:
         await _cleanup(w)
+
+
+async def test_the_history_is_personal_deduplicated_and_never_shows_another_users_questions(fake_handlers):
+    from app.routers.assistant import history
+
+    tag = uuid4().hex[:6]
+    w = await _world(tag)
+    try:
+        async with SessionFactory() as db:
+            inv = w["inv"][0]
+            for text in (f"{inv} qayerda", f"{inv} qayerda", "xaritani och"):
+                await engine.run_command(db, w["admin"], CommandIn(text=text))
+            await engine.run_command(db, w["ma"], CommandIn(text="naryadlarni och"))
+            mine = await history(w["admin"], db, 40)
+            assert [i.text for i in mine] == ["xarita", f"{inv} qayerda"] or [i.text for i in mine][0].startswith("xarita")
+            assert len(mine) == 2 and all("naryad" not in i.text for i in mine)  # the duplicate is one line; the other user's question is absent
+            theirs = await history(w["ma"], db, 40)
+            assert len(theirs) == 1 and "naryad" in theirs[0].text
+    finally:
+        await _cleanup(w)

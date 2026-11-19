@@ -17,6 +17,9 @@ const iconNames = {
   Send: "send",
   HelpCircle: "question-circle",
   Sparkles: "stars",
+  Robot: "robot",
+  ClockHistory: "clock-history",
+  PencilSquare: "pencil-square",
   StopFill: "stop-fill",
   Terminal: "terminal",
   AlertCircle: "exclamation-circle",
@@ -235,5 +238,8 @@ export const VolumeX = createIcon(iconNames.VolumeX)
 export const Send = createIcon(iconNames.Send)
 export const HelpCircle = createIcon(iconNames.HelpCircle)
 export const Sparkles = createIcon(iconNames.Sparkles)
+export const Robot = createIcon(iconNames.Robot)
+export const ClockHistory = createIcon(iconNames.ClockHistory)
+export const PencilSquare = createIcon(iconNames.PencilSquare)
 export const StopFill = createIcon(iconNames.StopFill)
 export const Terminal = createIcon(iconNames.Terminal)
