@@ -739,6 +739,29 @@ def main() -> int:
             ),
             200,
         )
+        stamped_response = request("GET", f"/api/v1/work-orders/{primary_id}", bearer=operator_token)
+        require_status(checks, "Read completed work order", stamped_response, 200)
+        stamped = parse_object(stamped_response)
+        check_condition(
+            checks,
+            "Server stamps actual start/end on status changes and closed_at equals actual_end",
+            bool(stamped.get("actual_start"))
+            and bool(stamped.get("actual_end"))
+            and stamped.get("actual_end") == stamped.get("closed_at"),
+            f"actual_start={stamped.get('actual_start')} actual_end={stamped.get('actual_end')}",
+        )
+        check_condition(
+            checks,
+            "Work order shows creator and last editor names (joined from users)",
+            bool(stamped.get("created_by_name")) and bool(stamped.get("updated_by_name")),
+            f"created_by_name={stamped.get('created_by_name')} updated_by_name={stamped.get('updated_by_name')}",
+        )
+        check_condition(
+            checks,
+            "Planned start is filled automatically when the client sent none",
+            bool(stamped.get("date_start")),
+            f"date_start={stamped.get('date_start')}",
+        )
         check_status(
             checks,
             "Completed work order cannot be edited",

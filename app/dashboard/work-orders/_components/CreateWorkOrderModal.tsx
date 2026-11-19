@@ -2,6 +2,18 @@
 
 import { useMemo, useState } from "react";
 import { AlertCircle, Plus, X } from "@/components/ui/icons";
+import { SearchMultiSelect, SearchSelect } from "@/components/ui/search-select";
+import { useAuth } from "@/lib/auth-context";
+import {
+  addHoursLocal,
+  defaultExecutorId,
+  defaultSectionId,
+  formatHours,
+  toLocalInput,
+  totalHours,
+  unitTypeForAsset,
+  workTypesForAsset,
+} from "@/lib/work-order-defaults";
 import {
   api,
   type Employee,
@@ -14,6 +26,7 @@ import {
 } from "@/lib/api";
 import type { RepairDraft } from "./types";
 import { RepairItemsModal } from "./RepairItemsModal";
+import { buildRepairDraft } from "./repairDraft";
 
 type Props = {
   initialAssetId?: string;
@@ -72,17 +85,21 @@ export function CreateWorkOrderModal({
   const preselectedAsset =
     assets.find((asset) => asset.id === initialAssetId) ??
     assets.find((asset) => asset.inv_number === initialUnit || asset.name === initialUnit);
+  const { user } = useAuth();
   const [assetId, setAssetId] = useState(preselectedAsset?.id ?? "");
   const [sectionId, setSectionId] = useState(
-    initialSectionId(sections, initialSection) || preselectedAsset?.section_id || ""
+    initialSectionId(sections, initialSection) ||
+      preselectedAsset?.section_id ||
+      defaultSectionId(employees, user?.full_name, user?.section_id)
   );
   const [orderKind, setOrderKind] = useState("unplanned");
   const [priority, setPriority] = useState<"critical" | "high" | "normal" | "low">("normal");
-  const [executorId, setExecutorId] = useState("");
-  const [description, setDescription] = useState("");
+  const [executorChoice, setExecutorChoice] = useState<string | null>(null);
+  const [descriptionChoice, setDescriptionChoice] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [dateStart, setDateStart] = useState("");
-  const [dateEnd, setDateEnd] = useState("");
+  // planned start = now (editable); planned end = start + standard hours of the chosen repair types (until edited)
+  const [dateStart, setDateStart] = useState(() => toLocalInput(new Date()));
+  const [endChoice, setEndChoice] = useState<string | null>(null);
   const [repairs, setRepairs] = useState<RepairDraft[]>([]);
   const [repairsOpen, setRepairsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +107,7 @@ export function CreateWorkOrderModal({
   const selectedAsset = assets.find((asset) => asset.id === assetId);
   const section = sections.find((item) => item.id === sectionId);
   const departmentId = section?.department_id ?? null;
+  const isMaster = user?.role === "master";
   const employeesInSection = useMemo(
     () =>
       employees.filter(
@@ -97,7 +115,67 @@ export function CreateWorkOrderModal({
       ),
     [employees, sectionId]
   );
+  const executorDefault = useMemo(
+    () => defaultExecutorId(employees, user?.full_name, sectionId, user?.section_id),
+    [employees, user?.full_name, user?.section_id, sectionId]
+  );
+  const executorId =
+    executorChoice !== null && (executorChoice === "" || employeesInSection.some((e) => e.id === executorChoice))
+      ? executorChoice
+      : executorDefault;
+  const availableWorkTypes = useMemo(
+    () => workTypesForAsset(workTypes, selectedAsset?.asset_type),
+    [workTypes, selectedAsset?.asset_type]
+  );
+  const repairTypeIds = repairs.map((repair) => repair.workTypeId);
+  const duration = totalHours(workTypes, repairTypeIds);
+  const missingNames = duration.missing
+    .map((id) => workTypes.find((item) => item.id === id)?.code)
+    .filter(Boolean)
+    .join(", ");
+  const autoEnd =
+    repairs.length > 0 && duration.missing.length === 0 && dateStart ? addHoursLocal(dateStart, duration.hours) : "";
+  const dateEnd = endChoice ?? autoEnd;
+  const suggestedDescription = repairs
+    .map((repair) => {
+      const type = workTypes.find((item) => item.id === repair.workTypeId);
+      return type ? `${type.code} — ${type.name}` : repair.kind;
+    })
+    .join("; ");
+  const description = descriptionChoice ?? suggestedDescription;
   const totalItems = repairs.reduce((count, repair) => count + repair.rows.length, 0);
+
+  function changeAsset(value: string) {
+    setAssetId(value);
+    const asset = assets.find((item) => item.id === value);
+    if (asset?.section_id) setSectionId(asset.section_id);
+    // keep only repair types that fit the new asset (locomotive types do not apply to wagons)
+    const unit = unitTypeForAsset(asset?.asset_type);
+    if (unit) {
+      setRepairs((current) =>
+        current.filter((repair) => workTypes.find((item) => item.id === repair.workTypeId)?.unit_type === unit)
+      );
+    }
+  }
+
+  async function changeRepairTypes(ids: string[]) {
+    setError(null);
+    const kept = repairs.filter((repair) => ids.includes(repair.workTypeId));
+    const added = ids.filter((id) => !repairs.some((repair) => repair.workTypeId === id));
+    setRepairs(kept);
+    for (const id of added) {
+      const workType = workTypes.find((item) => item.id === id);
+      if (!workType) continue;
+      try {
+        const draft = await buildRepairDraft(workType, departmentId, nomenclature);
+        setRepairs((current) =>
+          current.some((repair) => repair.workTypeId === id) ? current : [...current, draft]
+        );
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Не удалось загрузить шаблон");
+      }
+    }
+  }
 
   async function submit() {
     setError(null);
@@ -115,6 +193,10 @@ export function CreateWorkOrderModal({
     }
     if (repairs.length === 0) {
       setError("Добавьте хотя бы один вид ремонта");
+      return;
+    }
+    if (dateEnd && dateStart && new Date(dateEnd) < new Date(dateStart)) {
+      setError("Плановое завершение не может быть раньше планового начала");
       return;
     }
     const payload: WorkOrderCreatePayload = {
@@ -149,7 +231,7 @@ export function CreateWorkOrderModal({
           <header className="flex items-center justify-between border-b p-4 dark:border-gray-700">
             <div>
               <h2 className="font-semibold text-gray-900 dark:text-white">Создать наряд-заказ</h2>
-              <p className="text-xs text-gray-500">Номер и идентификатор будут назначены сервером</p>
+              <p className="text-xs text-gray-500">Номер назначит сервер · создаёт: {user?.full_name ?? "—"} · фактические начало и завершение проставятся автоматически при смене статуса</p>
             </div>
             <button aria-label="Закрыть" onClick={onClose}><X className="h-5 w-5" /></button>
           </header>
@@ -161,22 +243,30 @@ export function CreateWorkOrderModal({
             )}
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="text-sm font-medium">Основное средство *
-                <select className={inputClass} value={assetId} onChange={(event) => {
-                  const value = event.target.value;
-                  setAssetId(value);
-                  setSectionId(assets.find((asset) => asset.id === value)?.section_id ?? "");
-                }}>
-                  <option value="">Выберите ОС...</option>
-                  {assets.map((asset) => (
-                    <option key={asset.id} value={asset.id}>{asset.name} · {asset.inv_number}</option>
-                  ))}
-                </select>
+                <SearchSelect
+                  testId="wo-asset"
+                  value={assetId}
+                  placeholder="Номер, название или инв. №..."
+                  options={assets.map((asset) => ({
+                    value: asset.id,
+                    label: asset.name,
+                    hint: asset.inv_number,
+                    display: `${asset.name} · ${asset.inv_number}`,
+                    search: [asset.number, asset.series, asset.serial_number].filter(Boolean).join(" "),
+                  }))}
+                  onChange={changeAsset}
+                />
               </label>
               <label className="text-sm font-medium">Участок
-                <select className={inputClass} value={sectionId} onChange={(event) => setSectionId(event.target.value)}>
-                  <option value="">По участку ОС</option>
-                  {sections.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </select>
+                <SearchSelect
+                  testId="wo-section"
+                  value={sectionId}
+                  disabled={isMaster}
+                  clearable={!isMaster}
+                  placeholder="По участку ОС"
+                  options={sections.map((item) => ({ value: item.id, label: item.name }))}
+                  onChange={setSectionId}
+                />
               </label>
               <label className="text-sm font-medium">Вид наряда *
                 <select className={inputClass} value={orderKind} onChange={(event) => setOrderKind(event.target.value)}>
@@ -195,19 +285,55 @@ export function CreateWorkOrderModal({
                 </select>
               </label>
               <label className="text-sm font-medium">Исполнитель *
-                <select className={inputClass} value={executorId} onChange={(event) => setExecutorId(event.target.value)}>
-                  <option value="">Выберите сотрудника...</option>
-                  {employeesInSection.map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name}</option>)}
-                </select>
+                <SearchSelect
+                  testId="wo-executor"
+                  value={executorId}
+                  placeholder="Фамилия или табельный №..."
+                  options={employeesInSection.map((employee) => ({
+                    value: employee.id,
+                    label: employee.full_name,
+                    hint: employee.position ?? undefined,
+                    search: employee.tab_number,
+                  }))}
+                  onChange={setExecutorChoice}
+                />
               </label>
+              <div className="text-sm font-medium sm:col-span-2">Виды ремонта *
+                <SearchMultiSelect
+                  testId="wo-types"
+                  values={repairTypeIds}
+                  placeholder="Код или название: ТО-2, ТР-1..."
+                  options={availableWorkTypes.map((item) => ({
+                    value: item.id,
+                    label: item.code,
+                    hint: `${item.name}${item.duration_hours ? ` · ${formatHours(item.duration_hours)}` : ""}`,
+                  }))}
+                  onChange={(ids) => void changeRepairTypes(ids)}
+                />
+                {!selectedAsset && <p className="mt-1 text-xs font-normal text-gray-500">Выберите ОС — список видов ремонта сузится по типу техники.</p>}
+              </div>
               <label className="text-sm font-medium">Плановое начало
-                <input className={inputClass} type="datetime-local" value={dateStart} onChange={(event) => setDateStart(event.target.value)} />
+                <input data-testid="wo-start" className={inputClass} type="datetime-local" value={dateStart} onChange={(event) => setDateStart(event.target.value)} />
               </label>
               <label className="text-sm font-medium">Плановое завершение
-                <input className={inputClass} type="datetime-local" value={dateEnd} onChange={(event) => setDateEnd(event.target.value)} />
+                <input data-testid="wo-end" className={inputClass} type="datetime-local" value={dateEnd} onChange={(event) => setEndChoice(event.target.value)} />
+                <span className="mt-1 block text-xs font-normal text-gray-500" data-testid="wo-end-hint">
+                  {endChoice !== null
+                    ? "Указано вручную"
+                    : duration.missing.length > 0 && repairs.length > 0
+                      ? `Длительность не задана для: ${missingNames}. Заполните её в справочнике «Виды ремонта»`
+                      : autoEnd
+                        ? `Рассчитано автоматически: ${formatHours(duration.hours)} по справочнику`
+                        : "Появится после выбора видов ремонта"}
+                  {endChoice !== null && autoEnd && (
+                    <button type="button" className="ml-2 text-blue-600 underline" onClick={() => setEndChoice(null)}>
+                      вернуть расчёт
+                    </button>
+                  )}
+                </span>
               </label>
               <label className="text-sm font-medium sm:col-span-2">Описание неисправности / работ *
-                <textarea className={inputClass} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} />
+                <textarea className={inputClass} rows={3} value={description} onChange={(event) => setDescriptionChoice(event.target.value)} />
               </label>
               <label className="text-sm font-medium sm:col-span-2">Примечание
                 <textarea className={inputClass} rows={2} value={note} onChange={(event) => setNote(event.target.value)} />
@@ -215,11 +341,15 @@ export function CreateWorkOrderModal({
             </div>
             <div className="mt-4 flex items-center justify-between rounded-lg border p-3 dark:border-gray-700">
               <div>
-                <p className="font-medium text-gray-900 dark:text-white">Виды ремонта и ТМЦ *</p>
-                <p className="text-xs text-gray-500">Видов: {repairs.length} · позиций: {totalItems}</p>
+                <p className="font-medium text-gray-900 dark:text-white">Материалы (ТМЦ)</p>
+                <p className="text-xs text-gray-500">
+                  {repairs.length === 0
+                    ? "Сначала выберите виды ремонта — материалы подставятся из шаблона"
+                    : `Из шаблона подставлено позиций: ${totalItems} · можно изменить`}
+                </p>
               </div>
-              <button onClick={() => setRepairsOpen(true)} className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-blue-700 dark:border-gray-600 dark:text-blue-300">
-                <Plus className="h-4 w-4" /> Настроить
+              <button disabled={repairs.length === 0} onClick={() => setRepairsOpen(true)} className="inline-flex disabled:opacity-50 items-center gap-2 rounded-md border px-3 py-2 text-sm text-blue-700 dark:border-gray-600 dark:text-blue-300">
+                <Plus className="h-4 w-4" /> Изменить
               </button>
             </div>
           </div>
@@ -238,6 +368,7 @@ export function CreateWorkOrderModal({
           workTypes={workTypes}
           nomenclature={nomenclature.filter((item) => !departmentId || item.department_id === departmentId)}
           norms={norms}
+          lockTypes
           onSave={(value) => { setRepairs(value); setRepairsOpen(false); }}
           onClose={() => setRepairsOpen(false)}
         />

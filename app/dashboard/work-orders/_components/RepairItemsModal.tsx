@@ -2,14 +2,11 @@
 
 import { useState } from "react";
 import { AlertCircle, Plus, Trash2, Wrench, X } from "@/components/ui/icons";
-import {
-  api,
-  type Nomenclature,
-  type NomenclatureNorm,
-  type WorkOrderTemplateItem,
-  type WorkType,
-} from "@/lib/api";
+import { SearchSelect } from "@/components/ui/search-select";
+import type { Nomenclature, NomenclatureNorm, WorkType } from "@/lib/api";
+import { formatHours } from "@/lib/work-order-defaults";
 import type { RepairDraft, TmcDraft } from "./types";
+import { buildRepairDraft } from "./repairDraft";
 import { TmcModal } from "./TmcModal";
 
 type Props = {
@@ -18,27 +15,11 @@ type Props = {
   workTypes: WorkType[];
   nomenclature: Nomenclature[];
   norms: NomenclatureNorm[];
+  /** the types are chosen elsewhere (the form): hide the picker and the remove button */
+  lockTypes?: boolean;
   onSave: (repairs: RepairDraft[]) => void;
   onClose: () => void;
 };
-
-function createTmcFromTemplate(
-  item: WorkOrderTemplateItem,
-  nomenclature: Nomenclature[]
-): TmcDraft {
-  const match = item.nomenclature_id
-    ? nomenclature.find((row) => row.id === item.nomenclature_id)
-    : undefined;
-  return {
-    id: crypto.randomUUID(),
-    nomenclatureId: item.nomenclature_id ?? null,
-    name: match?.name ?? item.nomenclature_name ?? item.name ?? "",
-    invNo: item.inv_no ?? match?.code ?? "",
-    unit: item.unit ?? match?.unit ?? "шт.",
-    qty: String(item.default_quantity),
-    note: item.note ?? "",
-  };
-}
 
 export function RepairItemsModal({
   departmentId,
@@ -46,6 +27,7 @@ export function RepairItemsModal({
   workTypes,
   nomenclature,
   norms,
+  lockTypes = false,
   onSave,
   onClose,
 }: Props) {
@@ -60,18 +42,7 @@ export function RepairItemsModal({
     setError(null);
     setLoadingWorkTypeId(workTypeId);
     try {
-      const templates = departmentId
-        ? await api.workOrders.templateItems({
-            work_type_id: workType.id,
-            department_id: departmentId,
-          })
-        : [];
-      const repair: RepairDraft = {
-        id: crypto.randomUUID(),
-        workTypeId: workType.id,
-        kind: workType.code,
-        rows: templates.map((item) => createTmcFromTemplate(item, nomenclature)),
-      };
+      const repair = await buildRepairDraft(workType, departmentId, nomenclature);
       setLocalRepairs((current) => [...current, repair]);
       setSelectedRepairId(repair.id);
     } catch (cause) {
@@ -108,24 +79,25 @@ export function RepairItemsModal({
                 <AlertCircle className="h-4 w-4" />{error}
               </p>
             )}
-            <label className="mb-4 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            {!lockTypes && <label className="mb-4 block text-sm font-medium text-gray-700 dark:text-gray-300">
               Добавить вид ремонта
-              <select
-                className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800"
+              <SearchSelect
                 value=""
+                clearable={false}
                 disabled={loadingWorkTypeId !== null}
-                onChange={(event) => {
-                  if (event.target.value) void addRepair(event.target.value);
+                placeholder="Введите код или название: ТО-2, ТР-1..."
+                options={workTypes
+                  .filter((item) => !localRepairs.some((repair) => repair.workTypeId === item.id))
+                  .map((item) => ({
+                    value: item.id,
+                    label: `${item.code} — ${item.name}`,
+                    hint: item.duration_hours ? formatHours(item.duration_hours) : undefined,
+                  }))}
+                onChange={(value) => {
+                  if (value) void addRepair(value);
                 }}
-              >
-                <option value="">Выберите...</option>
-                {workTypes.map((workType) => (
-                  <option key={workType.id} value={workType.id}>
-                    {workType.code} — {workType.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+              />
+            </label>}
             {localRepairs.length === 0 ? (
               <div className="rounded-lg border border-dashed p-8 text-center text-sm text-gray-500">
                 <Wrench className="mx-auto mb-2 h-6 w-6" />
@@ -149,13 +121,13 @@ export function RepairItemsModal({
                       >
                         ТМЦ
                       </button>
-                      <button
+                      {!lockTypes && <button
                         aria-label="Удалить вид ремонта"
                         onClick={() => setLocalRepairs((current) => current.filter((item) => item.id !== repair.id))}
                         className="rounded p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
                       >
                         <Trash2 className="h-4 w-4" />
-                      </button>
+                      </button>}
                     </li>
                   );
                 })}

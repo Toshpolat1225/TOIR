@@ -57,6 +57,12 @@ class WorkOrderCreate(BaseModel):
             raise ValueError("Description must not be empty")
         if self.note is not None:
             self.note = self.note.strip() or None
+        if (
+            self.date_start is not None
+            and self.date_end is not None
+            and self.date_end < self.date_start
+        ):
+            raise ValueError("Planned end must not be earlier than planned start")
         return self
 
 
@@ -117,6 +123,7 @@ class WorkOrderRepairRead(BaseModel):
     work_type_id: UUID
     work_type_code: str
     work_type_name: str
+    duration_hours: Decimal | None = None
     sort_order: int
     items: list[WorkOrderItemRead] = Field(default_factory=list)
 
@@ -141,11 +148,17 @@ class WorkOrderRead(BaseModel):
     date_start: datetime | None
     date_end: datetime | None
     closed_at: datetime | None
+    actual_start: datetime | None = None
+    actual_end: datetime | None = None
     mileage_at_creation: Decimal | None
     mileage_threshold: Decimal | None
     created_by: UUID | None
+    created_by_name: str | None = None
+    updated_by: UUID | None = None
+    updated_by_name: str | None = None
     created_at: datetime
     updated_at: datetime
+    planned_hours: Decimal | None = None
     is_overdue: bool
     repairs: list[WorkOrderRepairRead] = Field(default_factory=list)
 

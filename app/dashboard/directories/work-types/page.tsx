@@ -13,6 +13,7 @@ import {
   type WorkTypeTemplate,
 } from "@/lib/api"
 import { useDebouncedValue } from "@/lib/use-debounced-value"
+import { formatHours } from "@/lib/work-order-defaults"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
@@ -68,12 +69,18 @@ function AddWorkTypeModal({
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [unitType, setUnitType] = useState<"locomotive" | "wagon">("locomotive")
+  const [duration, setDuration] = useState("")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
 
   const handleSave = async () => {
     if (!code.trim() || !name.trim()) {
       setError("Код и название обязательны")
+      return
+    }
+    const hours = duration.trim() ? Number(duration.replace(",", ".")) : null
+    if (hours !== null && (!Number.isFinite(hours) || hours <= 0)) {
+      setError("Длительность должна быть числом больше нуля (часы)")
       return
     }
     setSaving(true)
@@ -85,6 +92,7 @@ function AddWorkTypeModal({
         name: name.trim(),
         description: description.trim() || null,
         unit_type: unitType,
+        duration_hours: hours,
       })
       await onSaved()
       setSaving(false)
@@ -143,6 +151,17 @@ function AddWorkTypeModal({
               <option value="locomotive">Локомотив</option>
               <option value="wagon">Вагон</option>
             </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Длительность, ч</label>
+            <input
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              inputMode="decimal"
+              placeholder="Например 4 или 2,5 — по ней считается плановое завершение наряда"
+              className={inp}
+              data-testid="wt-add-duration"
+            />
           </div>
 
           {error && <p className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{error}</p>}
@@ -350,6 +369,7 @@ function WorkTypeCard({
   subtasks,
   tmcItems,
   onDelete,
+  onChanged,
   onSubtasksChange,
   onTmcChange,
   nomenclature,
@@ -358,11 +378,16 @@ function WorkTypeCard({
   subtasks: WorkSubtask[]
   tmcItems: WorkTypeTmc[]
   onDelete: () => void
+  onChanged: (workType: WorkType) => void
   onSubtasksChange: (subtasks: WorkSubtask[]) => void
   onTmcChange: (tmc: WorkTypeTmc[]) => void
   nomenclature: NomenclatureItem[]
 }) {
   const [expanded, setExpanded] = useState(false)
+  const [durationText, setDurationText] = useState(
+    workType.duration_hours ? String(Number(workType.duration_hours)).replace(".", ",") : ""
+  )
+  const [savingDuration, setSavingDuration] = useState(false)
   const [newSubtask, setNewSubtask] = useState("")
   const [addingSubtask, setAddingSubtask] = useState(false)
   const [addingTmc, setAddingTmc] = useState(false)
@@ -403,6 +428,24 @@ function WorkTypeCard({
       setApiError(error instanceof Error ? error.message : "Не удалось создать подзадачу")
     } finally {
       setAddingSubtask(false)
+    }
+  }
+
+  const handleSaveDuration = async () => {
+    setApiError("")
+    const hours = durationText.trim() ? Number(durationText.replace(",", ".")) : null
+    if (hours !== null && (!Number.isFinite(hours) || hours <= 0)) {
+      setApiError("Длительность должна быть числом больше нуля (часы)")
+      return
+    }
+    setSavingDuration(true)
+    try {
+      const saved = await api.workTypes.update(workType.id, { duration_hours: hours })
+      onChanged({ ...workType, duration_hours: saved.duration_hours ?? null })
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : "Не удалось сохранить длительность")
+    } finally {
+      setSavingDuration(false)
     }
   }
 
@@ -515,6 +558,16 @@ function WorkTypeCard({
         }`}>
           {workType.unit_type === "wagon" ? "Вагон" : "Локомотив"}
         </span>
+        <span
+          data-testid="wt-duration-badge"
+          className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+            workType.duration_hours
+              ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+              : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+          }`}
+        >
+          {workType.duration_hours ? formatHours(workType.duration_hours) : "время не задано"}
+        </span>
         <div className="flex items-center gap-2 text-xs text-gray-400">
           <span className="flex items-center gap-1"><ListTodo className="w-3 h-3" />{subtasks.length}</span>
           <span className="flex items-center gap-1"><Package className="w-3 h-3" />{tmcItems.length}</span>
@@ -534,6 +587,27 @@ function WorkTypeCard({
               {apiError}
             </p>
           )}
+          <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+            <label className="text-xs font-bold uppercase tracking-wide text-gray-500" htmlFor={`dur-${workType.id}`}>
+              Длительность, ч
+            </label>
+            <input
+              id={`dur-${workType.id}`}
+              data-testid="wt-duration-input"
+              value={durationText}
+              onChange={(e) => setDurationText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void handleSaveDuration() }}
+              inputMode="decimal"
+              placeholder="напр. 4 или 2,5"
+              className="w-32 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+            />
+            <Button size="sm" onClick={() => void handleSaveDuration()} disabled={savingDuration} data-testid="wt-duration-save">
+              <Save className="w-3.5 h-3.5" /> Сохранить
+            </Button>
+            <span className="text-xs text-gray-400">
+              Плановое завершение наряда = начало + сумма длительностей выбранных видов ремонта
+            </span>
+          </div>
           <div className="grid grid-cols-2 divide-x divide-gray-200 dark:divide-gray-700">
             {/* Подзадачи */}
             <div className="p-4">
@@ -907,6 +981,7 @@ export default function WorkTypesPage() {
               subtasks={subtasksMap[wt.id] ?? []}
               tmcItems={tmcMap[wt.id] ?? []}
               onDelete={() => handleDelete(wt.id)}
+              onChanged={(updated) => setWorkTypes((current) => current.map((item) => (item.id === updated.id ? updated : item)))}
               onSubtasksChange={(subtasks) => setSubtasksMap({ ...subtasksMap, [wt.id]: subtasks })}
               onTmcChange={(tmc) => setTmcMap({ ...tmcMap, [wt.id]: tmc })}
               nomenclature={nomenclature}

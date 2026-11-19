@@ -85,9 +85,14 @@ class WorkOrder(Base):
     date_start: Mapped[datetime | None]
     date_end: Mapped[datetime | None]
     closed_at: Mapped[datetime | None]
+    actual_start: Mapped[datetime | None]
+    actual_end: Mapped[datetime | None]
     mileage_at_creation: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     mileage_threshold: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
     created_at: Mapped[datetime] = mapped_column(

@@ -1386,3 +1386,8 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ### Next task
 - 30 kunlik GTK tarixi yuklanishini tugatish (`gtk-gps-backfill`, orqa fonda; tugagach `t15` ni qayta o'tkazish). Foydalanuvchi: commit va kollektor `install_task.ps1`.
 - NOT TESTED: poyezd formatsiyasi GTK treki bo'yicha; GTK GPS mustaqilligi; `GTK_GPS_*` ni `.env` da qo'lda o'zgartirish; 31 kunlik oynada sahifa tezligi.
+
+### Naryad formasi avtomatikasi (2026-11-19)
+- Verified (lokal tajriba bazasi): migratsiya 0041 toza bazada o'tdi; backend 871 test o'tdi; unit 171; `tsc`, `npm run build`; brauzer b15 12/12, b16 4/4. Tafsilot: DECISIONS #70.
+- Next task: foydalanuvchi deploy qiladi (backup -> `docker compose build backend frontend` -> `up -d --no-deps backend frontend`), «Виды ремонта» spravochnigida davomiylikni to'ldiradi, `e2e_workorders.py` ni ishga tushiradi.
+- NOT TESTED: jonli bazada migratsiya; jonli ma'lumot bilan forma (ОС soni ko'p bo'lganda tezlik); master roli bilan forma brauzerda; eski naryadlarda fakt vaqtlari bo'sh (NULL) ekani.

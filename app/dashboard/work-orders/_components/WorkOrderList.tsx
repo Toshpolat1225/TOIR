@@ -61,10 +61,12 @@ const statusStyles: Record<WorkOrder["status"], string> = {
   cancelled: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
 };
 
-function formatDate(value: string | null): string {
+function formatStamp(value: string | null | undefined): string {
   if (!value) return "—";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString("ru-RU");
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 export function WorkOrderList({
@@ -205,8 +207,14 @@ export function WorkOrderList({
                       </p>
                     </div>
                     <div className="shrink-0 text-right text-xs text-gray-500">
-                      <span className="inline-flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />{formatDate(order.date_start)}</span>
-                      {order.date_end && <p className="mt-1">до {formatDate(order.date_end)}</p>}
+                      <span className="inline-flex items-center gap-1" title="План"><Calendar className="h-3.5 w-3.5" />{formatStamp(order.date_start)}{order.date_end ? ` → ${formatStamp(order.date_end)}` : ""}</span>
+                      {(order.actual_start || order.actual_end) && (
+                        <p className="mt-1" title="Факт">факт: {formatStamp(order.actual_start)} → {formatStamp(order.actual_end)}</p>
+                      )}
+                      <p className="mt-1" title="Создал / изменил">
+                        {order.created_by_name ?? "—"}
+                        {order.updated_by_name && order.updated_by_name !== order.created_by_name ? ` · изм.: ${order.updated_by_name}` : ""}
+                      </p>
                     </div>
                   </div>
                 </button>

@@ -54,6 +54,19 @@ def _is_work_order_number_conflict(exc: IntegrityError) -> bool:
     return False
 
 
+def _aware(value: datetime | None) -> datetime | None:
+    if value is not None and value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _planned_hours(repairs: list[dict[str, Any]]) -> Decimal | None:
+    durations = [repair.get("duration_hours") for repair in repairs]
+    if not durations or any(value is None for value in durations):
+        return None
+    return sum(durations, Decimal("0"))
+
+
 def _read(row: dict[str, Any]) -> WorkOrderRead:
     order = row["order"]
     now = datetime.now(timezone.utc)
@@ -64,10 +77,14 @@ def _read(row: dict[str, Any]) -> WorkOrderRead:
                 "id", "number", "fixed_asset_id", "section_id", "department_id",
                 "order_kind", "status", "priority", "executor_id", "chief_id",
                 "description", "note", "date_start", "date_end", "closed_at",
+                "actual_start", "actual_end",
                 "mileage_at_creation", "mileage_threshold", "created_by",
-                "created_at", "updated_at",
+                "updated_by", "created_at", "updated_at",
             )
         },
+        created_by_name=row.get("created_by_name"),
+        updated_by_name=row.get("updated_by_name"),
+        planned_hours=_planned_hours(row["repairs"]),
         asset_name=row["asset_name"],
         asset_inv_number=row["asset_inv_number"],
         executor_name=row["executor_name"],
@@ -259,6 +276,17 @@ async def create_order(
                 detail="Work order repair type does not match the maintenance interval",
             )
     base_time = datetime.now(timezone.utc).replace(microsecond=0)
+    # automation: planned start = now; planned end = start + the sum of the chosen repair types' standard hours
+    date_start = _aware(payload.date_start) or base_time
+    date_end = _aware(payload.date_end)
+    if date_end is None:
+        hours = await repository.total_duration_hours(
+            db, [repair.work_type_id for repair in payload.repairs]
+        )
+        if hours is not None:
+            date_end = date_start + timedelta(hours=float(hours))
+    if date_end is not None and date_end < date_start:
+        raise HTTPException(status_code=422, detail="Planned end must not be earlier than planned start")
     for attempt in range(5):
         number = f"НЗ-{(base_time + timedelta(seconds=attempt)).strftime('%Y%m%d-%H%M%S')}"
         try:
@@ -275,10 +303,11 @@ async def create_order(
                     chief_id=payload.chief_id,
                     description=payload.description,
                     note=payload.note,
-                    date_start=payload.date_start,
-                    date_end=payload.date_end,
+                    date_start=date_start,
+                    date_end=date_end,
                     mileage_at_creation=mileage,
                     created_by=user_id,
+                    updated_by=user_id,
                 )
                 db.add(order)
                 await db.flush()
@@ -308,11 +337,7 @@ async def create_order(
                                 asset_id=payload.fixed_asset_id,
                                 interval_id=maintenance_interval_id,
                                 trigger_mileage=payload.maintenance_trigger_mileage,
-                                scheduled_date=(
-                                    payload.date_start.date()
-                                    if payload.date_start is not None
-                                    else datetime.now(timezone.utc).date()
-                                ),
+                                scheduled_date=date_start.date(),
                                 status="scheduled",
                             )
                             db.add(plan)
@@ -430,9 +455,16 @@ async def update_order(
             and values["department_id"] != section.department_id
         ):
             raise HTTPException(status_code=403, detail="Department is outside your section")
+    now_ts = datetime.now(timezone.utc)
+    if requested_status == "in_progress" and order.actual_start is None:
+        values["actual_start"] = now_ts
     if requested_status == "completed":
-        values["closed_at"] = datetime.now(timezone.utc)
-    values["updated_at"] = datetime.now(timezone.utc)
+        values["closed_at"] = now_ts
+        values["actual_end"] = now_ts
+        if order.actual_start is None:
+            values["actual_start"] = now_ts
+    values["updated_at"] = now_ts
+    values["updated_by"] = getattr(user, "id", None)
     try:
         for field, value in values.items():
             setattr(order, field, value)

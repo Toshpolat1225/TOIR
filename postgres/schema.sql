@@ -549,8 +549,10 @@ CREATE TABLE work_types (
     description text,
     unit_type   text NOT NULL CHECK (unit_type IN ('locomotive','wagon')),
     sort_order  integer NOT NULL DEFAULT 0,
+    duration_hours numeric(7,2),                       -- odatiy davomiylik (soat); plan zaverishenie shundan hisoblanadi
     created_at  timestamptz NOT NULL DEFAULT now(),
-    updated_at  timestamptz NOT NULL DEFAULT now()
+    updated_at  timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT work_types_duration_hours_check CHECK (duration_hours IS NULL OR duration_hours > 0)
 );
 
 CREATE TABLE work_subtasks (
@@ -655,9 +657,12 @@ CREATE TABLE work_orders (
     date_start            timestamptz,
     date_end              timestamptz,
     closed_at             timestamptz,
+    actual_start          timestamptz,               -- serverda: status in_progress bo'lganda
+    actual_end            timestamptz,               -- serverda: status completed bo'lganda
     mileage_at_creation   numeric(12,2),
     mileage_threshold     numeric(12,2),
     created_by            uuid REFERENCES users(id) ON DELETE SET NULL,
+    updated_by            uuid REFERENCES users(id) ON DELETE SET NULL,
     created_at            timestamptz NOT NULL DEFAULT now(),
     updated_at            timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT ck_closed_when_completed CHECK (status <> 'completed' OR closed_at IS NOT NULL)

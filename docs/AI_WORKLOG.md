@@ -496,3 +496,7 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 ## 2026-11-19: yordamchi tugmasi va shaxsiy tarix
 - Changed: `AssistantCenter.tsx` (FAB, kichik modal, tarix ko'rinishi, foydalanuvchi kaliti), `routers/assistant.py` + `schemas` (`/assistant/history`), `lib/api.ts`, `lib/assistant.ts`, `components/ui/icons.tsx`, yangi `browser/b14_assistant_fab.mjs`.
 - Tested: backend 865, unit 165, tsc; jonli brauzer b14 7/7 va b13 13/13; ZZTEST tozalandi (qoldiq 0). Telefon haqiqiy qurilmada sinalmadi.
+
+## 2026-11-19: naryad formasi avtomatikasi
+- Changed: migratsiya `0041_work_order_audit_duration`, `models/{work_orders,maintenance}.py`, `schemas/{work_orders,references}.py`, `repositories/work_orders.py`, `services/work_orders.py`, `postgres/schema.sql`; frontend `components/ui/search-select.tsx`, `lib/work-order-defaults.ts` (+test), `CreateWorkOrderModal`, `ViewEditOrderModal`, `WorkOrderList`, `RepairItemsModal`, `repairDraft.ts`, spravochnik `directories/work-types`; testlar `test_work_order_automation_pg.py`, `e2e_workorders.py` (+3 tekshiruv), `browser/b15_work_order_form.mjs`, `b16_work_type_duration.mjs`.
+- Tested (lokal, tajriba bazasi + lokal next start): backend 871 o'tdi, unit 171, tsc/build, b15 12/12, b16 4/4. Jonli serverda deploy qilinmadi, migratsiya jonli bazada ishga tushmadi.

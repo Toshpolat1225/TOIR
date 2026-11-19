@@ -1475,6 +1475,7 @@ export type WorkOrderRepair = {
   work_type_id: string;
   work_type_code: string;
   work_type_name: string;
+  duration_hours?: number | string | null;
   sort_order: number;
   items: WorkOrderItem[];
 };
@@ -1503,11 +1504,17 @@ export type WorkOrder = {
   date_start: string | null;
   date_end: string | null;
   closed_at: string | null;
+  actual_start?: string | null;
+  actual_end?: string | null;
   mileage_at_creation: number | string | null;
   mileage_threshold: number | string | null;
   created_by: string | null;
+  created_by_name?: string | null;
+  updated_by?: string | null;
+  updated_by_name?: string | null;
   created_at: string;
   updated_at: string;
+  planned_hours?: number | string | null;
   is_overdue: boolean;
   repairs: WorkOrderRepair[];
 };
@@ -2198,6 +2205,7 @@ export type WorkType = {
   description: string | null;
   unit_type: "locomotive" | "wagon";
   sort_order: number;
+  duration_hours?: number | string | null;
   created_at: string;
   updated_at: string;
   subtasks: WorkSubtask[];
@@ -2205,7 +2213,7 @@ export type WorkType = {
 
 type WorkTypeListParams = ListParams & { unit_type?: WorkType["unit_type"]; q?: string };
 type WorkTypeCreate = Pick<WorkType, "code" | "name" | "unit_type"> &
-  Partial<Pick<WorkType, "description" | "sort_order">>;
+  Partial<Pick<WorkType, "description" | "sort_order" | "duration_hours">>;
 type WorkTypeUpdate = Partial<WorkTypeCreate>;
 type WorkSubtaskCreate = Pick<WorkSubtask, "name"> & Partial<Pick<WorkSubtask, "sort_order">>;
 type WorkSubtaskUpdate = Partial<WorkSubtaskCreate>;

@@ -269,6 +269,7 @@ class WorkTypeRead(BaseModel):
     description: str | None
     unit_type: WorkUnitType
     sort_order: int
+    duration_hours: Decimal | None = None
     created_at: datetime
     updated_at: datetime
     subtasks: list[WorkSubtaskRead] = Field(default_factory=list)
@@ -280,6 +281,7 @@ class WorkTypeCreate(BaseModel):
     description: str | None = None
     unit_type: WorkUnitType
     sort_order: int = 0
+    duration_hours: Decimal | None = Field(default=None, gt=0, le=100000)
 
     @model_validator(mode="after")
     def normalize_values(self):
@@ -298,6 +300,7 @@ class WorkTypeUpdate(PatchModel):
     description: str | None = None
     unit_type: WorkUnitType | None = None
     sort_order: int | None = None
+    duration_hours: Decimal | None = Field(default=None, gt=0, le=100000)
 
     @model_validator(mode="after")
     def normalize_values(self):

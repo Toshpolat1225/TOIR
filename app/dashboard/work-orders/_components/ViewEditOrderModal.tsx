@@ -16,6 +16,8 @@ import {
 } from "@/lib/api";
 import type { RepairDraft, TmcDraft } from "./types";
 import { RepairItemsModal } from "./RepairItemsModal";
+import { SearchSelect } from "@/components/ui/search-select";
+import { formatHours, lateHours } from "@/lib/work-order-defaults";
 
 type Props = {
   order: WorkOrder;
@@ -238,7 +240,10 @@ export function ViewEditOrderModal({
             </div>
             {detailTab === "overview" && <>
             <section className="mb-4 grid gap-3 rounded-lg border bg-gray-50 p-3 text-sm dark:border-gray-700 dark:bg-gray-800/60 sm:grid-cols-2 lg:grid-cols-3">
-              <p><span className="text-gray-500">Создан:</span> <span className="font-medium text-gray-900 dark:text-white">{displayDateTime(order.created_at)}</span></p>
+              <p data-testid="wo-created"><span className="text-gray-500">Создал:</span> <span className="font-medium text-gray-900 dark:text-white">{order.created_by_name ?? "—"}</span> <span className="text-xs text-gray-500">{displayDateTime(order.created_at)}</span></p>
+              <p data-testid="wo-updated"><span className="text-gray-500">Изменил:</span> <span className="font-medium text-gray-900 dark:text-white">{order.updated_by_name ?? "—"}</span> <span className="text-xs text-gray-500">{displayDateTime(order.updated_at)}</span></p>
+              <p data-testid="wo-plan"><span className="text-gray-500">План:</span> <span className="font-medium text-gray-900 dark:text-white">{displayDateTime(order.date_start)} → {displayDateTime(order.date_end)}</span>{order.planned_hours ? <span className="text-xs text-gray-500"> ({formatHours(order.planned_hours)})</span> : null}</p>
+              <p data-testid="wo-fact"><span className="text-gray-500">Факт:</span> <span className="font-medium text-gray-900 dark:text-white">{displayDateTime(order.actual_start ?? null)} → {displayDateTime(order.actual_end ?? null)}</span>{(() => { const late = lateHours(order.date_end, order.actual_end); return late === null ? null : <span className={`text-xs ${late > 0 ? "text-red-600" : "text-green-600"}`}> {late > 0 ? `позже плана на ${formatHours(late)}` : "в срок"}</span>; })()}</p>
               <p><span className="text-gray-500">Ответственный:</span> <span className="font-medium text-gray-900 dark:text-white">{order.executor_name ?? "Не назначен"}</span></p>
               <p><span className="text-gray-500">Начальник:</span> <span className="font-medium text-gray-900 dark:text-white">{chiefName ?? "Не указан"}</span></p>
               <p><span className="text-gray-500">Приоритет:</span> <span className="font-medium text-gray-900 dark:text-white">{order.priority}</span></p>
@@ -249,19 +254,32 @@ export function ViewEditOrderModal({
             </section>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="text-sm font-medium sm:col-span-2">Основное средство
-                <select disabled={readOnly} className="mt-1 w-full rounded-md border bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800" value={assetId} onChange={(event) => {
-                  const value = event.target.value;
-                  setAssetId(value);
-                  setSectionId(assets.find((asset) => asset.id === value)?.section_id ?? "");
-                }}>
-                  {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.name} · {asset.inv_number}</option>)}
-                </select>
+                <SearchSelect
+                  disabled={readOnly}
+                  clearable={false}
+                  value={assetId}
+                  placeholder="Номер, название или инв. №..."
+                  options={assets.map((asset) => ({
+                    value: asset.id,
+                    label: asset.name,
+                    hint: asset.inv_number,
+                    display: `${asset.name} · ${asset.inv_number}`,
+                    search: [asset.number, asset.series, asset.serial_number].filter(Boolean).join(" "),
+                  }))}
+                  onChange={(value) => {
+                    setAssetId(value);
+                    setSectionId(assets.find((asset) => asset.id === value)?.section_id ?? "");
+                  }}
+                />
               </label>
               <label className="text-sm font-medium">Участок
-                <select disabled={readOnly} className="mt-1 w-full rounded-md border bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800" value={sectionId} onChange={(event) => setSectionId(event.target.value)}>
-                  <option value="">Не назначен</option>
-                  {sections.map((section) => <option key={section.id} value={section.id}>{section.name}</option>)}
-                </select>
+                <SearchSelect
+                  disabled={readOnly}
+                  value={sectionId}
+                  placeholder="Не назначен"
+                  options={sections.map((section) => ({ value: section.id, label: section.name }))}
+                  onChange={setSectionId}
+                />
               </label>
               <label className="text-sm font-medium">Вид наряда
                 <select disabled={readOnly} className="mt-1 w-full rounded-md border bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800" value={orderKind} onChange={(event) => setOrderKind(event.target.value as typeof orderKind)}>
@@ -275,10 +293,20 @@ export function ViewEditOrderModal({
                 <textarea disabled={readOnly} className="mt-1 w-full rounded-md border bg-white px-3 py-2 text-sm disabled:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:disabled:bg-gray-800" rows={3} value={description} onChange={(event) => setDescription(event.target.value)} />
               </label>
               <label className="text-sm font-medium">Исполнитель
-                <select disabled={readOnly} className="mt-1 w-full rounded-md border bg-white px-3 py-2 text-sm disabled:bg-gray-100 dark:border-gray-700 dark:bg-gray-800" value={executorId} onChange={(event) => setExecutorId(event.target.value)}>
-                  <option value="">Выберите...</option>
-                  {employees.filter((employee) => employee.is_active).map((employee) => <option key={employee.id} value={employee.id}>{employee.full_name}</option>)}
-                </select>
+                <SearchSelect
+                  disabled={readOnly}
+                  value={executorId}
+                  placeholder="Фамилия или табельный №..."
+                  options={employees
+                    .filter((employee) => employee.id === executorId || (employee.is_active && (!sectionId || employee.section_id === sectionId)))
+                    .map((employee) => ({
+                      value: employee.id,
+                      label: employee.full_name,
+                      hint: employee.position ?? undefined,
+                      search: employee.tab_number,
+                    }))}
+                  onChange={setExecutorId}
+                />
               </label>
               <label className="text-sm font-medium">Приоритет
                 <select disabled={readOnly} className="mt-1 w-full rounded-md border bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800" value={priority} onChange={(event) => setPriority(event.target.value as typeof priority)}>

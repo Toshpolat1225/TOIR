@@ -5,6 +5,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Select, exists, func, or_, select
+from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assets import (
@@ -59,6 +60,10 @@ async def get_order(
     return (await db.execute(statement)).scalar_one_or_none()
 
 
+_Creator = aliased(User)
+_Editor = aliased(User)
+
+
 def _order_rows_statement():
     return (
         select(
@@ -67,10 +72,14 @@ def _order_rows_statement():
             FixedAsset.inv_number.label("asset_inv_number"),
             Employee.full_name.label("executor_name"),
             Section.name.label("section_name"),
+            _Creator.full_name.label("created_by_name"),
+            _Editor.full_name.label("updated_by_name"),
         )
         .join(FixedAsset, FixedAsset.id == WorkOrder.fixed_asset_id)
         .join(Section, Section.id == WorkOrder.section_id)
         .outerjoin(Employee, Employee.id == WorkOrder.executor_id)
+        .outerjoin(_Creator, _Creator.id == WorkOrder.created_by)
+        .outerjoin(_Editor, _Editor.id == WorkOrder.updated_by)
     )
 
 
@@ -168,6 +177,8 @@ async def list_orders(
             "asset_inv_number": row.asset_inv_number,
             "executor_name": row.executor_name,
             "section_name": row.section_name,
+            "created_by_name": row.created_by_name,
+            "updated_by_name": row.updated_by_name,
         }
         for row in rows
     ]
@@ -194,6 +205,8 @@ async def get_order_row(
         "asset_inv_number": row.asset_inv_number,
         "executor_name": row.executor_name,
         "section_name": row.section_name,
+        "created_by_name": row.created_by_name,
+        "updated_by_name": row.updated_by_name,
     }
     await _attach_repairs(db, [packed])
     return packed
@@ -203,7 +216,7 @@ async def _attach_repairs(db: AsyncSession, packed: list[dict[str, Any]]) -> Non
     order_ids = [row["order"].id for row in packed]
     repairs = (
         await db.execute(
-            select(WorkOrderRepair, WorkType.code, WorkType.name)
+            select(WorkOrderRepair, WorkType.code, WorkType.name, WorkType.duration_hours)
             .join(WorkType, WorkType.id == WorkOrderRepair.work_type_id)
             .where(WorkOrderRepair.work_order_id.in_(order_ids))
             .order_by(WorkOrderRepair.sort_order, WorkOrderRepair.id)
@@ -222,7 +235,7 @@ async def _attach_repairs(db: AsyncSession, packed: list[dict[str, Any]]) -> Non
         for item in items:
             item_groups[item.repair_id].append(item)
     repair_groups: dict[UUID, list[dict[str, Any]]] = defaultdict(list)
-    for repair, type_code, type_name in repairs:
+    for repair, type_code, type_name, type_duration in repairs:
         repair_groups[repair.work_order_id].append(
             {
                 "id": repair.id,
@@ -230,12 +243,31 @@ async def _attach_repairs(db: AsyncSession, packed: list[dict[str, Any]]) -> Non
                 "work_type_id": repair.work_type_id,
                 "work_type_code": type_code,
                 "work_type_name": type_name,
+                "duration_hours": type_duration,
                 "sort_order": repair.sort_order,
                 "items": item_groups[repair.id],
             }
         )
     for row in packed:
         row["repairs"] = repair_groups[row["order"].id]
+
+
+async def total_duration_hours(
+    db: AsyncSession, work_type_ids: list[UUID]
+) -> Decimal | None:
+    """Sum of standard durations; None when any chosen type has no duration yet."""
+    if not work_type_ids:
+        return None
+    unique_ids = set(work_type_ids)
+    rows = (
+        await db.execute(
+            select(WorkType.id, WorkType.duration_hours).where(WorkType.id.in_(unique_ids))
+        )
+    ).all()
+    known = {row[0]: row[1] for row in rows}
+    if len(known) != len(unique_ids) or any(value is None for value in known.values()):
+        return None
+    return sum((known[item] for item in unique_ids), Decimal("0"))
 
 
 async def add_repair_rows(

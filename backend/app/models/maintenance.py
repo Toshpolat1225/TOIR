@@ -28,6 +28,10 @@ class WorkType(Base):
         CheckConstraint(
             "unit_type IN ('locomotive','wagon')", name="work_types_unit_type_check"
         ),
+        CheckConstraint(
+            "duration_hours IS NULL OR duration_hours > 0",
+            name="work_types_duration_hours_check",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -40,6 +44,7 @@ class WorkType(Base):
     sort_order: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )
+    duration_hours: Mapped[Decimal | None] = mapped_column(Numeric(7, 2))
     created_at: Mapped[datetime] = mapped_column(
         nullable=False, server_default=text("now()")
     )
