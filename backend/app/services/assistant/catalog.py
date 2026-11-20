@@ -51,13 +51,16 @@ class Intent:
 
 _Q = ("qayerda", "qaerda", "qayerga", "joylash", "manzil", "lokatsiya", "где", "местоположени", "местонахожд", "location", "position", "nimadir")
 _FIND = ("top", "topib", "izla", "qidir", "qidiruv", "find", "найди", "найти", "поиск", "искать", "покажи")
-_OPEN = ("och", "ochib", "ko'rsat", "korsat", "otib", "o'tib", "otish", "открой", "открыть", "покажи", "перейди", "show", "open", "go")
+_OPEN = ("och", "ochib", "ko'rsat", "korsat", "otib", "o'tib", "otish", "открой", "открыть", "покажи", "перейди", "show", "open", "go", "откр*", "покаж*", "перейд*", "зайд*", "включ*")
 _PERIOD_WORDS = ("bugun", "kecha", "hafta", "oy", "сегодня", "вчера", "неделя", "неделю", "месяц", "today", "yesterday")
 
 CATALOG: tuple[Intent, ...] = (
     Intent("sys.help", "system", "Что я умею", "Nima qila olaman", None,
-           (("yordam", "help", "помощь", "справка", "buyruqlar", "komandalar", "команды", "qila olasan", "qila olaman", "что умеешь", "умеешь", "nima deyish", "qanday buyruq"),), priority=5, no_asset=True,
+           (("yordam", "help", "помощь", "справка", "buyruqlar", "komandalar", "команды", "qila olasan", "qila olaman", "что умеешь", "умеешь", "nima deyish", "qanday buyruq", "привет", "здравствуй*", "здраст*", "добрый день", "добрый вечер", "доброе утро", "salom", "assalomu*"),), priority=5, no_asset=True,
            examples_uz=("yordam", "nima qila olasan", "qanday buyruqlar bor"), examples_ru=("помощь", "что ты умеешь", "какие есть команды")),
+    Intent("sys.bye", "system", "До свидания", "Xayr", None,
+           (("до свидания", "досвидания", "пока", "хорошего дня", "спасибо", "благодарю", "xayr", "rahmat", "sog' bo'ling", "sog boling"),), priority=5, no_asset=True,
+           examples_uz=("xayr", "rahmat"), examples_ru=("до свидания", "спасибо")),
     Intent("nav.open", "navigation", "Открыть страницу", "Sahifani ochish", None,
            (), boost=(_OPEN,), needs=("page",), priority=8,
            examples_uz=("xaritani och", "naryadlarga o'tish", "GPS sahifasi", "vesovoyni och"), examples_ru=("открой карту", "перейди в наряды", "покажи весовую")),
@@ -65,7 +68,7 @@ CATALOG: tuple[Intent, ...] = (
            (_FIND,), needs=("asset",),
            examples_uz=("37919 ni top", "vagon 35656 ni izla", "lokomotiv 2313"), examples_ru=("найди 37919", "вагон 35656", "найди локомотив 2313")),
     Intent("fleet.count", "search", "Сколько техники", "Texnika soni", "assets.view",
-           (("vagon", "вагон*", "lokomotiv", "локомотив*", "teplovoz", "тепловоз*", "texnika", "техник*", "park", "парк", "подвижн"),
+           (("vagon", "вагон*", "lokomotiv", "локомотив*", "teplovoz", "тепловоз*", "texnika", "техник*", "park", "парк", "подвижн", "dumpkar*", "думпкар*", "думкар*"),
             ("nechta", "necha", "qancha", "soni", "jami", "mavjud", "сколько", "количество", "всего", "число", "есть", "bor")),
            priority=2, no_asset=True, no_train=True,
            examples_uz=("nechta vagon bor", "lokomotivlar soni"), examples_ru=("сколько вагонов есть", "сколько локомотивов")),

@@ -98,6 +98,7 @@ def repair_token(token: str) -> str:
     if len(key) < 3:
         return token
     best: tuple[int, int, str] | None = None  # (distance, -length, word)
+    best_key = ""
     tie = False
     for word, wkey in words:
         if key[0] != wkey[0]:
@@ -109,9 +110,13 @@ def repair_token(token: str) -> str:
             continue
         cand = (d, -len(word), word)
         if best is None or cand[:2] < best[:2]:
-            best, tie = cand, False
+            best, best_key, tie = cand, wkey, False
         elif cand[:2] == best[:2] and cand[2] != best[2]:
-            tie = True
+            if wkey == best_key:  # the same word written in the other script ("аналитика" / "analitika"): not a real tie, keep the token's own script
+                if _is_cyrillic(word) == _is_cyrillic(token) and _is_cyrillic(best[2]) != _is_cyrillic(token):
+                    best = cand
+            else:
+                tie = True
     if best is None or tie:
         return token
     return best[2]

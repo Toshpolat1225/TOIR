@@ -6,6 +6,8 @@ With an explicit "ming/тысяча" the run is evaluated arithmetically; withou
 """
 from __future__ import annotations
 
+import re
+
 from app.services.assistant.normalize import normalize
 
 _ONES = {
@@ -163,6 +165,20 @@ def join_digit_groups(text: str) -> str:
     return " ".join(out)
 
 
+_ORDINAL_UNITS = {"первый": 1, "первая": 1, "второй": 2, "вторая": 2, "третий": 3, "третья": 3, "четвертый": 4, "четвертая": 4, "пятый": 5, "пятая": 5,
+                  "шестой": 6, "шестая": 6, "седьмой": 7, "седьмая": 7, "восьмой": 8, "восьмая": 8, "девятый": 9, "девятая": 9}
+_SPLIT_WORDS = (("электро воз", "электровоз"), ("тепло воз", "тепловоз"), ("электро возы", "электровозы"), ("тепло возы", "тепловозы"))
+_ORDINAL_AFTER_TENS = re.compile(r"(?<!\d)(\d*[1-9]0)\s+(" + "|".join(_ORDINAL_UNITS) + r")(?=\s|$)")
+
+
+def join_ordinal_units(text: str) -> str:
+    """The recogniser writes «3028» as «3020 восьмой»: a number that ends with a tens zero + an ordinal unit word = one number."""
+    return _ORDINAL_AFTER_TENS.sub(lambda m: str(int(m.group(1)) + _ORDINAL_UNITS[m.group(2)]), text)
+
+
 def canonical(text: str) -> str:
-    """normalise -> number words to digits -> digit groups joined. The form every later stage reads."""
-    return join_digit_groups(words_to_digits(normalize(text)))
+    """normalise -> split words glued -> number words to digits -> ordinal units -> digit groups joined. The form every later stage reads."""
+    t = normalize(text)
+    for a, b in _SPLIT_WORDS:
+        t = t.replace(a, b)
+    return join_digit_groups(join_ordinal_units(words_to_digits(t)))

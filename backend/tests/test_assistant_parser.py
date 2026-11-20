@@ -137,6 +137,10 @@ GOLDEN = [
     ("Почему Виалон и ГТК расходятся?", "gps.why_diff"), ("Сколько тон перевезли сегодня?", "scales.today"), ("Пробег локомотива 2313.", "mileage.asset"),
     ("Создай наряд на 37919.", "wo.create"),
     # phrases the user really said into the microphone (live log 2026-11-18)
+    # fixes after reading the live log of 2026-11-18/19
+    ("открой аналитка", "nav.open"), ("открой страницы аналитка", "nav.open"), ("открываю весовая", "nav.open"), ("открой dashboard", "nav.open"),
+    ("привет", "sys.help"), ("здравствуйте", "sys.help"), ("до свидания", "sys.bye"), ("спасибо", "sys.bye"), ("сколько думпкаров есть", "fleet.count"),
+    ("где находится сейчас электро воз 3020 восьмой", "gps.where"),
     ("сколько вагонов есть", "fleet.count"), ("nechta vagon bor", "fleet.count"), ("какой тип ремонта есть", "to.types"), ("какие виды ТО есть", "to.types"),
     ("дай отчет сегодня сколько вес отправили", "scales.today"), ("сколько тонн отправили", "scales.today"), ("qanday ТО turlari bor", "to.types"), ("Состав 439.", "train.info"), ("Сколько нарядов открыто?", "wo.count"),
 ]
@@ -150,7 +154,7 @@ def test_golden_phrases(phrase, intent):
 
 
 def test_unrelated_text_matches_nothing():
-    for phrase in ("salom", "bugun havo yaxshi", "qalaysan", "hello", "asdf qwer", "привет"):
+    for phrase in ("bugun havo yaxshi", "qalaysan", "hello", "asdf qwer", "какая погода"):
         assert simulate(phrase)[0] is None, phrase
 
 
@@ -254,3 +258,10 @@ def test_a_create_verb_without_a_unit_asks_for_the_unit_and_a_bare_open_still_op
     assert simulate("yangi naryad yarat")[:2] == ("wo.create", ["asset"])
     assert simulate("создай наряд")[:2] == ("wo.create", ["asset"])
     assert simulate("naryad och")[0] == "nav.open" and simulate("открой наряды")[0] == "nav.open"
+
+
+def test_an_ordinal_after_a_tens_number_and_split_words_are_joined():
+    assert canonical("где электро воз 3020 восьмой") == "где электровоз 3028"
+    assert canonical("вагон 3010 первый") == "вагон 3011"
+    assert canonical("вагон 3025 восьмой") == "вагон 3025 восьмой"  # 25 does not end with a tens zero: left alone
+    assert canonical("тепло воз 2427") == "тепловоз 2427"

@@ -7,9 +7,15 @@ from app.services import gps_overview
 from app.services import gtk as gtk_service
 from app.services import wialon as wialon_service
 from app.services.assistant.catalog import CATALOG, MODULE_TITLES
-from app.services.assistant.handlers._common import age_minutes, ago, t
+from app.services.assistant.handlers._common import age_minutes, ago, t, text_card
 from app.services.assistant.registry import handler
 from app.services.assistant.types import Ctx, Result, Slots
+
+
+@handler("sys.bye")
+async def bye(ctx: Ctx, slots: Slots) -> Result:
+    msg = t(ctx, "Marhamat! Kerak bo'lsam, chaqiring.", "Пожалуйста! Обращайтесь, когда нужно.")
+    return Result(cards=[text_card(msg, tone="info")], speak=msg)
 
 
 @handler("sys.help")

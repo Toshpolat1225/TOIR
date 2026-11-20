@@ -504,3 +504,6 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 ## 2026-11-20: gibrid nutq tanish
 - Changed: `lib/browser-stt.ts` (+test), `components/assistant/useBrowserStt.ts`, `AssistantCenter.tsx` (parallel tanish, tanlov), `config.py`/`schemas`/`speech.py` (`browser_stt`), `docker-compose.yml`, yangi `browser/b15_hybrid_stt.mjs`.
 - Tested: unit 178, tsc, backend speech/parser; jonli brauzer b15 5/5 (soxta SpeechRecognition), b14 8/8, b13 13/13; ZZTEST tozalandi. NOT TESTED: haqiqiy Google tanuvchisi.
+
+## 2026-11-20: jurnal bo'yicha tuzatishlar
+- Changed: `repair.py`, `catalog.py` (_OPEN o'zaklari, sys.bye, salomlashuv, думпкар), `numbers.py` (tartib son, ajralgan so'zlar), `handlers/system.py`, `speech.py`, testlar. Backend 882 o'tdi, jonli backend joylandi. NOT TESTED: haqiqiy ovozda.

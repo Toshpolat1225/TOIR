@@ -96,7 +96,7 @@ async def test_pipeline_resolution_scoping_clarification_and_the_log(fake_handle
             hidden = await engine.run_command(db, w["mb"], CommandIn(text=f"{w['inv'][0]} qayerda"))
             assert hidden.status in ("needs_clarification", "denied") and fake_handlers["where"] == 3
             # unmatched text is logged for the admin list and offers suggestions
-            nothing = await engine.run_command(db, admin, CommandIn(text="salom qalaysan"))
+            nothing = await engine.run_command(db, admin, CommandIn(text="bugun havo yaxshi"))
             assert nothing.status == "unmatched" and len(nothing.suggestions) >= 3 and nothing.intent is None
             rows = (await db.execute(select(AssistantQuery.status).where(AssistantQuery.user_id == admin.id))).scalars().all()
             assert rows.count("unmatched") == 1 and rows.count("ok") == 4 and "needs_clarification" in rows
