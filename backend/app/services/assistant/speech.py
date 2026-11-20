@@ -109,7 +109,7 @@ async def status(*, transport: httpx.AsyncBaseTransport | None = None, force: bo
     now = time.monotonic()
     if not force and _status_cache is not None and now - _status_cache[0] < STATUS_TTL_S:
         return _status_cache[1]
-    result = AssistantStatus(voice_available=False, voice_model=None, max_audio_s=MAX_AUDIO_S)
+    result = AssistantStatus(voice_available=False, voice_model=None, max_audio_s=MAX_AUDIO_S, browser_stt=settings.assistant_browser_stt)
     base = _base_url()
     if base:
         try:
@@ -117,7 +117,7 @@ async def status(*, transport: httpx.AsyncBaseTransport | None = None, force: bo
                 response = await client.get(f"{base}/health")
             body = response.json() if response.status_code == 200 else {}
             if body.get("ok") and body.get("loaded"):
-                result = AssistantStatus(voice_available=True, voice_model=body.get("model") or settings.whisper_model, max_audio_s=MAX_AUDIO_S)
+                result = AssistantStatus(voice_available=True, voice_model=body.get("model") or settings.whisper_model, max_audio_s=MAX_AUDIO_S, browser_stt=settings.assistant_browser_stt)
         except (httpx.HTTPError, ValueError):
             pass
     _status_cache = (now, result)

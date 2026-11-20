@@ -500,3 +500,7 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 ## 2026-11-19: naryad formasi avtomatikasi
 - Changed: migratsiya `0041_work_order_audit_duration`, `models/{work_orders,maintenance}.py`, `schemas/{work_orders,references}.py`, `repositories/work_orders.py`, `services/work_orders.py`, `postgres/schema.sql`; frontend `components/ui/search-select.tsx`, `lib/work-order-defaults.ts` (+test), `CreateWorkOrderModal`, `ViewEditOrderModal`, `WorkOrderList`, `RepairItemsModal`, `repairDraft.ts`, spravochnik `directories/work-types`; testlar `test_work_order_automation_pg.py`, `e2e_workorders.py` (+3 tekshiruv), `browser/b15_work_order_form.mjs`, `b16_work_type_duration.mjs`.
 - Tested (lokal, tajriba bazasi + lokal next start): backend 871 o'tdi, unit 171, tsc/build, b15 12/12, b16 4/4. Jonli serverda deploy qilinmadi, migratsiya jonli bazada ishga tushmadi.
+
+## 2026-11-20: gibrid nutq tanish
+- Changed: `lib/browser-stt.ts` (+test), `components/assistant/useBrowserStt.ts`, `AssistantCenter.tsx` (parallel tanish, tanlov), `config.py`/`schemas`/`speech.py` (`browser_stt`), `docker-compose.yml`, yangi `browser/b15_hybrid_stt.mjs`.
+- Tested: unit 178, tsc, backend speech/parser; jonli brauzer b15 5/5 (soxta SpeechRecognition), b14 8/8, b13 13/13; ZZTEST tozalandi. NOT TESTED: haqiqiy Google tanuvchisi.

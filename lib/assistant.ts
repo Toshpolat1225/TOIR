@@ -58,7 +58,7 @@ export type AssistantCommandOut = {
 }
 export type AssistantConfirmIn = { token: string; approve: boolean; context?: AssistantContext | null }
 export type AssistantTranscribeOut = { text: string; language?: string | null; confidence?: number | null; duration_s?: number | null; ms: number }
-export type AssistantStatusOut = { voice_available: boolean; voice_model?: string | null; max_audio_s: number; write_actions: boolean }
+export type AssistantStatusOut = { voice_available: boolean; voice_model?: string | null; max_audio_s: number; write_actions: boolean; browser_stt?: boolean }
 export type AssistantHelpGroup = { module: string; title: string; examples: string[] }
 export type AssistantHelpOut = { groups: AssistantHelpGroup[] }
 export type AssistantUnmatchedItem = { text: string; count: number; last_at: string; best_intent?: string | null }

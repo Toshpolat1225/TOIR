@@ -43,6 +43,8 @@ import {
 } from "@/lib/assistant"
 import { AssistantCardView } from "./AssistantCards"
 import { useVoiceRecorder } from "./useVoiceRecorder"
+import { useBrowserStt } from "./useBrowserStt"
+import { BROWSER_ONLY_FAILED, STT_KEY, STT_OPTIONS, browserLang, normalizeSttPref, shouldTryBrowser, type SttPref } from "@/lib/browser-stt"
 
 type Pending = { query: string; source: "text" | "voice"; label: string }
 type Review = { text: string; confidence: number | null }
@@ -111,6 +113,10 @@ export function AssistantCenter() {
   const historyRef = useRef<HistoryEntry[]>([])
   const lastEntityRef = useRef<AssistantEntityRef | null>(null)
   const dialogRef = useRef<AssistantDialog | null>(null)
+  const [sttPref, setSttPref] = useState<SttPref>("auto")
+  const sttRef = useRef<SttPref>("auto")
+  const statusRef = useRef<AssistantStatusOut | null>(null)
+  const usedBrowserRef = useRef(false)
   const langRef = useRef<AssistantLang>("auto")
   const ttsRef = useRef(false)
   const pathRef = useRef<string | null>(null)
@@ -119,6 +125,8 @@ export function AssistantCenter() {
   lastEntityRef.current = lastEntity
   langRef.current = lang
   ttsRef.current = tts
+  sttRef.current = sttPref
+  statusRef.current = status
   pathRef.current = pathname
 
   // ---- persisted preferences and the last answers ----
@@ -127,6 +135,7 @@ export function AssistantCenter() {
     try { window.localStorage.removeItem(HISTORY_KEY) } catch { /* the old shared history (one list for everybody) is dropped */ }
     setLang(normalizeLang(readStorage(LANG_KEY)))
     setTts(readStorage(TTS_KEY) === "1")
+    setSttPref(normalizeSttPref(readStorage(STT_KEY)))
   }, [])
   useEffect(() => {
     if (!mounted) return
@@ -143,6 +152,9 @@ export function AssistantCenter() {
   useEffect(() => {
     if (mounted) writeStorage(TTS_KEY, tts ? "1" : "0")
   }, [tts, mounted])
+  useEffect(() => {
+    if (mounted) writeStorage(STT_KEY, sttPref)
+  }, [sttPref, mounted])
 
   const confirmEntry = useMemo(() => openConfirmation(history, now), [history, now])
 
@@ -296,6 +308,7 @@ export function AssistantCenter() {
   )
 
   // ---- voice ----
+  const browser = useBrowserStt()
   const onRecorded = useCallback(
     async (blob: Blob, mime: string) => {
       if (busyRef.current) return
@@ -303,8 +316,15 @@ export function AssistantCenter() {
       setBusy({ query: "", source: "voice", label: "Распознаю речь…" })
       let recognised: { text: string; confidence: number | null } | null = null
       try {
-        const result = await api.assistant.transcribe(blob, audioFileName(mime), transcribeLanguage(langRef.current))
-        recognised = { text: (result.text ?? "").trim(), confidence: typeof result.confidence === "number" ? result.confidence : null }
+        const heard = usedBrowserRef.current ? await browser.take() : null // the browser recogniser ran in parallel: its sentence wins, the audio stays on this PC
+        usedBrowserRef.current = false
+        if (heard) recognised = heard
+        else if (sttRef.current === "browser") setProblem(BROWSER_ONLY_FAILED)
+        else if (statusRef.current?.voice_available === false) setProblem("Голосовой сервис недоступен, а браузер не распознал речь. Напишите текстом.")
+        else {
+          const result = await api.assistant.transcribe(blob, audioFileName(mime), transcribeLanguage(langRef.current))
+          recognised = { text: (result.text ?? "").trim(), confidence: typeof result.confidence === "number" ? result.confidence : null }
+        }
       } catch (error) {
         setProblem(mapAssistantError(error))
       } finally {
@@ -320,11 +340,29 @@ export function AssistantCenter() {
       if (needsReview(recognised.text, recognised.confidence, !!waiting)) setReview(recognised)
       else await submit(recognised.text, "voice", recognised.confidence)
     },
-    [submit],
+    [submit, browser],
   )
 
-  const recorder = useVoiceRecorder({ onRecorded: (blob, mime) => void onRecorded(blob, mime), onProblem: setProblem })
-  const voiceAvailable = status?.voice_available === true
+  const { start: startBrowser, stop: stopBrowser, cancel: cancelBrowser } = browser
+  const recorder = useVoiceRecorder({ onRecorded: (blob, mime) => void onRecorded(blob, mime), onProblem: (message) => { usedBrowserRef.current = false; cancelBrowser(); setProblem(message) } })
+  const { start: startRecorder, stop: stopRecorder, cancel: cancelRecorder } = recorder
+  const browserSttOk = browser.supported && !browser.broken && status?.browser_stt !== false && sttPref !== "whisper"
+  const voiceAvailable = status?.voice_available === true || browserSttOk // the microphone works when EITHER the browser or Whisper can recognise
+  const micStart = useCallback(() => {
+    const env = { supported: browser.supported && !browser.broken, online: typeof navigator === "undefined" || navigator.onLine !== false, allowed: statusRef.current?.browser_stt !== false }
+    usedBrowserRef.current = shouldTryBrowser(sttRef.current, env)
+    if (usedBrowserRef.current) startBrowser(browserLang(langRef.current))
+    void startRecorder()
+  }, [browser.supported, browser.broken, startBrowser, startRecorder])
+  const micStop = useCallback(() => {
+    stopBrowser()
+    stopRecorder()
+  }, [stopBrowser, stopRecorder])
+  const micCancel = useCallback(() => {
+    usedBrowserRef.current = false
+    cancelBrowser()
+    cancelRecorder()
+  }, [cancelBrowser, cancelRecorder])
 
   // ---- keyboard: Ctrl+K toggles, Esc closes ----
   useEffect(() => {
@@ -333,13 +371,13 @@ export function AssistantCenter() {
         event.preventDefault()
         setOpen((value) => !value)
       } else if (event.key === "Escape" && open) {
-        recorder.cancel()
+        micCancel()
         close()
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [open, close, recorder])
+  }, [open, close, micCancel])
 
   // hold Space (focus not in a text field or on a button) = push-to-talk
   const onPanelKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
@@ -347,12 +385,12 @@ export function AssistantCenter() {
     const tag = (event.target as HTMLElement).tagName
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "BUTTON") return
     event.preventDefault()
-    void recorder.start()
+    micStart()
   }
   const onPanelKeyUp = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.code === "Space" && recorder.recording) {
       event.preventDefault()
-      recorder.stop()
+      micStop()
     }
   }
 
@@ -412,7 +450,7 @@ export function AssistantCenter() {
 
   const panel = (
     <div className="fixed inset-0 z-[70]">
-      <button type="button" aria-label="Закрыть помощника" className="absolute inset-0 bg-slate-950/40 backdrop-blur-[1px] sm:bg-transparent sm:backdrop-blur-none" onClick={() => { recorder.cancel(); close() }} />
+      <button type="button" aria-label="Закрыть помощника" className="absolute inset-0 bg-slate-950/40 backdrop-blur-[1px] sm:bg-transparent sm:backdrop-blur-none" onClick={() => { micCancel(); close() }} />
       <section
         role="dialog"
         aria-modal="true"
@@ -438,6 +476,11 @@ export function AssistantCenter() {
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
+          <select data-testid="assistant-stt" aria-label="Распознавание речи" title="Распознавание речи: браузер (нужен ваш интернет) или локальный Whisper" value={sttPref} disabled={status?.browser_stt === false} onChange={(e) => setSttPref(normalizeSttPref(e.target.value))} className={FIELD}>
+            {STT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
           <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-slate-600 dark:text-gray-300">
             <input type="checkbox" data-testid="assistant-tts" checked={tts} onChange={(e) => toggleTts(e.target.checked)} />
             <Volume2 /> Озвучивать ответы
@@ -445,7 +488,7 @@ export function AssistantCenter() {
           <button type="button" onClick={() => setShowHelp((v) => !v)} aria-pressed={showHelp} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100 dark:text-gray-300 dark:ring-gray-700 dark:hover:bg-gray-800">
             <HelpCircle /> Команды
           </button>
-          <button type="button" aria-label="Закрыть" onClick={() => { recorder.cancel(); close() }} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:text-gray-400 dark:hover:bg-gray-800">
+          <button type="button" aria-label="Закрыть" onClick={() => { micCancel(); close() }} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:text-gray-400 dark:hover:bg-gray-800">
             <X />
           </button>
         </div>
@@ -665,10 +708,10 @@ export function AssistantCenter() {
                 aria-label="Удерживайте и говорите"
                 aria-pressed={recorder.recording}
                 title="Удерживайте и говорите (или удерживайте пробел)"
-                onPointerDown={(e) => { e.preventDefault(); void recorder.start() }}
-                onPointerUp={() => recorder.stop()}
-                onPointerLeave={() => recorder.stop()}
-                onPointerCancel={() => recorder.stop()}
+                onPointerDown={(e) => { e.preventDefault(); micStart() }}
+                onPointerUp={() => micStop()}
+                onPointerLeave={() => micStop()}
+                onPointerCancel={() => micStop()}
                 onContextMenu={(e) => e.preventDefault()}
                 className={`inline-flex h-12 w-12 shrink-0 touch-none select-none items-center justify-center rounded-full text-xl text-white shadow ${recorder.recording ? "animate-pulse bg-rose-600" : "bg-slate-800 hover:bg-slate-700 dark:bg-gray-700"}`}
               >

@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     # Local speech-to-text service of the voice assistant (compose service `whisper`); empty = no microphone, the text assistant works anyway
     whisper_url: str | None = None
     whisper_model: str = "base"
+    # Hybrid recognition: the browser's own recogniser (Web Speech API, the user's internet; the audio goes to the browser vendor) is tried before Whisper.
+    # Set false for a strict closed circuit: only the local Whisper is used.
+    assistant_browser_stt: bool = True
     # D8 policy: when true, the same administrator may propose and approve an
     # opening balance. Default false (maker != checker).
     opening_balance_allow_self_approval: bool = False

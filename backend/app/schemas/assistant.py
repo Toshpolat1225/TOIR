@@ -129,6 +129,7 @@ class AssistantStatus(BaseModel):
     voice_model: str | None = None
     max_audio_s: int = 30
     write_actions: bool = True  # commands may create work orders etc. (always with a confirmation)
+    browser_stt: bool = True  # the browser recogniser may be tried before Whisper (false = closed circuit: Whisper only)
 
 
 class HelpGroup(BaseModel):
