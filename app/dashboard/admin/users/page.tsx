@@ -36,8 +36,8 @@ function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void
       return
     }
     if (emergency) {
-      if (!email.trim() || password.length < 6) {
-        setError("Для аварийной записи укажите email и пароль (минимум 6 символов).")
+      if (!email.trim() || password.length < 10) {
+        setError("Для аварийной записи укажите email и пароль (минимум 10 символов, не только цифры).")
         return
       }
     } else if (!/^[A-Za-z0-9._-]{1,64}$/.test(adUsername.trim().replace(/@agmk\.uz$/i, ""))) {
@@ -134,7 +134,7 @@ function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Пароль</label>
                   <div className="relative">
-                    <input type={showPwd?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Минимум 6 символов" autoComplete="new-password" className={inp + " pr-10"}/>
+                    <input type={showPwd?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Минимум 10 символов, не только цифры" autoComplete="new-password" className={inp + " pr-10"}/>
                     <button type="button" onClick={()=>setShowPwd(v=>!v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                       {showPwd ? <EyeOff className="w-4 h-4"/> : <Eye className="w-4 h-4"/>}
                     </button>
@@ -204,8 +204,8 @@ function EditUserModal({ profile, isMe, onClose, onSaved, sections }: {
   }
 
   const handlePasswordReset = async () => {
-    if (newPassword.length < 6) {
-      setError("Пароль должен содержать не менее 6 символов.")
+    if (newPassword.length < 10) {
+      setError("Пароль: не менее 10 символов, не только цифры, без логина.")
       return
     }
     setResetBusy(true)
@@ -304,7 +304,7 @@ function EditUserModal({ profile, isMe, onClose, onSaved, sections }: {
                   type="password"
                   value={newPassword}
                   onChange={e=>setNewPassword(e.target.value)}
-                  placeholder="Новый пароль (минимум 6 символов)"
+                  placeholder="Новый пароль (минимум 10 символов, не только цифры)"
                   className={inp}
                   autoComplete="new-password"
                 />
