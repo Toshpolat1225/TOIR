@@ -335,10 +335,10 @@ export const WAGON_SORTS = ["inv_number", "km_period", "confidence", "since", "t
 export type WagonSort = (typeof WAGON_SORTS)[number]
 export type WagonFilters = {
   q: string; section_id: string; train: string; loco: string; confidence: string[]; flag: string[]; in_train: "" | "1" | "0"; asset_type: string
-  days: number; sort_by: WagonSort; sort_dir: "asc" | "desc"; page: number
+  days: number; date_from: string; date_to: string; sort_by: WagonSort; sort_dir: "asc" | "desc"; page: number
 }
 export const DEFAULT_WAGON_FILTERS: WagonFilters = {
-  q: "", section_id: "", train: "", loco: "", confidence: [], flag: [], in_train: "", asset_type: "", days: 14, sort_by: "inv_number", sort_dir: "asc", page: 0,
+  q: "", section_id: "", train: "", loco: "", confidence: [], flag: [], in_train: "", asset_type: "", days: 14, date_from: "", date_to: "", sort_by: "inv_number", sort_dir: "asc", page: 0,
 }
 export function parseWagonFilters(search: SearchLike): WagonFilters {
   const p = asParams(search)
@@ -349,6 +349,8 @@ export function parseWagonFilters(search: SearchLike): WagonFilters {
     confidence: list(p.get("confidence"), CONFIDENCE_ORDER), flag: list(p.get("flag"), FLAG_ORDER),
     in_train: inTrain === "1" || inTrain === "true" ? "1" : inTrain === "0" || inTrain === "false" ? "0" : "", asset_type: p.get("asset_type") ?? "",
     days: Number.isInteger(days) && days >= 1 && days <= MAX_WINDOW_DAYS ? days : DEFAULT_WAGON_FILTERS.days,
+    date_from: /^\d{4}-\d{2}-\d{2}$/.test(p.get("date_from") ?? "") ? (p.get("date_from") as string) : "",
+    date_to: /^\d{4}-\d{2}-\d{2}$/.test(p.get("date_to") ?? "") ? (p.get("date_to") as string) : "",
     sort_by: (WAGON_SORTS as readonly string[]).includes(sort) ? (sort as WagonSort) : DEFAULT_WAGON_FILTERS.sort_by,
     sort_dir: p.get("sort_dir") === "desc" ? "desc" : p.get("sort_dir") === "asc" ? "asc" : DEFAULT_WAGON_FILTERS.sort_dir,
     page: Number.isInteger(page) && page > 0 ? page : 0,
@@ -361,6 +363,7 @@ export function serializeWagonFilters(f: WagonFilters): string {
   put("q", f.q.trim()); put("section_id", f.section_id); put("train", f.train.trim()); put("loco", f.loco.trim())
   put("confidence", f.confidence.join(",")); put("flag", f.flag.join(",")); put("in_train", f.in_train); put("asset_type", f.asset_type)
   if (f.days !== d.days) p.set("days", String(f.days))
+  put("date_from", f.date_from); put("date_to", f.date_to)
   if (f.sort_by !== d.sort_by) p.set("sort_by", f.sort_by)
   if (f.sort_dir !== d.sort_dir) p.set("sort_dir", f.sort_dir)
   if (f.page > 0) p.set("page", String(f.page))
@@ -376,6 +379,8 @@ export function wagonApiParams(f: WagonFilters, opts: { limit: number; offset: n
   if (f.flag.length) out.flag = f.flag
   if (f.in_train) out.in_train = f.in_train === "1"
   if (f.asset_type) out.asset_type = f.asset_type
+  if (f.date_from) out.date_from = f.date_from
+  if (f.date_to) out.date_to = f.date_to
   return out
 }
 export function wagonFilterChips(f: WagonFilters, sectionName?: (id: string) => string | undefined): FilterChip<WagonFilters>[] {

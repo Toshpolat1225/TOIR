@@ -1402,3 +1402,7 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 - Qator bosilsa endi 360° oynasi ochiladi (eski tahrir oynasi o'sha oynadagi tugma orqali).
 - NOT TESTED: master roli (overview GTK/Весовая ni bermaydi — kodda), management roli, backend unit test (overview uchun yo'q), telefon ko'rinishi.
 - Proxy (Caddy) TLS «internal error» bergan edi (sertifikat fayli yangi, sababi aniqlanmadi); `docker compose restart proxy` hal qildi.
+
+## GPS «Вагоны»: «С … по …» (2026-11-23)
+- Verified: Edge `browser/b18_wagons_period.mjs` 6/6 (ZZTEST, keyin o'chirildi); `npm run test:unit` 178 o'tdi; tsc/eslint toza. Ro'yxat va vagon sahifasida «С [sana] по [sana]» + 7/14/31 tugmalari; so'rovga `date_from/date_to` ketadi (kunlar GTK mahalliy vaqtida, eng ko'pi 31 kun). Backend: `gps_wagons._window`, `/gps/wagons` va `/gps/wagons/{key}` yangi parametrlar.
+- NOT TESTED: backend pytest (date_from/date_to uchun test yozilmagan), «по» o'tgan kun bo'lganda segment kesishuvi (jonli ma'lumot bilan solishtirilmagan).

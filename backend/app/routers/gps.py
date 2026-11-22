@@ -156,6 +156,8 @@ async def read_gps_wagons(
     in_train: Annotated[bool | None, Query()] = None,
     asset_type: Annotated[str | None, Query(max_length=40)] = None,
     days: Annotated[int, Query(ge=1, le=31)] = 14,
+    date_from: Annotated[date | None, Query()] = None,
+    date_to: Annotated[date | None, Query()] = None,
     sort_by: Annotated[str, Query(max_length=20)] = "inv_number",
     sort_dir: Annotated[Literal["asc", "desc"], Query()] = "asc",
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
@@ -164,7 +166,7 @@ async def read_gps_wagons(
     """Wagons have no GPS of their own: position and km are derived from the locomotive of their GTK train (master: own section only)."""
     return await wagons_service.list_wagons(
         db, user, q=q, section_id=section_id, train=train, loco=loco, confidence=list(confidence or []), flag=list(flag or []), in_train=in_train,
-        asset_type=asset_type, days=days, sort_by=sort_by, sort_dir=sort_dir, limit=limit, offset=offset,
+        asset_type=asset_type, days=days, date_from=date_from, date_to=date_to, sort_by=sort_by, sort_dir=sort_dir, limit=limit, offset=offset,
     )
 
 
@@ -174,6 +176,8 @@ async def read_gps_wagon(
     user: GpsViewer,
     db: DatabaseSession,
     days: Annotated[int, Query(ge=1, le=31)] = 31,
+    date_from: Annotated[date | None, Query()] = None,
+    date_to: Annotated[date | None, Query()] = None,
 ) -> GpsWagonDetail:
     """One wagon (`key` = asset UUID or `gtk-<carriage id>`): its segments behind locomotives with the four distance candidates."""
-    return await wagons_service.wagon_detail(db, user, key, days=days)
+    return await wagons_service.wagon_detail(db, user, key, days=days, date_from=date_from, date_to=date_to)

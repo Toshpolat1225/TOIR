@@ -1,5 +1,6 @@
 "use client"
 
+import { PeriodPicker } from "@/components/gps/PeriodPicker"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
@@ -12,14 +13,12 @@ import { GpsMap, type GpsMarker } from "../../_components/GpsMap"
 import { BasisChip, Chip, ConfidenceChip, FlagChip } from "../../_components/parts"
 import { CANDIDATES, CandidatesLegend, SegmentTimeline, WagonBanner } from "../../_components/WagonParts"
 
-const DAY_OPTIONS = [7, 14, 31]
-const seg = "inline-flex overflow-hidden rounded-full ring-1 ring-gray-300 dark:ring-gray-700"
-const segBtn = (on: boolean) => `px-3 py-1 text-sm ${on ? "bg-indigo-600 text-white" : "bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100"}`
 
 export default function WagonDetailPage() {
   const { key: rawKey } = useParams<{ key: string }>()
   const key = decodeURIComponent(rawKey)
   const [days, setDays] = useState(14)
+  const [range, setRange] = useState({ date_from: "", date_to: "" })
   const [data, setData] = useState<GpsWagonDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mapError, setMapError] = useState<string | null>(null)
@@ -27,11 +26,11 @@ export default function WagonDetailPage() {
   useEffect(() => {
     let cancelled = false
     setData(null)
-    api.gps.wagon(key, { days })
+    api.gps.wagon(key, range.date_from || range.date_to ? { days, ...range } : { days })
       .then((value) => { if (!cancelled) { setData(value); setError(null) } })
       .catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : "Не удалось загрузить вагон") })
     return () => { cancelled = true }
-  }, [key, days])
+  }, [key, days, range])
 
   const row = data?.row
   const markers = useMemo<GpsMarker[]>(() => (row?.position ? [{ id: "wagon", lat: row.position.lat, lon: row.position.lon, color: "#7c3aed", hollow: row.confidence === "low" || row.confidence === "none", label: `${row.inv_number ?? row.name} · выведено из локомотива ${row.loco_inv_number ?? "—"}` }] : []), [row])
@@ -61,9 +60,7 @@ export default function WagonDetailPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-gray-500">Период:</span>
-          <div className={seg} role="group" aria-label="Период">
-            {DAY_OPTIONS.map((d) => <button key={d} type="button" aria-pressed={days === d} onClick={() => setDays(d)} className={segBtn(days === d)}>{`${d} дн.`}</button>)}
-          </div>
+          <PeriodPicker days={days} dateFrom={range.date_from} dateTo={range.date_to} onChange={(n) => { setDays(n.days); setRange({ date_from: n.date_from, date_to: n.date_to }) }} />
         </div>
       </nav>
 

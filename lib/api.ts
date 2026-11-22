@@ -1910,8 +1910,8 @@ const gps = {
     return request<import("./gps-view").GpsWagonPage>({ method: "GET", path: "/gps/wagons", params: cleanParams(params), suppressNetworkLog: true, signal });
   },
   /** One wagon: its segments with the four distance candidates. `key` is the asset UUID or «gtk-<carriage id>». */
-  async wagon(key: string, params: { days?: number } = {}): Promise<import("./gps-view").GpsWagonDetail> {
-    const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined)) as Record<string, number>;
+  async wagon(key: string, params: { days?: number; date_from?: string; date_to?: string } = {}): Promise<import("./gps-view").GpsWagonDetail> {
+    const clean = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== "")) as Record<string, number>;
     return request<import("./gps-view").GpsWagonDetail>({ method: "GET", path: `/gps/wagons/${encodeURIComponent(key)}`, params: clean, suppressNetworkLog: true });
   },
 };

@@ -1,12 +1,13 @@
 "use client"
 
+import { PeriodPicker } from "@/components/gps/PeriodPicker"
 import Link from "next/link"
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import { api } from "@/lib/api"
 import { useDebouncedValue } from "@/lib/use-debounced-value"
 import { useSections } from "@/lib/use-sections"
 import {
-  BASIS_LABEL, CONFIDENCE_COLOR, CONFIDENCE_HINT, CONFIDENCE_LABEL, CONFIDENCE_ORDER, DAY_CHOICES, DEFAULT_WAGON_FILTERS, FLAG_HINT, FLAG_LABEL, FLAG_ORDER, PAGE_SIZE,
+  BASIS_LABEL, CONFIDENCE_COLOR, CONFIDENCE_HINT, CONFIDENCE_LABEL, CONFIDENCE_ORDER, DEFAULT_WAGON_FILTERS, FLAG_HINT, FLAG_LABEL, FLAG_ORDER, PAGE_SIZE,
   parseWagonFilters, patchActive, segKm, serializeWagonFilters, toggleValue, wagonApiParams, wagonFilterChips, type WagonFilters,
 } from "@/lib/gps-analytics"
 import { POSITION_LABEL, ageMinText, kmText, timeText, type GpsWagonPage, type GpsWagonRow, type PositionVerdict } from "@/lib/gps-view"
@@ -101,7 +102,7 @@ function WagonsInner() {
   ] : []
   const tileActive = (t: Tile) => !!t.patch && patchActive(filters, t.patch)
   const pressTile = (t: Tile) => {
-    if (t.clear) return reset({ ...DEFAULT_WAGON_FILTERS, days: filters.days })
+    if (t.clear) return reset({ ...DEFAULT_WAGON_FILTERS, days: filters.days, date_from: filters.date_from, date_to: filters.date_to })
     if (!t.patch) return
     if (tileActive(t)) {
       const undo = Object.fromEntries(Object.keys(t.patch).map((k) => [k, DEFAULT_WAGON_FILTERS[k as keyof WagonFilters]])) as Partial<WagonFilters>
@@ -163,11 +164,7 @@ function WagonsInner() {
           <select value={filters.in_train} onChange={(e) => set({ in_train: e.target.value as WagonFilters["in_train"], page: 0 })} aria-label="В составе" className={field} data-testid="wagons-in-train">
             <option value="">В составе: любые</option><option value="1">Только в составе</option><option value="0">Не в составе</option>
           </select>
-          <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">Период
-            <select value={filters.days} onChange={(e) => set({ days: Number(e.target.value), page: 0 })} aria-label="Период, дней" className={field}>
-              {DAY_CHOICES.map((d) => <option key={d} value={d}>{d === 1 ? "сутки" : `${d} дн.`}</option>)}
-            </select>
-          </label>
+          <PeriodPicker days={filters.days} dateFrom={filters.date_from} dateTo={filters.date_to} onChange={(next) => set({ ...next, page: 0 })} />
           <span className="ml-auto text-sm text-gray-500 dark:text-gray-400" data-testid="gps-count">Показано: <b>{rows.length}</b>{data && data.total !== rows.length ? ` из ${data.total}` : ""}</span>
         </div>
         <div className="grid gap-3 md:grid-cols-2">

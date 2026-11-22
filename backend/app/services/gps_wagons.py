@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import String, cast, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.asset_models import AssetModel  # noqa: F401  (keeps the mapper registry complete)
 from app.models.asset_source_links import AssetSourceLink
 from app.models.assets import FixedAsset, fixed_asset_name_expression
@@ -65,17 +66,33 @@ async def _loco_fixes(db: AsyncSession, now: datetime) -> dict[int, dict]:
     return out
 
 
+def _window(days: int, date_from: date | None, date_to: date | None, now: datetime) -> tuple[datetime, datetime | None, int]:
+    """(window start, window end or None = up to now, number of days). Dates are local days (GTK offset); at most 31 days."""
+    if date_from is None and date_to is None:
+        days = max(1, min(days, 31))
+        return now - timedelta(days=days), None, days
+    offset = timedelta(hours=settings.gtk_utc_offset_hours)
+    local_today = (now + offset).date()
+    end_day = min(date_to or local_today, local_today)
+    start_day = date_from or (end_day - timedelta(days=13))
+    if start_day > end_day:
+        start_day, end_day = end_day, start_day
+    start_day = max(start_day, end_day - timedelta(days=30))
+    start = datetime(start_day.year, start_day.month, start_day.day, tzinfo=timezone.utc) - offset
+    end = datetime(end_day.year, end_day.month, end_day.day, tzinfo=timezone.utc) + timedelta(days=1) - offset
+    return start, (end if end_day < local_today else None), (end_day - start_day).days + 1
+
+
 async def list_wagons(
     db: AsyncSession, user: User, *, q: str | None = None, section_id: UUID | None = None, train: str | None = None, loco: str | None = None,
-    confidence: list[str] | None = None, flag: list[str] | None = None, in_train: bool | None = None, asset_type: str | None = None, days: int = 14,
+    confidence: list[str] | None = None, flag: list[str] | None = None, in_train: bool | None = None, asset_type: str | None = None, days: int = 14, date_from: date | None = None, date_to: date | None = None,
     sort_by: str = "inv_number", sort_dir: str = "asc", limit: int = 200, offset: int = 0, now: datetime | None = None,
 ) -> GpsWagonPage:
     if sort_by not in SORT_FIELDS:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="sort_by must be one of: " + ", ".join(sorted(SORT_FIELDS)))
     scope = _scope(user)
     now = now or datetime.now(timezone.utc)
-    days = max(1, min(days, 31))
-    since_window = now - timedelta(days=days)
+    since_window, until_window, days = _window(days, date_from, date_to, now)
     type_name = (
         select(FixedAssetTypeTranslation.name)
         .where(FixedAssetTypeTranslation.type_code == FixedAsset.asset_type, FixedAssetTypeTranslation.locale == "ru")
@@ -116,7 +133,7 @@ async def list_wagons(
     ever = {r[0] for r in (await db.execute(select(GtkTrainMember.object_gtk_id).where(GtkTrainMember.kind == "carriage").distinct())).all()}
     agg = await db.execute(
         select(GpsWagonSegment.carriage_gtk_id, GpsWagonSegment.basis, func.coalesce(func.sum(GpsWagonSegment.selected_km), 0), func.count())
-        .where(GpsWagonSegment.period_to >= since_window).group_by(GpsWagonSegment.carriage_gtk_id, GpsWagonSegment.basis)
+        .where(GpsWagonSegment.period_to >= since_window, *([GpsWagonSegment.period_from < until_window] if until_window else [])).group_by(GpsWagonSegment.carriage_gtk_id, GpsWagonSegment.basis)
     )
     km: dict[int, float] = defaultdict(float)
     n_seg: dict[int, int] = defaultdict(int)
@@ -226,7 +243,7 @@ def explain(row: GpsWagonRow, segments: list[WagonSegment]) -> str:
     return " ".join(parts)
 
 
-async def wagon_detail(db: AsyncSession, user: User, key: str, *, days: int = 31, now: datetime | None = None) -> GpsWagonDetail:
+async def wagon_detail(db: AsyncSession, user: User, key: str, *, days: int = 31, date_from: date | None = None, date_to: date | None = None, now: datetime | None = None) -> GpsWagonDetail:
     scope = _scope(user)
     now = now or datetime.now(timezone.utc)
     carriage_id: int | None = None
@@ -249,13 +266,13 @@ async def wagon_detail(db: AsyncSession, user: User, key: str, *, days: int = 31
         if ext is None or not str(ext).isdigit():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wagon not found")
         carriage_id = int(ext)
-    page = await list_wagons(db, user, q=str(carriage_id), limit=500, now=now, days=days)
+    page = await list_wagons(db, user, q=str(carriage_id), limit=500, now=now, days=days, date_from=date_from, date_to=date_to)
     row = next((r for r in page.items if r.carriage_gtk_id == carriage_id), None)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wagon not found")
     segs = (
         await db.execute(
-            select(GpsWagonSegment).where(GpsWagonSegment.carriage_gtk_id == carriage_id, GpsWagonSegment.period_to >= now - timedelta(days=max(1, min(days, 31))))
+            select(GpsWagonSegment).where(GpsWagonSegment.carriage_gtk_id == carriage_id, GpsWagonSegment.period_to >= _window(days, date_from, date_to, now)[0], *([GpsWagonSegment.period_from < _window(days, date_from, date_to, now)[1]] if _window(days, date_from, date_to, now)[1] else []))
             .order_by(GpsWagonSegment.period_from.desc())
         )
     ).scalars().all()
