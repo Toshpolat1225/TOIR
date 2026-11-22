@@ -11,7 +11,7 @@ export function Providers({ children }: { children: ReactNode }) {
       attribute="data-theme"
       defaultTheme="light"
       enableSystem={false}
-      themes={["light", "dark", "ocean", "emerald", "violet", "graphite"]}
+      themes={["light", "dark", "ocean", "emerald", "violet", "graphite", "dawn", "sakura"]}
       storageKey="toir-theme"
     >
       <ThemeClassSync />

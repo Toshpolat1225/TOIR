@@ -486,3 +486,160 @@ main > .p-6 {
   transform-origin: center;
   transform-box: fill-box;
 }
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════════
+   Two calm light themes that look nothing alike:
+   «Рассвет» (dawn)   — warm sand + terracotta + honey: cozy, grounded, relaxes the eyes (no cold blue light feel).
+   «Сакура»  (sakura) — cool blush + dusty rose + periwinkle: soft, airy, lowers visual tension.
+   Both change colour on hover / press / selection, each with its OWN hover and active colours.
+   ════════════════════════════════════════════════════════════════════════════════════════════════ */
+:root[data-theme="dawn"] {
+  color-scheme: light;
+  --theme-canvas: #fbf4e6;
+  --theme-surface: #fffcf5;
+  --theme-muted: #f4e8d0;
+  --theme-border: #e8d6b4;
+  --theme-foreground: #3b2f22;
+  --theme-accent: #c0653a;
+  --theme-accent-hover: #a24e27;
+  --theme-accent-soft: #fbe6d2;
+  --theme-on-accent: #fffaf2;
+  --theme-accent-2: #e2a53e;
+  --theme-hover: #f9e8cc;
+  --theme-hover-text: #8a3f1c;
+  --theme-active: #f3d2a8;
+  --theme-glow: rgba(192, 101, 58, 0.30);
+  --theme-card-shadow: 0 1px 2px rgba(120, 80, 30, 0.07), 0 6px 18px -10px rgba(120, 80, 30, 0.22);
+  --theme-canvas-art: radial-gradient(1100px 520px at 8% -8%, rgba(226, 165, 62, 0.20), transparent 60%), radial-gradient(900px 480px at 100% 0%, rgba(192, 101, 58, 0.13), transparent 62%);
+}
+
+:root[data-theme="sakura"] {
+  color-scheme: light;
+  --theme-canvas: #f6f0f5;
+  --theme-surface: #fffcfe;
+  --theme-muted: #eee3ec;
+  --theme-border: #e1cfdc;
+  --theme-foreground: #36283a;
+  --theme-accent: #b0507c;
+  --theme-accent-hover: #933f66;
+  --theme-accent-soft: #f7e0ec;
+  --theme-on-accent: #fffafd;
+  --theme-accent-2: #7d8fd0;
+  --theme-hover: #efe6fa;
+  --theme-hover-text: #5b4a9b;
+  --theme-active: #d9d0f2;
+  --theme-glow: rgba(125, 143, 208, 0.38);
+  --theme-card-shadow: 0 1px 2px rgba(90, 60, 110, 0.06), 0 10px 24px -14px rgba(125, 143, 208, 0.45);
+  --theme-canvas-art: radial-gradient(1000px 520px at 100% -10%, rgba(125, 143, 208, 0.20), transparent 60%), radial-gradient(900px 460px at 0% 6%, rgba(176, 80, 124, 0.12), transparent 62%);
+}
+
+:root:is([data-theme="dawn"], [data-theme="sakura"]) body {
+  background-image: var(--theme-canvas-art);
+  background-attachment: fixed;
+}
+
+/* cards: soft shadow; the border warms up toward the accent on hover (no layout jump) */
+:root:is([data-theme="dawn"], [data-theme="sakura"]) :is(.rounded-xl, .rounded-2xl, .rounded-3xl, .rounded-lg).bg-white,
+:root:is([data-theme="dawn"], [data-theme="sakura"]) :is(.rounded-xl, .rounded-2xl, .rounded-3xl).bg-gray-900 {
+  box-shadow: var(--theme-card-shadow);
+}
+:root:is([data-theme="dawn"], [data-theme="sakura"]) :is(.rounded-xl, .rounded-2xl, .rounded-3xl).bg-white:hover {
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, var(--theme-border));
+  box-shadow: var(--theme-card-shadow), 0 0 0 3px color-mix(in srgb, var(--theme-accent-2) 22%, transparent);
+}
+
+/* table: header tint, row hover and selected row use the own hover / active colours of the theme */
+:root:is([data-theme="dawn"], [data-theme="sakura"]) thead tr,
+:root:is([data-theme="dawn"], [data-theme="sakura"]) thead th {
+  background-color: color-mix(in srgb, var(--theme-accent-2) 14%, var(--theme-muted));
+}
+:root:is([data-theme="dawn"], [data-theme="sakura"]) tbody tr:hover {
+  background-color: var(--theme-hover);
+  box-shadow: inset 3px 0 0 var(--theme-accent);
+}
+:root:is([data-theme="dawn"], [data-theme="sakura"]) tbody tr:active,
+:root:is([data-theme="dawn"], [data-theme="sakura"]) tbody tr[aria-selected="true"] {
+  background-color: var(--theme-active);
+}
+
+/* sidebar / navigation */
+:root:is([data-theme="dawn"], [data-theme="sakura"]) a.group:hover,
+:root:is([data-theme="dawn"], [data-theme="sakura"]) nav a:hover {
+  background-color: var(--theme-hover);
+  color: var(--theme-hover-text);
+}
+:root:is([data-theme="dawn"], [data-theme="sakura"]) a.group:hover svg,
+:root:is([data-theme="dawn"], [data-theme="sakura"]) nav a:hover svg {
+  color: var(--theme-accent);
+}
+:root:is([data-theme="dawn"], [data-theme="sakura"]) a[aria-current="page"] {
+  background-image: linear-gradient(90deg, var(--theme-active), var(--theme-accent-soft));
+  color: var(--theme-hover-text);
+  box-shadow: inset 3px 0 0 var(--theme-accent), 0 4px 12px -8px var(--theme-glow);
+}
+:root:is([data-theme="dawn"], [data-theme="sakura"]) a[aria-current="page"] svg {
+  color: var(--theme-accent);
+}
+
+/* every blue / indigo piece of the UI takes the colours of the theme */
+:root:is([data-theme="dawn"], [data-theme="sakura"]) :is(.bg-blue-600, .bg-blue-700, .bg-indigo-600, .bg-blue-500) {
+  background-color: var(--theme-accent);
+  background-image: linear-gradient(135deg, var(--theme-accent), color-mix(in srgb, var(--theme-accent-2) 55%, var(--theme-accent)));
+  color: var(--theme-on-accent);
+  box-shadow: 0 6px 14px -8px var(--theme-glow);
+}
+:root:is([data-theme="dawn"], [data-theme="sakura"]) :is(.bg-blue-600, .bg-blue-700, .bg-indigo-600, .hover\:bg-blue-700, .hover\:bg-blue-800):hover {
+  background-color: var(--theme-accent-hover);
+  background-image: linear-gradient(135deg, var(--theme-accent-hover), var(--theme-accent));
+  box-shadow: 0 8px 20px -8px var(--theme-glow), 0 0 0 3px color-mix(in srgb, var(--theme-accent-2) 25%, transparent);
+}
+:root:is([data-theme="dawn"], [data-theme="sakura"]) :is(button, [role="button"], a.rounded-lg, a.rounded-full):active:not(:disabled) {
+  transform: scale(0.97);
+  filter: saturate(1.15) brightness(0.96);
+}
+:root:is([data-theme="dawn"], [data-theme="sakura"]) :is(.bg-blue-50, .bg-indigo-50, .bg-blue-100, .bg-blue-900, .bg-indigo-950, .bg-indigo-100) {
+  background-color: var(--theme-accent-soft);
+}
+:root:is([data-theme="dawn"], [data-theme="sakura"]) :is(.text-blue-400, .text-blue-500, .text-blue-600, .text-blue-700, .text-blue-800, .text-indigo-500, .text-indigo-600, .text-indigo-700, .text-sky-600, .text-sky-700) {
+  color: var(--theme-accent);
+}
+:root:is([data-theme="dawn"], [data-theme="sakura"]) :is(.border-blue-200, .border-blue-300, .border-blue-400, .border-blue-500, .border-indigo-300, .border-indigo-500) {
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, var(--theme-border));
+}
+:root:is([data-theme="dawn"], [data-theme="sakura"]) :is(.hover\:bg-gray-50, .hover\:bg-gray-100, .hover\:bg-slate-50, .hover\:bg-slate-100, .hover\:bg-blue-50, .hover\:bg-white):hover {
+  background-color: var(--theme-hover);
+  color: var(--theme-hover-text);
+}
+:root:is([data-theme="dawn"], [data-theme="sakura"]) :is(.hover\:text-blue-600, .hover\:text-blue-700, .hover\:text-gray-900, .hover\:text-slate-950):hover {
+  color: var(--theme-hover-text);
+}
+:root:is([data-theme="dawn"], [data-theme="sakura"]) [aria-pressed="true"]:not(.bg-indigo-600):not(.bg-blue-600) {
+  background-color: var(--theme-active);
+  color: var(--theme-hover-text);
+}
+
+/* fields and focus */
+:root:is([data-theme="dawn"], [data-theme="sakura"]) :is(input, select, textarea):focus {
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent-2) 30%, transparent);
+  outline: none;
+}
+:root:is([data-theme="dawn"], [data-theme="sakura"]) ::selection {
+  background: color-mix(in srgb, var(--theme-accent-2) 40%, transparent);
+}
+:root:is([data-theme="dawn"], [data-theme="sakura"]) * {
+  scrollbar-color: color-mix(in srgb, var(--theme-accent) 45%, var(--theme-muted)) transparent;
+}
+
+/* green «create / confirm» BUTTONS take the theme colours too (badges and statuses keep their meaning) */
+:root:is([data-theme="dawn"], [data-theme="sakura"]) :is(button, a):is(.bg-green-600, .bg-green-700, .bg-emerald-600, .bg-emerald-700, .bg-teal-600) {
+  background-color: var(--theme-accent);
+  background-image: linear-gradient(135deg, var(--theme-accent), color-mix(in srgb, var(--theme-accent-2) 55%, var(--theme-accent)));
+  color: var(--theme-on-accent);
+  box-shadow: 0 6px 14px -8px var(--theme-glow);
+}
+:root:is([data-theme="dawn"], [data-theme="sakura"]) :is(button, a):is(.bg-green-600, .bg-green-700, .bg-emerald-600, .bg-emerald-700, .bg-teal-600, .hover\:bg-green-700, .hover\:bg-emerald-700, .hover\:bg-teal-700):hover {
+  background-color: var(--theme-accent-hover);
+  background-image: linear-gradient(135deg, var(--theme-accent-hover), var(--theme-accent));
+  box-shadow: 0 8px 20px -8px var(--theme-glow), 0 0 0 3px color-mix(in srgb, var(--theme-accent-2) 25%, transparent);
+}

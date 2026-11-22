@@ -516,3 +516,6 @@ Yangi: `backend/app/services/asset_overview.py`, `POST /fixed-assets/overview`, 
 
 ## 2026-11-23 — GPS vagonlar sana oralig'i
 `components/gps/PeriodPicker.tsx`, `lib/gps-analytics.ts` (date_from/date_to), ikkala vagon sahifasi, `lib/api.ts`, backend `gps_wagons.py` + `routers/gps.py`, `browser/b18_wagons_period.mjs`. Tekshirildi: Edge 6/6, unit 178, tsc. Tekshirilmadi: pytest. Keyingi: backend test.
+
+## 2026-11-23 — yangi mavzular
+Rassvet (qum+terrakota) va Sakura (atirgul+siren): CSS tokenlar + hover/active/karta/tugma qoidalari. Edge 11/11. Tekshirilmadi: boshqa sahifalar ko'rinishi.

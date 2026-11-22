@@ -1406,3 +1406,7 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ## GPS «Вагоны»: «С … по …» (2026-11-23)
 - Verified: Edge `browser/b18_wagons_period.mjs` 6/6 (ZZTEST, keyin o'chirildi); `npm run test:unit` 178 o'tdi; tsc/eslint toza. Ro'yxat va vagon sahifasida «С [sana] по [sana]» + 7/14/31 tugmalari; so'rovga `date_from/date_to` ketadi (kunlar GTK mahalliy vaqtida, eng ko'pi 31 kun). Backend: `gps_wagons._window`, `/gps/wagons` va `/gps/wagons/{key}` yangi parametrlar.
 - NOT TESTED: backend pytest (date_from/date_to uchun test yozilmagan), «по» o'tgan kun bo'lganda segment kesishuvi (jonli ma'lumot bilan solishtirilmagan).
+
+## Yangi mavzular: «Рассвет» va «Сакура» (2026-11-23)
+- Verified: Edge `browser/b19_themes.mjs` 11/11 (ZZTEST, keyin o'chirildi): ikkala mavzu almashtirgichda, qo'llanadi, qayta yuklashda saqlanadi; qator/yon menyu/tugma hover'da rang o'zgaradi, faol menyu gradient; ikki mavzuning hover, faol va tugma ranglari farq qiladi. tsc toza. Fayllar: `app/globals.css` (oxirida), `lib/providers.tsx`, `components/theme-switcher.tsx`.
+- NOT TESTED: barcha sahifalarni ikki mavzuda ko'z bilan ko'rish (faqat Справочник ОС skrinshoti), telefon, qattiq kodlangan ranglar (masalan, ayrim gradient sarlavhalar).

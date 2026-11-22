@@ -12,6 +12,8 @@ const themes = [
   { id: "emerald", label: "Изумруд", detail: "Светлая · Зелёная", color: "#15803d" },
   { id: "violet", label: "Аметист", detail: "Светлая · Фиолетовая", color: "#6d28d9" },
   { id: "graphite", label: "Графит", detail: "Тёмная · Серая", color: "#94a3b8" },
+  { id: "dawn", label: "Рассвет", detail: "Светлая · Песок и терракота", color: "#c0653a" },
+  { id: "sakura", label: "Сакура", detail: "Светлая · Роза и сирень", color: "#b0507c" },
 ] as const
 
 export function ThemeSwitcher() {
