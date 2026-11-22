@@ -190,6 +190,13 @@ export type GtkLinkRequest = {
   }>;
 };
 
+export type AssetOverview = {
+  gps: { verdict: string | null; source: string; position_at: string | null; online: boolean | null; speed: number | null; lat: number; lon: number; train_number: string | null; diff_m: number | null } | null;
+  gtk: { train_gtk_id: number; train_number: string | null; train_title: string | null; is_main: boolean; order: number; carriages: number; since: string | null } | null;
+  scales: { last_at: string | null; net_t: number | null; units: number | null; trains_30d: number; match: string | null } | null;
+  maintenance: { last_maint_date: string | null; next_maint_date: string | null; last_order_at: string | null; last_order_status: string | null; open_orders: number };
+};
+
 const gtk = {
   async status(): Promise<GtkStatus> {
     return request({ method: "GET", path: "/gtk/status" });
@@ -1265,6 +1272,11 @@ const fixedAssets = {
   },
   async get(id: string): Promise<FixedAsset> {
     return request<FixedAsset>({ method: "GET", path: `/fixed-assets/${id}` });
+  },
+  async overview(assetIds: string[]): Promise<Record<string, AssetOverview>> {
+    if (assetIds.length === 0) return {};
+    const response = await request<{ items: Record<string, AssetOverview> }>({ method: "POST", path: "/fixed-assets/overview", body: { asset_ids: assetIds }, suppressNetworkLog: true });
+    return response.items;
   },
   async models(params: ListParams & { asset_type?: string; q?: string } = {}): Promise<Paginated<AssetModel>> {
     return request<Paginated<AssetModel>>({ method: "GET", path: "/fixed-assets/models", params });

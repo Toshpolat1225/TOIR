@@ -510,3 +510,6 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 
 ## 2026-11-22 — audit tuzatishlari
 Vazifa: tarozi kollektori, GTK poyezd yopish, vagon dvigatel. O'zgargan: `backend/app/repositories/gtk.py`, `services/gps_wagons.py`, `app/dashboard/map/page.tsx`, `docker-compose.yml`; Windows vazifa TOIR-Scales-Collector (5 daqiqalik trigger). Tekshirildi: SQL (open 37, ledger bugun), tsc. Tekshirilmadi: brauzer, testlar. Keyingi: ТО boshlang'ich ma'lumotlari, HTTP/dump qarorlari.
+
+## 2026-11-23 — Справочник ОС «Паспорт 360°»
+Yangi: `backend/app/services/asset_overview.py`, `POST /fixed-assets/overview`, `components/fixed-assets/asset-360-dialog.tsx`, jadvalga 4 ustun, `lib/api.ts` overview, `browser/b17_asset360.mjs`. Tekshirildi: Edge 11/11, tsc, eslint. Tekshirilmadi: master/management, unit test. Keyingi: overview uchun pytest, master testi.

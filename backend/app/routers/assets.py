@@ -4,6 +4,7 @@ from uuid import UUID
 import csv
 import io
 
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +50,7 @@ from app.services import asset_passport_import
 from app.services import asset_links as asset_links_service
 from app.services import gtk as gtk_service
 from app.services import unified_assets as unified_service
+from app.services import asset_overview as overview_service
 from app.schemas.wialon import UnifiedAssetRead, UnifiedSource
 
 router = APIRouter(prefix="/fixed-assets", tags=["fixed assets"])
@@ -188,6 +190,16 @@ async def get_unified_fixed_assets(
     return PaginatedResponse[UnifiedAssetRead](
         items=items, total=total, limit=limit, offset=offset
     )
+
+
+class AssetOverviewRequest(BaseModel):
+    asset_ids: list[UUID] = Field(default_factory=list, max_length=overview_service.MAX_IDS)
+
+
+@router.post("/overview")
+async def get_assets_overview(body: AssetOverviewRequest, user: AuthenticatedUser, db: DatabaseSession) -> dict:
+    """Key facts of the other modules (GPS verdict, GTK train, scales, last repair) for the asset ids of the visible page."""
+    return {"items": await overview_service.build_overview(db, user, body.asset_ids)}
 
 
 @router.get("/models", response_model=PaginatedResponse[AssetModelRead])

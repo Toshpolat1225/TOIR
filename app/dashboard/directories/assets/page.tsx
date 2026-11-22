@@ -25,6 +25,7 @@ import {
   type FixedAssetsPassportImportPreview,
   type WagonMileageOpening,
   type WagonMileageSummary,
+  type AssetOverview,
 } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { useSections, type SectionData } from "@/lib/use-sections"
@@ -36,6 +37,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SourceAssetPickerDialog } from "@/components/fixed-assets/source-asset-picker-dialog"
+import { Asset360Dialog, fmtDay, type Asset360Tab } from "@/components/fixed-assets/asset-360-dialog"
+import { POSITION_LABEL, positionColor, type PositionVerdict } from "@/lib/gps-view"
 
 /* ════════════════════════════════════════
    Types
@@ -1484,6 +1487,10 @@ const TABLE_COLUMNS: { label: string; sort: string }[] = [
   { label: "Моточасы", sort: "wialon_cneh" },
   { label: "Скорость", sort: "speed" },
   { label: "Связь", sort: "last_message_at" },
+  { label: "GPS · Карта", sort: "" },
+  { label: "Состав", sort: "" },
+  { label: "Весовая", sort: "" },
+  { label: "Посл. ремонт", sort: "" },
   { label: "Статус / действие", sort: "status" },
 ]
 
@@ -1739,6 +1746,16 @@ export default function OsPage() {
   ]
   const selectedStatus = fBehavior || fStatus
   const filtered      = assets  // Filtering is performed by the server.
+  // Key facts of the other modules for the rows on screen (GPS verdict, GTK train, scales, last repair); a failure just leaves the cells empty.
+  const [overview, setOverview] = useState<Record<string, AssetOverview>>({})
+  const [view360, setView360] = useState<{ asset: FixedAsset; tab: Asset360Tab } | null>(null)
+  const overviewKey = filtered.filter((row) => !row.id.startsWith("wialon:") && !row.id.startsWith("gtk:")).map((row) => row.id).join(",")
+  useEffect(() => {
+    if (!overviewKey) { setOverview({}); return }
+    let live = true
+    api.fixedAssets.overview(overviewKey.split(",")).then((items) => { if (live) setOverview(items) }).catch(() => { if (live) setOverview({}) })
+    return () => { live = false }
+  }, [overviewKey])
   const selectableAssetIds = filtered
     .filter((asset) => !isExternalOnly(asset.source) && !asset.id.startsWith("wialon:") && !asset.id.startsWith("gtk:"))
     .map((asset) => asset.id)
@@ -1948,6 +1965,15 @@ export default function OsPage() {
 
   return (
     <div className="p-8 space-y-6">
+      {view360 && (
+        <Asset360Dialog
+          subject={{ id: view360.asset.id, name: view360.asset.name, invNumber: view360.asset.invNumber, assetType: view360.asset.assetType, sectionName: sectionsData.find((section) => section.id === view360.asset.orgUnitId)?.name || view360.asset.depot, mileage: view360.asset.mileage, wialonMileage: view360.asset.wialonMileage, engineHours: view360.asset.engineHours, speed: view360.asset.speed, lastMessageAt: view360.asset.lastMessageAt, wialonOnline: view360.asset.wialonOnline ?? null, unitId: view360.asset.unitId ?? null, statusLabel: view360.asset.statusLabel || statusConfig[view360.asset.status]?.label || view360.asset.status }}
+          overview={overview[view360.asset.id]}
+          initialTab={view360.tab}
+          onClose={() => setView360(null)}
+          onEdit={() => { const target = view360.asset; setView360(null); setSelected(target) }}
+        />
+      )}
       {selected && <AssetModal asset={selected} onClose={() => setSelected(null)} onSave={handleSave} onDelete={canWrite ? handleDelete : undefined} sections={sections} sectionsData={sectionsData} types={assetTypes} statuses={assetStatuses} canWrite={canWrite} canApproveOpening={profile?.role === "admin"} currentUserId={profile?.id} onUpdated={(updatedAsset) => {
         if (updatedAsset) setSelected((current) => current ? {
           ...current,
@@ -2373,11 +2399,11 @@ export default function OsPage() {
                 return (
                   <th key={column.label} aria-sort={active ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}
                     className="text-left px-4 py-3.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                    <button type="button" onClick={() => toggleSort(column.sort)} title="Нажмите для сортировки"
+                    {!column.sort ? <span>{column.label}</span> : <button type="button" onClick={() => toggleSort(column.sort)} title="Нажмите для сортировки"
                       className={`inline-flex items-center gap-1 uppercase tracking-wider hover:text-gray-900 dark:hover:text-white ${active ? "text-blue-600 dark:text-blue-400" : ""}`}>
                       {column.label}
                       <span aria-hidden="true" className={active ? "" : "opacity-30"}>{active ? (sortOrder === "asc" ? "▲" : "▼") : "↕"}</span>
-                    </button>
+                    </button>}
                   </th>
                 )
               })}
@@ -2385,7 +2411,7 @@ export default function OsPage() {
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {filtered.length === 0 && (
-              <tr><td colSpan={canWrite ? 11 : 10} className="px-5 py-12 text-center text-sm text-gray-400">
+              <tr><td colSpan={canWrite ? 15 : 14} className="px-5 py-12 text-center text-sm text-gray-400">
                 <Search className="w-8 h-8 mx-auto mb-2 opacity-30"/>
                 Ничего не найдено
               </td></tr>
@@ -2418,7 +2444,7 @@ export default function OsPage() {
               const externalOnly = isExternalOnly(a.source)
               const isSelectable = canWrite && !externalOnly && !a.id.startsWith("wialon:") && !a.id.startsWith("gtk:")
               return (
-                <tr key={a.id} onClick={!externalOnly ? () => setSelected(a) : undefined}
+                <tr key={a.id} onClick={!externalOnly ? () => setView360({ asset: a, tab: "summary" }) : undefined}
                   className={`hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-colors ${!externalOnly ? "cursor-pointer" : ""}`}>
                   {canWrite && <td className="px-3 py-3.5" onClick={(event) => event.stopPropagation()}>{isSelectable ? <input type="checkbox" aria-label={`Выбрать ${a.name}`} checked={selectedAssetIds.includes(a.id)} onChange={(event) => setSelectedAssetIds((current) => event.target.checked ? [...current, a.id] : current.filter((id) => id !== a.id))} /> : "—"}</td>}
                   <td className="px-4 py-3.5">
@@ -2437,6 +2463,24 @@ export default function OsPage() {
                   <td className="px-4 py-3.5">
                     {a.unitId ? <span className={`inline-flex items-center gap-1 text-xs font-medium ${a.wialonOnline ? "text-emerald-600 dark:text-emerald-400" : stale ? "text-amber-600 dark:text-amber-400" : "text-gray-500 dark:text-gray-400"}`}><Radio className="w-3 h-3"/>{connection}</span> : "—"}
                   </td>
+                  {(() => {
+                    const ov = overview[a.id]
+                    const open = (tab: Asset360Tab) => (event: React.MouseEvent) => { event.stopPropagation(); setView360({ asset: a, tab }) }
+                    const chip = "inline-flex max-w-[150px] items-center gap-1.5 truncate rounded-full border px-2.5 py-1 text-[11px] font-semibold transition hover:-translate-y-px hover:shadow-sm"
+                    const none = <span className="text-xs text-gray-300 dark:text-gray-600">—</span>
+                    if (!ov) return <><td className="px-3 py-3.5">{none}</td><td className="px-3 py-3.5">{none}</td><td className="px-3 py-3.5">{none}</td><td className="px-3 py-3.5">{none}</td></>
+                    const v = (ov.gps?.verdict ?? null) as PositionVerdict | null
+                    const col = v ? positionColor(v) : ov.gps ? "#2563eb" : "#94a3b8"
+                    const repair = ov.maintenance.last_maint_date ?? ov.maintenance.last_order_at
+                    return (
+                      <>
+                        <td className="px-3 py-3.5">{ov.gps ? <button type="button" onClick={open("gps")} className={`${chip} border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900`} title="Подробнее: GPS и Карта"><span className="h-2 w-2 shrink-0 rounded-full" style={{ background: col }} />{v ? POSITION_LABEL[v] ?? v : "Есть позиция"}</button> : none}</td>
+                        <td className="px-3 py-3.5">{ov.gtk ? <button type="button" onClick={open("gtk")} className={`${chip} border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-200`} title="Подробнее: состав GTK">№ {ov.gtk.train_number ?? ov.gtk.train_gtk_id}{a.assetType === "locomotive" || a.assetType === "diesel" ? ` · ${ov.gtk.carriages} ваг.` : ""}</button> : none}</td>
+                        <td className="px-3 py-3.5">{ov.scales?.last_at ? <button type="button" onClick={open("scales")} className={`${chip} border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200`} title="Подробнее: Весовая">{fmtDay(ov.scales.last_at)}{ov.scales.net_t != null ? ` · ${Math.round(ov.scales.net_t)} т` : ""}</button> : none}</td>
+                        <td className="px-3 py-3.5">{repair || ov.maintenance.open_orders ? <button type="button" onClick={open("repairs")} className={`${chip} border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200`} title="Подробнее: ремонты">{repair ? fmtDay(repair) : "—"}{ov.maintenance.open_orders ? ` · ${ov.maintenance.open_orders} откр.` : ""}</button> : none}</td>
+                      </>
+                    )
+                  })()}
                   <td className="px-4 py-3.5">
                     {a.source === "gtk" ? (
                       <span className="text-xs font-medium text-amber-700 dark:text-amber-400 whitespace-nowrap">Нет в ТОИР</span>

@@ -1396,3 +1396,9 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 - Verified (buyruq natijasi ko'rildi): tarozi kollektori qayta ishga tushdi (sababi: PC yoqilganda docker tayyor emas edi, vazifa faqat «logon» da edi; endi har 5 daqiqada qayta urinadi), bo'shliq to'ldirildi (`scale_trains` max updated bugun). `gtk_trains` ochiq: 116 -> 37 (sinxronda ko'rinmagan poyezd yopiladi, `repositories/gtk.py`). Vagon probeg dvigateli yoqildi (compose default true, backend mem 1024m): ledger 2871 -> 4265 qator, oxirgisi bugun. `tsc` 0 xato.
 - NOT TESTED: brauzer/API sahifalari; `gps_wagons` inactive-a'zo o'zgarishi (kod, test yo'q); xaritaning yashirin tabda so'rov to'xtashi; backend testlari.
 - Tuzatilmagan (qaror/reja kerak): SEC-1 (HTTP ochiq, Wialon HTTP ishlatishi mumkin), SEC-4 (dump OneDrive), PERF-3 retention, MOD-03 ТО bazalari (foydalanuvchi ma'lumoti kerak), identifikator/typo tozalash, schema o'zgarishlari (unique indekslar).
+
+## Справочник ОС: «Паспорт 360°» (2026-11-23)
+- Verified: jonli Edge testi `browser/b17_asset360.mjs` 11/11 (ZZTEST operator, keyin o'chirildi): `/fixed-assets/overview` 200, jadvalda 4 yangi ustun (GPS·Карта, Состав, Весовая, Посл. ремонт), chiplar bosilganda modal ochiladi (6 yorlig'), «Паспорт и редактирование» eski tahrir oynasini ochadi. `tsc` + eslint toza.
+- Qator bosilsa endi 360° oynasi ochiladi (eski tahrir oynasi o'sha oynadagi tugma orqali).
+- NOT TESTED: master roli (overview GTK/Весовая ni bermaydi — kodda), management roli, backend unit test (overview uchun yo'q), telefon ko'rinishi.
+- Proxy (Caddy) TLS «internal error» bergan edi (sertifikat fayli yangi, sababi aniqlanmadi); `docker compose restart proxy` hal qildi.
