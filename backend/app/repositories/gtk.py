@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import String, cast, delete, exists, func, or_, select
+from sqlalchemy import String, cast, delete, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -673,6 +673,14 @@ async def upsert_mirror(
             },
         )
         await db.execute(statement)
+    # A train that GTK no longer lists is finished: close it (it used to stay is_open=true forever). end_time is unknown, so it is left as is.
+    seen_ids = [row["gtk_id"] for row in snapshot["trains"]]
+    if seen_ids:
+        await db.execute(
+            update(GtkTrain)
+            .where(GtkTrain.is_open.is_(True), GtkTrain.gtk_id.not_in(seen_ids))
+            .values(is_open=False)
+        )
 
 
 async def sync_memberships(

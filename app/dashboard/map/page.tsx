@@ -62,7 +62,9 @@ export default function MapPage() {
 
   useEffect(() => {
     void load()
-    const timer = window.setInterval(() => void load(true), REFRESH_MS)
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load(true)  // no polling in a hidden tab
+    }, REFRESH_MS)
     return () => window.clearInterval(timer)
   }, [load])
 

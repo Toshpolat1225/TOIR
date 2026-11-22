@@ -507,3 +507,6 @@ Next: foydalanuvchi AD_AUTH_ENABLED=true qilib qayta quradi va t.turakulov bilan
 
 ## 2026-11-20: jurnal bo'yicha tuzatishlar
 - Changed: `repair.py`, `catalog.py` (_OPEN o'zaklari, sys.bye, salomlashuv, думпкар), `numbers.py` (tartib son, ajralgan so'zlar), `handlers/system.py`, `speech.py`, testlar. Backend 882 o'tdi, jonli backend joylandi. NOT TESTED: haqiqiy ovozda.
+
+## 2026-11-22 — audit tuzatishlari
+Vazifa: tarozi kollektori, GTK poyezd yopish, vagon dvigatel. O'zgargan: `backend/app/repositories/gtk.py`, `services/gps_wagons.py`, `app/dashboard/map/page.tsx`, `docker-compose.yml`; Windows vazifa TOIR-Scales-Collector (5 daqiqalik trigger). Tekshirildi: SQL (open 37, ledger bugun), tsc. Tekshirilmadi: brauzer, testlar. Keyingi: ТО boshlang'ich ma'lumotlari, HTTP/dump qarorlari.

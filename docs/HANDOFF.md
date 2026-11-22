@@ -1391,3 +1391,8 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 - Verified (lokal tajriba bazasi): migratsiya 0041 toza bazada o'tdi; backend 871 test o'tdi; unit 171; `tsc`, `npm run build`; brauzer b15 12/12, b16 4/4. Tafsilot: DECISIONS #70.
 - Next task: foydalanuvchi deploy qiladi (backup -> `docker compose build backend frontend` -> `up -d --no-deps backend frontend`), «Виды ремонта» spravochnigida davomiylikni to'ldiradi, `e2e_workorders.py` ni ishga tushiradi.
 - NOT TESTED: jonli bazada migratsiya; jonli ma'lumot bilan forma (ОС soni ko'p bo'lganda tezlik); master roli bilan forma brauzerda; eski naryadlarda fakt vaqtlari bo'sh (NULL) ekani.
+
+## Audit tuzatishlari (2026-11-22)
+- Verified (buyruq natijasi ko'rildi): tarozi kollektori qayta ishga tushdi (sababi: PC yoqilganda docker tayyor emas edi, vazifa faqat «logon» da edi; endi har 5 daqiqada qayta urinadi), bo'shliq to'ldirildi (`scale_trains` max updated bugun). `gtk_trains` ochiq: 116 -> 37 (sinxronda ko'rinmagan poyezd yopiladi, `repositories/gtk.py`). Vagon probeg dvigateli yoqildi (compose default true, backend mem 1024m): ledger 2871 -> 4265 qator, oxirgisi bugun. `tsc` 0 xato.
+- NOT TESTED: brauzer/API sahifalari; `gps_wagons` inactive-a'zo o'zgarishi (kod, test yo'q); xaritaning yashirin tabda so'rov to'xtashi; backend testlari.
+- Tuzatilmagan (qaror/reja kerak): SEC-1 (HTTP ochiq, Wialon HTTP ishlatishi mumkin), SEC-4 (dump OneDrive), PERF-3 retention, MOD-03 ТО bazalari (foydalanuvchi ma'lumoti kerak), identifikator/typo tozalash, schema o'zgarishlari (unique indekslar).

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import String, cast, func, select
+from sqlalchemy import String, cast, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.asset_models import AssetModel  # noqa: F401  (keeps the mapper registry complete)
@@ -92,7 +92,15 @@ async def list_wagons(
         .outerjoin(link, (link.source == "gtk") & (link.status == "active") & (link.external_id == cast(GtkCarriage.gtk_id, String)))
         .outerjoin(FixedAsset, (FixedAsset.id == link.asset_id) & FixedAsset.asset_type.not_in(LOCOMOTIVE_TYPES) & FixedAsset.decommissioned_at.is_(None))
         .outerjoin(Section, FixedAsset.section_id == Section.id)
-        .where(GtkCarriage.is_active.is_(True))
+        .where(or_(
+            GtkCarriage.is_active.is_(True),
+            # an inactive carriage that is still an OPEN member of a train must not vanish from this page (it is on the map)
+            exists().where(
+                GtkTrainMember.kind == "carriage",
+                GtkTrainMember.object_gtk_id == GtkCarriage.gtk_id,
+                GtkTrainMember.observed_to.is_(None),
+            ),
+        ))
     )
     carriages = (await db.execute(statement)).mappings().all()
     if scope is not None:
