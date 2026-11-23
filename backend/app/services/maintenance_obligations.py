@@ -14,9 +14,10 @@ from decimal import Decimal
 from typing import Iterable
 from uuid import UUID
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import LOCAL_TZ, today_local
 from app.core.config import settings
 from app.models.asset_source_links import AssetSourceLink
 from app.models.assets import FixedAsset, MileageHistory
@@ -54,6 +55,12 @@ from app.services import avg_daily_mileage
 from app.services.maintenance_planning import next_mileage_threshold
 
 ZERO = Decimal("0")
+
+
+def _local_day(column):
+    """The Tashkent calendar day of a timestamptz column. The zone is a SQL literal, not a bound parameter, so that
+    the SELECT and GROUP BY expressions are textually identical (PostgreSQL would not match two different $n)."""
+    return func.date(func.timezone(literal_column("'Asia/Tashkent'"), column))
 REPAIR_BEHAVIORS = frozenset({"repair", "maintenance"})  # the unit is in the shop: planning pauses
 WITHDRAWN_BEHAVIORS = frozenset({"out_of_service"})  # withdrawn from service: no obligations at all
 OPEN_PLAN_STATUSES = ("scheduled", "in_progress", "blocked")
@@ -104,7 +111,7 @@ async def _build_pace_book(db: AsyncSession, today: date) -> PaceBook:
     start = today - timedelta(days=window)
     anchor_day = start - timedelta(days=1)
     last_day = today - timedelta(days=1)  # today is a partial day and would bias the pace low
-    start_dt = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
+    start_dt = datetime.combine(start, datetime.min.time(), tzinfo=LOCAL_TZ)
 
     km_series: dict[UUID, list[tuple[date, Decimal]]] = {}
     hours_series: dict[UUID, list[tuple[date, Decimal]]] = {}
@@ -112,11 +119,11 @@ async def _build_pace_book(db: AsyncSession, today: date) -> PaceBook:
     history = await db.execute(
         select(
             MileageHistory.asset_id,
-            func.date(MileageHistory.recorded_at).label("day"),
+            _local_day(MileageHistory.recorded_at).label("day"),
             func.max(MileageHistory.mileage),
         )
         .where(MileageHistory.recorded_at >= start_dt)
-        .group_by(MileageHistory.asset_id, func.date(MileageHistory.recorded_at))
+        .group_by(MileageHistory.asset_id, _local_day(MileageHistory.recorded_at))
     )
     for asset_id, day, value in history.all():
         km_series.setdefault(asset_id, []).append((day, Decimal(value)))
@@ -190,15 +197,15 @@ async def _unobserved_days(db: AsyncSession, first_day: date, last_day: date) ->
     """Days between the first one we ever received Wialon data and `last_day` on which the collector ran in
     fewer than _MIN_COLLECTOR_HOURS distinct hours (host switched off, network down...). Empty when there is
     no receipt history at all, so a fresh install or a push-only setup is judged as before."""
-    start_dt = datetime.combine(first_day, datetime.min.time(), tzinfo=timezone.utc)
+    start_dt = datetime.combine(first_day, datetime.min.time(), tzinfo=LOCAL_TZ)
     rows = (
         await db.execute(
             select(
-                func.date(WialonRawReceipt.received_at),
+                _local_day(WialonRawReceipt.received_at),
                 func.count(func.distinct(func.date_trunc("hour", WialonRawReceipt.received_at))),
             )
             .where(WialonRawReceipt.received_at >= start_dt)
-            .group_by(func.date(WialonRawReceipt.received_at))
+            .group_by(_local_day(WialonRawReceipt.received_at))
         )
     ).all()
     if not rows:
@@ -235,7 +242,7 @@ async def _wagon_ledger_rates(db: AsyncSession, start_dt: datetime) -> dict[UUID
     rows = await db.execute(
         select(
             WagonMileageLedger.wagon_asset_id,
-            func.date(WagonMileageLedger.period_from),
+            _local_day(WagonMileageLedger.period_from),
             func.sum(WagonMileageLedger.distance_km),
         )
         .where(
@@ -245,7 +252,7 @@ async def _wagon_ledger_rates(db: AsyncSession, start_dt: datetime) -> dict[UUID
             WagonMileageLedger.period_from >= start_dt,
             WagonMileageLedger.wagon_asset_id.in_(approved),
         )
-        .group_by(WagonMileageLedger.wagon_asset_id, func.date(WagonMileageLedger.period_from))
+        .group_by(WagonMileageLedger.wagon_asset_id, _local_day(WagonMileageLedger.period_from))
     )
     for wagon_id, day, km in rows.all():
         day_km.setdefault(wagon_id, {})[day] = Decimal(km)
@@ -324,7 +331,7 @@ class Context:
 async def load_context(
     db: AsyncSession, assets: list[FixedAsset], *, today: date | None = None, now: datetime | None = None
 ) -> Context:
-    today = today or date.today()
+    today = today or today_local()
     now = now or datetime.now(timezone.utc)
     ids = [asset.id for asset in assets]
     setting_row = await repository.get_settings(db)

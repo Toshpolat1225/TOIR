@@ -1,37 +1,32 @@
 # Active Directory (LDAPS) orqali kirish
 
-Holat: kod va testlar tayyor (2026-11-16), standart **o'chiq**. Haqiqiy domen paroli bilan jonli sinov hali bajarilmagan.
+Holat: AD faol (3 ta foydalanuvchi AD orqali kirgan, objectGUID tasdiqlangan). Mahalliy parollar olib tashlandi (AUTH-01, 2026-11-23).
 
-## Asosiy qoida
-Parolni **qaysi backend** tekshirishini loginning shakli emas, `users.auth_source` ustuni belgilaydi:
+## Asosiy qoida (AUTH-01, 2026-11-23)
+**TOIR'da parol saqlanmaydi.** Kirishning yagona yo'li — domen (AD). `users.hashed_password` ustuni yo'q (migratsiya `0042`), `users.auth_source` faqat `'ad'`, `ad_username` majburiy. Mahalliy login, avariya yozuvi, parolni tiklash va «AD'ga o'tkazish» olib tashlangan.
 
-| auth_source | Parol | Kim tekshiradi |
-|---|---|---|
-| `ad` | saqlanmaydi (`hashed_password` NULL) | domen (LDAPS) |
-| `local` | bcrypt hash | TOIR bazasi, domenga umuman murojaat qilinmaydi |
-
-Bir xil parol bo'lsa ham manba ajraladi. Kirishning har bir urinishi `audit_logs.details.auth_source` ga (`ad`/`local`) yoziladi. Parol hech qachon yozilmaydi.
+Kirishning har bir urinishi `audit_logs.details.auth_source='ad'` bilan yoziladi. Parol hech qachon yozilmaydi.
 
 ## Foydalanuvchiga ruxsat berish
-- **Admin → Пользователи → «Выдать доступ»**: faqat doménli login, ФИО, rol, uchastka. Parol maydoni yo'q. Server `login@agmk.uz` email va `auth_source='ad'` bilan yozuv yaratadi (`POST /api/v1/users/ad`).
-- Domen akkaunti mavjudligi **kiritishda tekshirilmaydi** (servis akkaunti yo'q). U **birinchi muvaffaqiyatli kirishda** tasdiqlanadi va `objectGUID` yoziladi. Keyinroq boshqa GUID kelsa (login boshqa odamga berilgan), kirish rad etiladi. Bir GUID ikki foydalanuvchiga bog'lanmaydi.
-- **Aвария**: «Аварийная локальная запись» (login+parol) faqat `admin` roli uchun (`POST /api/v1/users`).
+- **Admin → Пользователи → «Выдать доступ»**: faqat domen logini, ФИО, rol, uchastka. Parol maydoni yo'q. Server `login@agmk.uz` email va `auth_source='ad'` bilan yozuv yaratadi (`POST /api/v1/users/ad`).
+- Domen akkaunti mavjudligi **kiritishda tekshirilmaydi** (servis akkaunti yo'q). U **birinchi muvaffaqiyatli kirishda** tasdiqlanadi va `objectGUID` yoziladi. Keyinroq boshqa GUID kelsa, kirish rad etiladi.
 - Domenda yozuvi bor, TOIR'da yo'q user kirsa: rad (hech narsa avtomatik yaratilmaydi). TOIR'da `is_active=false` bo'lsa ham rad.
+- Yangi o'rnatishdagi birinchi admin: `python -m app.cli create-ad-admin --email ... --ad-username ... --full-name ...` (parolsiz, faqat admin yo'q bo'lsa).
 
-## Mavjud mahalliy userni AD'ga o'tkazish
-Faqat admin aniq amali bilan, qaytarib bo'lmaydi: parol hash o'chadi, sessiyalar bekor qilinadi, audit logga yoziladi (`details.event=convert_to_ad`).
-- UI: foydalanuvchini tahrirlash → «Перевести на вход через домен» (o'z akkauntingizni o'tkaza olmaysiz).
-- O'zingizni o'tkazish (yagona admin) yoki UI ishlamasa, serverda:
+## Domen ishlamay qolganda: favqulodda seans
+Faqat **server shell**'ga kira oladigan odam uchun (HTTP endpoint yo'q, parol yo'q):
 ```
-docker compose exec -T backend python -m app.cli user-convert-to-ad --email <email> --ad-username <login>          # ko'rish
-docker compose exec -T backend python -m app.cli user-convert-to-ad --email <email> --ad-username <login> --apply  # bajarish
+docker compose exec -T backend python -m app.cli emergency-session --admin <email yoki domen logini>
 ```
-**Ehtiyot:** o'tkazgandan keyin kirish faqat domen orqali. Avval boshqa AD akkauntida kirishni sinab ko'ring yoki bitta aварийная local admin qoldiring.
+- Faqat faol AD-admin uchun; 15 daqiqa; yangilash bilan uzaytirib bo'lmaydi.
+- Audit jurnaliga yoziladi (`details.event=emergency_session`, operator = shell foydalanuvchisi@host). Token jurnalga yozilmaydi.
+- Chiqargan buyruq brauzer konsoliga qo'yiladigan `cookieStore.set(...)` qatorini beradi; token bir marta ko'rsatiladi.
+- Foydalanish tartibi: faqat domen o'chganda, keyin sababini yozib qo'ying.
 
 ## Qanday ishlaydi (kirish)
 - Login maydoniga `t.turakulov` yoki `t.turakulov@agmk.uz`. Parol domen paroli.
 - `ldaps://dc-r.agmk.uz:636` (zaxira `dc.agmk.uz`), CA (`backend/app/certs/agmk-DC-R-CA-3.crt`) va server nomi majburiy tekshiriladi; "Who am I?" va `sAMAccountName` qidiruvi.
-- Domen ishlamasa AD userga 503 (mahalliy parolga **o'tilmaydi**: AD userning parol hashi yo'q). Mahalliy (`local`) userlar domen holatiga bog'liq emas.
+- Domen ishlamasa AD userga 503 (mahalliy parolga **o'tilmaydi**: AD userning parol hashi yo'q).
 
 ## Xavfsizlik qoidalari (kodda)
 - Faqat 636. Sertifikat tekshiruvi o'chirilmaydi. Bo'sh parol LDAP'ga yuborilmaydi.

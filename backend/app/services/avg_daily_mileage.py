@@ -15,6 +15,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import today_local
 from app.models.assets import FixedAsset
 from app.models.localization import FixedAssetTypeTranslation
 from app.models.maintenance import AssetMeterDaily
@@ -87,7 +88,7 @@ async def _daily_km(db: AsyncSession, units: list[tuple[UUID, str]], now: dateti
     if loco_ids:
         rows = (await db.execute(
             select(AssetMeterDaily.asset_id, AssetMeterDaily.day, AssetMeterDaily.km)
-            .where(AssetMeterDaily.asset_id.in_(loco_ids), AssetMeterDaily.day >= since.date(), AssetMeterDaily.km.is_not(None))
+            .where(AssetMeterDaily.asset_id.in_(loco_ids), AssetMeterDaily.day >= today_local(now) - timedelta(days=WINDOW_DAYS), AssetMeterDaily.km.is_not(None))
         )).all()
         series: dict[UUID, list[tuple[date, Decimal]]] = {}
         for a, d, km in rows:
@@ -163,7 +164,7 @@ async def detail(db: AsyncSession, *, section_id: UUID, asset_type: str, now: da
     if small_ids and asset_type not in WAGON_TYPES:
         q = (await db.execute(
             select(AssetMeterDaily.asset_id, AssetMeterDaily.day, AssetMeterDaily.km)
-            .where(AssetMeterDaily.asset_id.in_(small_ids), AssetMeterDaily.day >= since.date(), AssetMeterDaily.km.is_not(None))
+            .where(AssetMeterDaily.asset_id.in_(small_ids), AssetMeterDaily.day >= today_local(now) - timedelta(days=WINDOW_DAYS), AssetMeterDaily.km.is_not(None))
         )).all()
         series: dict[UUID, list[tuple[date, Decimal]]] = {}
         for a, d, km in q:

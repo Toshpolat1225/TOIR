@@ -10,6 +10,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import today_local
 from app.core.config import settings
 from app.models.assets import FixedAsset
 from app.models.identity import User
@@ -73,7 +74,7 @@ def _plan_status(plan: MaintenancePlan) -> str:
         return "completed"
     if plan.status == "blocked":
         return "blocked"
-    if plan.scheduled_date is not None and plan.scheduled_date < date.today():
+    if plan.scheduled_date is not None and plan.scheduled_date < today_local():
         return "overdue"
     if plan.status == "scheduled":
         return "upcoming"
@@ -249,7 +250,7 @@ async def update_plan(
             )
     await _apply_reschedule(db, plan, values, user)
     if requested_status == "completed" and plan.status != "completed":
-        completed_on = values.pop("completed_date", None) or date.today()
+        completed_on = values.pop("completed_date", None) or today_local()
         values.pop("status")
         await lifecycle.finalize_completion(
             db, plan, completed_on=completed_on, work_order_id=values.get("work_order_id"), user=user
@@ -368,7 +369,7 @@ async def _apply_reschedule(
         raise _conflict("Unblock the maintenance plan before rescheduling it")
     if plan.status != "scheduled":
         raise _conflict("Only scheduled maintenance plans can be rescheduled")
-    today = date.today()
+    today = today_local()
     previous = plan.scheduled_date
     if moving:
         if new_date is None:
@@ -428,7 +429,7 @@ async def create_plan_from_forecast(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="This maintenance interval does not apply to the asset",
         )
-    today = date.today()
+    today = today_local()
     _validate_reschedule_date(payload.scheduled_date, today)
     _, evaluated = await obligations.evaluate_for_asset(db, asset)
     obligation = next((ob for ob in evaluated if ob.interval.id == interval.id), None)
@@ -682,7 +683,7 @@ async def get_schedule(
         day=monthrange(month_start.year, month_start.month)[1]
     ) + timedelta(days=1)
 
-    today = date.today()
+    today = today_local()
     assets = await repository.list_schedule_assets(
         db, master_section_id=master_section_id
     )

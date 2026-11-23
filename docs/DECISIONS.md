@@ -85,3 +85,7 @@ Guruh = uchastka × tur, aralashmaydi. Katta/kichik ro'yxat chegaralari 10%/80%,
 
 ## #77 Prognoz tezligi
 Ma'lumoti yo'q texnikaga taxminiy tezlik berilmaydi (Без прогноза, sabab: no_pace_data). Uchastka×tur normasi faqat ≥3 texnika GPS ma'lumotiga ega bo'lsa va faqat kam (<7 kun) ma'lumotli texnikani to'ldirish uchun ishlatiladi.
+
+## #78 AUTH-01: mahalliy parollar olib tashlandi (2026-11-23)
+CODEX standarti: o'z parol mexanizmi bo'lmasligi kerak. Olib tashlandi: `users.hashed_password`, mahalliy login, avariya yozuvi, parol tiklash, «AD'ga o'tkazish». Avariya yo'li (B variant): `emergency-session` CLI — faqat server shell, 15 daqiqa, faqat faol AD-admin, auditga yoziladi, yangilash uzaytirmaydi. Hali ochiq: АГМК shlyuzi (`/auth`, `X-API-Key`) orqali kirishga o'tish masalasi korporativ IT bilan kelishilmagan (hozir LDAPS to'g'ridan-to'g'ri).
+

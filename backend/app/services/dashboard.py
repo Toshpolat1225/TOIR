@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import today_local
 from app.models.identity import User
 from app.repositories import dashboard as repository
 
@@ -23,5 +24,5 @@ async def dashboard_summary(
     from datetime import date
 
     return await repository.dashboard_summary(
-        db, section_id=effective_section, today=date.today()
+        db, section_id=effective_section, today=today_local()
     )

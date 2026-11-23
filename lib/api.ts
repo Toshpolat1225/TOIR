@@ -381,7 +381,7 @@ export type CurrentUser = {
   section_id: string | null;
   org_unit_id: string | null;
   section?: string | null;
-  auth_source?: "local" | "ad";
+  auth_source?: "ad";
   ad_username?: string | null;
   ad_confirmed?: boolean;
 };
@@ -473,13 +473,6 @@ const auth = {
 
 type UserRole = CurrentUser["role"];
 type UserListParams = ListParams & { q?: string; is_active?: boolean };
-type UserCreate = {
-  email: string;
-  full_name: string;
-  password: string;
-  role: UserRole;
-  section_id: string | null;
-};
 type AdUserCreate = {
   ad_username: string;
   full_name: string;
@@ -502,20 +495,8 @@ const users = {
     });
   },
 
-  async create(data: UserCreate): Promise<CurrentUser> {
-    return request<CurrentUser>({ method: "POST", path: "/users", body: data });
-  },
-
   async createAd(data: AdUserCreate): Promise<CurrentUser> {
     return request<CurrentUser>({ method: "POST", path: "/users/ad", body: data });
-  },
-
-  async convertToAd(id: string, ad_username: string): Promise<CurrentUser> {
-    return request<CurrentUser>({
-      method: "POST",
-      path: `/users/${id}/convert-to-ad`,
-      body: { ad_username },
-    });
   },
 
   async update(id: string, data: UserUpdate): Promise<CurrentUser> {
@@ -523,14 +504,6 @@ const users = {
       method: "PATCH",
       path: `/users/${id}`,
       body: data,
-    });
-  },
-
-  async resetPassword(id: string, password: string): Promise<void> {
-    await request<null>({
-      method: "POST",
-      path: `/users/${id}/reset-password`,
-      body: { password },
     });
   },
 };

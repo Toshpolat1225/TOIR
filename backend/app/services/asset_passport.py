@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import today_local
 from app.models.asset_models import AssetModel
 from app.repositories import asset_models as repository
 from app.services.gtk_matching import (
@@ -90,7 +91,7 @@ def validate_passport_values(
     decommissioned_at: date | None,
     current_year: int | None = None,
 ) -> None:
-    current_year = current_year or date.today().year
+    current_year = current_year or today_local().year
     if year_built is not None and not 1900 <= year_built <= current_year:
         raise ValueError(f"year_built must be between 1900 and {current_year}")
     if (
@@ -190,7 +191,7 @@ def build_passport_report(
     *,
     current_year: int | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
-    current_year = current_year or date.today().year
+    current_year = current_year or today_local().year
     sections_by_name: dict[str, list[tuple[UUID, str]]] = {}
     for section_id, section_name in sections:
         sections_by_name.setdefault(section_name, []).append((section_id, section_name))

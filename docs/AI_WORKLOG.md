@@ -555,3 +555,26 @@ Rassvet (qum+terrakota) va Sakura (atirgul+siren): CSS tokenlar + hover/active/k
 - Migratsiya `0042_auth01_no_local_passwords`: `users.hashed_password` olib tashlanadi; CHECK `auth_source='ad'`, `ad_username IS NOT NULL`; mahalliy foydalanuvchi bo'lsa RAISE bilan rad etadi (tekshirildi, versiya 0041 da qoldi). `postgres/schema.sql` moslandi; test_asset_p6_audit head 0042 ga yangilandi.
 - Tekshirildi (vaqtiga `pg_rehearse`, jonli zaxira nusxasi, keyin to'liq bo'sh `clean` baza): up/down/up (3 foydalanuvchi saqlandi); to'liq backend to'plami `clean` bazada 886 passed. Jonli nusxada 21 test yiqildi: 7 tasi jonli ma'lumot bilan to'qnashuv (gps_analytics, wagon_mileage*, scales_insights, wagon_projection_gate), qolgani quyidagilar bilan tuzatildi.
 - Kodda topilgan va tuzatilgan xato (menda bugun): kilometr hisobi bo'lmagan, limitdan oshgan texnika jadvalda «upcoming» bo'lib qolardi → endi «overdue» (maintenance.py). Eski ТО pg testlari 200 km/sutka standart taxminga tayangan edi → tests/pace_factory.py (`seed_pace`). test_maintenance_reschedule_pg oy chegarasiga bog'liq xato (today+9 kun) tuzatildi.
+
+## 2026-11-23 — AUTH-01 (5-qadam): frontend tozalandi
+- app/dashboard/admin/users/page.tsx: «Аварийная локальная запись», «Сбросить пароль», «Перевести на вход через домен» bloklari va «Локальный» belgisi olib tashlandi; lib/api.ts: users.create/convertToAd/resetPassword va UserCreate olib tashlandi; auth_source faqat "ad".
+- tsc 0 xato, eslint toza, unit 180/180. `npm run build` docker build ichida deploy paytida ishga tushadi (hali deploy qilinmadi).
+
+## 2026-11-23 - Vagon probeg dvigateli: ledger churn tuzatildi
+- Topildi (jonli, o'qish): GTK sync har siklda IntegrityError (uq_wagon_mileage_ledger_idempotency) bilan yiqilardi; ledger 4265 -> 64442 qator (63451 superseded), soatiga 1-3 ming. Sabab: input_hash ichidagi diagnostik odometr nomzodi (369.0 / 369.908) sikllar orasida tebranadi; eski holatga qaytganda unique kalit to'qnashadi va butun run to'xtaydi.
+- Tuzatish: wagon_mileage_run.py - same_outcome (km/sinf/davr/lokomotiv bir xil bo'lsa yangi qator yozilmaydi), superseded kalit bilan to'qnashganda qayta faollashtiriladi. tests/test_wagon_mileage_churn.py (3). Toza bazada 889 passed. Jonli deploy hali qilinmagan; 63k eski superseded qatorni tozalash alohida qaror.
+
+- Tuzatish (aniqlashtirish): 63k superseded qatorning aksari xato emas, dvigatelning o'zi - ochiq a'zolik har siklda uzayadi va eski qisqa qator superseded bo'ladi (faqat 196 tasi aynan bir xil natija edi). Haqiqiy xato - unique kalit to'qnashuvi (tuzatildi, jonli deploy qilindi, 20+ daqiqa IntegrityError yo'q). O'sishni cheklash uchun yangi CLI: wagon-ledger-purge --older-than-days 14 [--apply] (dry-run standart; services/wagon_ledger_retention.py, test_wagon_ledger_retention_pg.py). Toza bazada 890 passed.
+
+## 2026-11-23 - DATA-05: 'bugun' Toshkent vaqti bo'yicha
+- Yangi: app/core/timeutil.py (today_local, LOCAL_TZ = UTC+5). 8 ta modulda 19 ta date.today() almashtirildi (maintenance, maintenance_lifecycle, maintenance_obligations, dashboard, analytics, asset_passport, scales router, ml). maintenance_obligations kunlik guruhlash SQL'da Toshkent kuniga o'tdi (_local_day, literal zona - bog'langan parametr GROUP BY'ni buzardi). avg_daily_mileage ham.
+- Test: tests/test_today_tashkent.py (4, shu jumladan app/ da date.today() yo'qligini tekshiruvchi). Toza bazada 894 passed.
+- Ochiq (kichik): repositories/dashboard.py oy-oxiri ::date (UTC), tmc.py server_default CURRENT_DATE (baza vaqt zonasi). Deploy qilinmagan.
+
+## 2026-11-23 - CODEX: AUTH-06, INJ-04, CONF-04 + DATA-05 qoldig'i
+- AUTH-06: config api_docs_enabled standarti False.
+- INJ-04: extra=forbid - UserUpdate, AdUserCreate, LoginRequest, MaintenanceSettingsUpdate/BaselineUpsert/PlanBlock/Waive/FromForecast/PlanUpdate/DisruptionCreate (frontend maydonlari api.ts bilan solishtirildi). Qolgan ~44 ta so'rov sxemasi hali jimgina ortiqcha maydonni tashlaydi (frontend yuklarini tekshirmasdan rad etish xavfli).
+- CONF-04: bazaviy image'lar ishlayotgan versiyaga mahkamlandi: python 3.12.16-slim, node 22.23.4-alpine, postgres 16.15-alpine, caddy 2.11.7-alpine. pip-audit/npm audit hali ishga tushirilmadi.
+- DATA-05: repositories/dashboard.py oy-oxiri ::date Toshkent bo'yicha. Qoldi: tmc.py doc_date server_default CURRENT_DATE (migratsiya talab qiladi).
+- Toza bazada 905 passed. Deploy qilinmagan.
+- CONF-04 (npm audit): package.json overrides next->postcss 8.5.30 (high zaiflik yopildi; tsc, 178 unit va docker frontend build o'tdi). Qoldi: next@15.5.28 moderate (GHSA-7qx7, f3mh, pc..): 15.5 tarmog'ida tuzatish yo'q, faqat 16 preview. pip-audit o'rnatilmagan, ishga tushirilmadi.

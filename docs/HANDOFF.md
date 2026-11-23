@@ -1410,3 +1410,14 @@ Commit qilma. Yakunda o'zgargan fayllar, real tekshiruv natijalari va UNKNOWN ho
 ## Yangi mavzular: «Рассвет» va «Сакура» (2026-11-23)
 - Verified: Edge `browser/b19_themes.mjs` 11/11 (ZZTEST, keyin o'chirildi): ikkala mavzu almashtirgichda, qo'llanadi, qayta yuklashda saqlanadi; qator/yon menyu/tugma hover'da rang o'zgaradi, faol menyu gradient; ikki mavzuning hover, faol va tugma ranglari farq qiladi. tsc toza. Fayllar: `app/globals.css` (oxirida), `lib/providers.tsx`, `components/theme-switcher.tsx`.
 - NOT TESTED: barcha sahifalarni ikki mavzuda ko'z bilan ko'rish (faqat Справочник ОС skrinshoti), telefon, qattiq kodlangan ranglar (masalan, ayrim gradient sarlavhalar).
+
+## AUTH-01: mahalliy parollar olib tashlandi (2026-11-23)
+### Verified (buyruq natijasi ko'rilgan)
+- Bazada 3 foydalanuvchi, hammasi AD (`objectGUID` tasdiqlangan). Zaxira: `backups/pre_auth01_20261123_1929.dump`.
+- Migratsiya `0042`: up/down/up jonli nusxada (3 user saqlandi); mahalliy user bo'lsa RAISE bilan rad etadi (versiya o'zgarmaydi).
+- Backend to'liq to'plam bo'sh bazada 886 passed (schema_drift bilan). `test_auth01_no_local_passwords` 12/12. Frontend `tsc` 0, eslint toza, unit 178/178.
+### NOT TESTED
+- Jonli bazada `0042` va deploy; `emergency-session` haqiqiy bazada; AD bilan jonli kirish deploydan keyin.
+### Next task
+- Deploy (docs/AD_LOGIN.md), AD bilan kirishni tekshirish, keyin АГМК shlyuzi masalasi (IT) va DATA-05 (`today_tashkent`).
+

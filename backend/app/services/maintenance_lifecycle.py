@@ -18,6 +18,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import today_local
 from app.core.config import settings
 from app.core.database import SessionFactory
 from app.models.asset_source_links import AssetSourceLink
@@ -232,7 +233,7 @@ async def release_plan_for_order(db: AsyncSession, order_id: UUID, *, note: str)
 async def block_plan(db: AsyncSession, plan: MaintenancePlan, payload: MaintenancePlanBlock, user: User) -> None:
     if plan.status != "scheduled":
         raise HTTPException(status.HTTP_409_CONFLICT, "Only scheduled maintenance plans can be blocked")
-    if payload.until is not None and payload.until < date.today():
+    if payload.until is not None and payload.until < today_local():
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The block cannot end in the past")
     plan.status = "blocked"
     plan.blocked_reason = payload.reason_code
@@ -262,11 +263,11 @@ async def waive_plan(db: AsyncSession, plan: MaintenancePlan, payload: Maintenan
     asset = await db.get(FixedAsset, plan.asset_id)
     mileage = Decimal(asset.mileage) if asset is not None and asset.mileage is not None else Decimal("0")
     plan.status = "waived"
-    plan.completed_date = date.today()
+    plan.completed_date = today_local()
     _clear_block(plan)
     plan.updated_at = _now()
     await upsert_baseline(
-        db, asset_id=plan.asset_id, interval_id=plan.interval_id, done_at=date.today(),
+        db, asset_id=plan.asset_id, interval_id=plan.interval_id, done_at=today_local(),
         km=plan.trigger_mileage if plan.trigger_mileage is not None else mileage,
         hours=await _current_hours(db, plan.asset_id), source="waived", note=payload.reason, user_id=_uid(user),
     )
@@ -300,7 +301,7 @@ async def create_disruption(
         raise HTTPException(422, "scope 'section' needs section_id (and no asset_id)")
     if payload.scope == "all" and (payload.asset_id is not None or payload.section_id is not None):
         raise HTTPException(422, "scope 'all' takes neither asset_id nor section_id")
-    starts_on = payload.starts_on or date.today()
+    starts_on = payload.starts_on or today_local()
     if payload.ends_on is not None and payload.ends_on < starts_on:
         raise HTTPException(422, "ends_on cannot be before starts_on")
     disruption = MaintenanceDisruption(
@@ -423,7 +424,7 @@ async def set_baseline(
     interval = await db.get(MaintenanceInterval, payload.interval_id)
     if interval is None or not interval.is_active or asset.asset_type not in interval.asset_types:
         raise HTTPException(422, "This maintenance interval does not apply to the asset")
-    if payload.done_at > date.today():
+    if payload.done_at > today_local():
         raise HTTPException(422, "done_at cannot be in the future")
     if payload.km is None and payload.odometer_km is None and interval.interval_km is None:
         km = Decimal(asset.mileage or 0)  # a purely calendar/hours interval: the km value is not used
@@ -517,7 +518,7 @@ async def compute_kpis(db: AsyncSession, *, master_section_id: UUID | None = Non
 # ── invariants ───────────────────────────────────────────────────────────────
 
 async def run_health(db: AsyncSession, *, fix: bool = False) -> MaintenanceHealthRead:
-    today = date.today()
+    today = today_local()
     issues: list[MaintenanceHealthIssue] = []
 
     def add(code: str, count: int, detail: str, fixed: int = 0) -> None:
@@ -668,7 +669,7 @@ async def run_cycle(db: AsyncSession) -> dict[str, int]:
     locked = await db.scalar(select(func.pg_try_advisory_xact_lock(func.hashtextextended(_CYCLE_LOCK_KEY, 0))))
     if not locked:
         return {"skipped": 1}
-    today = date.today()
+    today = today_local()
     snapshots = await snapshot_meters(db, today)
     obligations.reset_pace_book()
     health = await run_health(db, fix=True)
@@ -731,7 +732,7 @@ async def import_baselines(db: AsyncSession, rows: list[dict[str, str]], *, appl
         except (ValueError, ArithmeticError):
             fail("done_at (YYYY-MM-DD) yoki son noto'g'ri")
             continue
-        if done_at > date.today():
+        if done_at > today_local():
             fail("done_at kelajakda bo'lishi mumkin emas")
             continue
         try:

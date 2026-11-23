@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
     cors_origins: str
-    api_docs_enabled: bool = True
+    api_docs_enabled: bool = False  # off unless explicitly enabled (CODEX AUTH-06)
     wialon_ingest_token: SecretStr | None = None
     # Weighing scales (Vesovoy): the Windows collector pushes with this token; unset = the ingest endpoint is closed.
     scales_ingest_token: SecretStr | None = None

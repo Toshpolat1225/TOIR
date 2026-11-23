@@ -583,6 +583,22 @@ async def _audit_purge_telemetry(apply: bool, batch_size: int) -> int:
     return 0
 
 
+async def _wagon_ledger_purge(older_than_days: int, apply: bool) -> int:
+    from app.services import wagon_ledger_retention
+
+    try:
+        report = await wagon_ledger_retention.purge_superseded(older_than_days=older_than_days, apply=apply)
+    except (ValueError, SQLAlchemyError) as exc:
+        print(f"Bajarilmadi: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+    finally:
+        await engine.dispose()
+    print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
+    if not apply:
+        print("DRY-RUN: hech narsa o'chirilmadi. O'chirish uchun --apply qo'shing (avval dump oling).", file=sys.stderr)
+    return 0
+
+
 async def _wialon_health_report(silent_hours: int, reject_days: int) -> int:
     from app.services import wialon_health
 
@@ -746,6 +762,12 @@ def main() -> int:
     )
     purge_parser.add_argument("--apply", action="store_true")
     purge_parser.add_argument("--batch-size", type=int, default=50_000)
+    ledger_parser = subparsers.add_parser(
+        "wagon-ledger-purge",
+        help="Delete SUPERSEDED wagon ledger rows older than N days (the active rows stay; dry-run by default; take a dump first)",
+    )
+    ledger_parser.add_argument("--older-than-days", type=int, default=14)
+    ledger_parser.add_argument("--apply", action="store_true")
     health_parser = subparsers.add_parser(
         "maintenance-health", help="Check the plan invariants (--fix repairs the safe ones)"
     )
@@ -797,6 +819,8 @@ def main() -> int:
         return asyncio.run(_wialon_health_report(arguments.silent_hours, arguments.reject_days))
     if arguments.command == "audit-purge-telemetry":
         return asyncio.run(_audit_purge_telemetry(arguments.apply, max(1_000, arguments.batch_size)))
+    if arguments.command == "wagon-ledger-purge":
+        return asyncio.run(_wagon_ledger_purge(arguments.older_than_days, arguments.apply))
     if arguments.command == "maintenance-shadow-report":
         return asyncio.run(_maintenance_shadow_report())
     if arguments.command == "maintenance-health":

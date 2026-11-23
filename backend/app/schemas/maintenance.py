@@ -28,12 +28,14 @@ class MaintenanceSettingsRead(BaseModel):
 
 
 class MaintenanceSettingsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # unknown fields are refused, not silently ignored (CODEX INJ-04)
     # The default pace of a unit that has no history of its own: 1 km/day (accepted before) made every forecast
     # absurd, so the value must be realistic.
     daily_average_km: Decimal = Field(ge=5, le=1000, max_digits=10, decimal_places=2)
 
 
 class MaintenancePlanUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # unknown fields are refused, not silently ignored (CODEX INJ-04)
     status: MaintenancePlanRequestedStatus | None = None
     completed_date: date | None = None
     work_order_id: UUID | None = None
@@ -46,6 +48,7 @@ class MaintenancePlanUpdate(BaseModel):
 
 class MaintenancePlanBlock(BaseModel):
     """Put a plan on hold. The obligation itself is never dropped: it keeps growing while blocked."""
+    model_config = ConfigDict(extra="forbid")  # unknown fields are refused, not silently ignored (CODEX INJ-04)
 
     reason_code: BlockReason
     until: date | None = None
@@ -54,12 +57,14 @@ class MaintenancePlanBlock(BaseModel):
 
 class MaintenancePlanWaive(BaseModel):
     """An admin decision that this cycle is not needed (e.g. replaced by a higher service)."""
+    model_config = ConfigDict(extra="forbid")  # unknown fields are refused, not silently ignored (CODEX INJ-04)
 
     reason: str = Field(min_length=3, max_length=500)
 
 
 class MaintenancePlanFromForecast(BaseModel):
     """Turn a forecast row into a real plan on a date chosen by the planner."""
+    model_config = ConfigDict(extra="forbid")  # unknown fields are refused, not silently ignored (CODEX INJ-04)
 
     asset_id: UUID
     interval_id: UUID
@@ -191,6 +196,7 @@ DecisionKind = Literal["reschedule", "block", "unblock", "waive", "cover", "rele
 
 class MaintenanceBaselineUpsert(BaseModel):
     """When a service was last done. Give the km in the TOIR scale OR the real odometer reading."""
+    model_config = ConfigDict(extra="forbid")  # unknown fields are refused, not silently ignored (CODEX INJ-04)
 
     asset_id: UUID
     interval_id: UUID
@@ -216,6 +222,7 @@ class MaintenanceBaselineRead(BaseModel):
 
 
 class MaintenanceDisruptionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # unknown fields are refused, not silently ignored (CODEX INJ-04)
     kind: BlockReason
     scope: DisruptionScope
     asset_id: UUID | None = None

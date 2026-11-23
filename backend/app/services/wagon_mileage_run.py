@@ -637,6 +637,23 @@ async def _assert_ledger_invariants(db: AsyncSession) -> None:
         )
 
 
+def same_outcome(row: Any, proposal: dict[str, Any]) -> bool:
+    """The stored row already says exactly what the proposal would say (same span, locomotive, class and km).
+
+    The input hash also covers diagnostic details (e.g. the odometer candidate that wobbles by a metre between
+    runs), so a different hash alone is no reason to write a new row: that only churned the ledger.
+    """
+    decision = proposal["decision"]
+    km = (decision.km or Decimal("0")).quantize(Decimal("0.01"))
+    return (
+        row.period_from == proposal["period_from"]
+        and row.period_to == proposal["period_to"]
+        and row.locomotive_asset_id == proposal["locomotive_asset_id"]
+        and row.classification == decision.classification
+        and Decimal(row.distance_km) == km
+    )
+
+
 async def _run_body(
     db: AsyncSession,
     run: MileageCalculationRun,
@@ -686,9 +703,24 @@ async def _run_body(
                     if stale:
                         changed_assets.add(proposal["wagon_asset_id"])
                     continue
+                if len(existing) == 1 and same_outcome(existing[0], proposal):
+                    continue  # same answer, only a diagnostic detail moved: keep the row, write nothing
                 previous = existing[0] if existing else None
                 for row in existing:
                     row.status = "superseded"
+                # the key is unique over ALL rows: a result that comes back to an earlier (superseded) state is
+                # re-activated, not inserted again (that insert aborted the whole run every cycle)
+                revived = (
+                    await db.execute(
+                        select(WagonMileageLedger)
+                        .where(WagonMileageLedger.idempotency_key == proposal["idempotency_key"])
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                if revived is not None:
+                    revived.status = "active"
+                    changed_assets.add(proposal["wagon_asset_id"])
+                    continue
                 classification = decision.classification
                 ledger = WagonMileageLedger(
                     run_id=run.id,

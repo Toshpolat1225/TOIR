@@ -56,6 +56,7 @@ def validate_ad_username(value: str) -> str:
 
 class AdUserCreate(BaseModel):
     """Grant access to a directory account. There is no password field."""
+    model_config = ConfigDict(extra="forbid")  # unknown fields are refused, not silently ignored (CODEX INJ-04)
 
     ad_username: str = Field(min_length=1, max_length=320)
     full_name: str = Field(min_length=1, max_length=300)
@@ -84,6 +85,7 @@ class AdUserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # unknown fields are refused, not silently ignored (CODEX INJ-04)
     full_name: str | None = Field(default=None, min_length=1, max_length=300)
     role: UserRole | None = None
     section_id: UUID | None = None

@@ -34,7 +34,7 @@ class DashboardRegressionTests(unittest.IsolatedAsyncioTestCase):
         sql = db.execute.await_args.args[0].text
         self.assertIn("wo.status <> 'cancelled'", sql)
         self.assertIn(
-            "wo.closed_at IS NULL OR wo.closed_at::date > me.month_end", sql
+            "wo.closed_at IS NULL OR (wo.closed_at AT TIME ZONE 'Asia/Tashkent')::date > me.month_end", sql
         )
         # The predicate excludes cancelled rows only; historical close-date logic
         # still determines whether other statuses were open at each month end.

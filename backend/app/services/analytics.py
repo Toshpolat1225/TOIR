@@ -10,6 +10,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import today_local
 from app.models.identity import User
 from app.core.localization import Locale
 from app.core.translation_response import localize_reference_response
@@ -93,7 +94,7 @@ async def dashboard_summary(
     assets, orders = await repository.dashboard_assets_and_orders(
         db, section_id=effective_section_id
     )
-    snapshot_date = date.today()
+    snapshot_date = today_local()
     await repository.save_daily_readiness_snapshots(
         db,
         snapshot_date=snapshot_date,

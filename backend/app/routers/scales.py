@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import today_local
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.permissions import require_permission
@@ -98,7 +99,7 @@ async def read_asset_work(
     date_from: Annotated[date | None, Query()] = None,
     date_to: Annotated[date | None, Query()] = None,
 ) -> schemas.AssetWorkRead:
-    end = date_to or date.today()
+    end = date_to or today_local()
     start = date_from or end - timedelta(days=30)
     if start > end or (end - start).days > 800:
         raise HTTPException(status_code=422, detail="Invalid date range")

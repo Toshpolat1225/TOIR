@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useState, useEffect, useCallback } from "react"
-import { Users, Plus, X, Save, Pencil, ShieldCheck, Shield, HardHat, Eye, EyeOff } from "@/components/ui/icons"
+import { Users, Plus, X, Save, Pencil, ShieldCheck, Shield, HardHat } from "@/components/ui/icons"
 import { api } from "@/lib/api"
 import { useDebouncedValue } from "@/lib/use-debounced-value"
 import { useAuth, type Profile, type UserRole } from "@/lib/auth-context"
@@ -23,10 +23,6 @@ function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void
   const [adUsername, setAdUsername] = useState("")
   const [role,       setRole]       = useState<UserRole>("master")
   const [section,    setSection]    = useState("")
-  const [emergency,  setEmergency]  = useState(false)
-  const [email,      setEmail]      = useState("")
-  const [password,   setPassword]   = useState("")
-  const [showPwd,    setShowPwd]    = useState(false)
   const [busy,       setBusy]       = useState(false)
   const [error,      setError]      = useState("")
 
@@ -35,12 +31,7 @@ function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void
       setError("Укажите ФИО.")
       return
     }
-    if (emergency) {
-      if (!email.trim() || password.length < 10) {
-        setError("Для аварийной записи укажите email и пароль (минимум 10 символов, не только цифры).")
-        return
-      }
-    } else if (!/^[A-Za-z0-9._-]{1,64}$/.test(adUsername.trim().replace(/@agmk\.uz$/i, ""))) {
+    if (!/^[A-Za-z0-9._-]{1,64}$/.test(adUsername.trim().replace(/@agmk\.uz$/i, ""))) {
       setError("Укажите доменный логин, например t.turakulov.")
       return
     }
@@ -51,22 +42,12 @@ function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void
     setBusy(true)
     setError("")
     try {
-      if (emergency) {
-        await api.users.create({
-          email: email.trim(),
-          full_name: fullName.trim(),
-          password,
-          role,
-          section_id: section || null,
-        })
-      } else {
-        await api.users.createAd({
-          ad_username: adUsername.trim(),
-          full_name: fullName.trim(),
-          role,
-          section_id: section || null,
-        })
-      }
+      await api.users.createAd({
+        ad_username: adUsername.trim(),
+        full_name: fullName.trim(),
+        role,
+        section_id: section || null,
+      })
       onCreated()
       onClose()
     } catch (error) {
@@ -95,12 +76,10 @@ function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">ФИО</label>
             <input value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Иванов Иван Иванович" className={inp}/>
           </div>
-          {!emergency && (
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Доменный логин</label>
-              <input value={adUsername} onChange={e=>setAdUsername(e.target.value)} placeholder="t.turakulov" autoComplete="off" className={inp}/>
-            </div>
-          )}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Доменный логин</label>
+            <input value={adUsername} onChange={e=>setAdUsername(e.target.value)} placeholder="t.turakulov" autoComplete="off" className={inp}/>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Роль</label>
@@ -119,31 +98,6 @@ function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void
             </div>
           </div>
 
-          <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
-            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-              <input type="checkbox" checked={emergency} onChange={e=>setEmergency(e.target.checked)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"/>
-              Аварийная локальная запись (логин и пароль, только для администратора)
-            </label>
-            {emergency && (
-              <div className="mt-3 space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/60 dark:bg-amber-950/30">
-                <p className="text-xs text-amber-800 dark:text-amber-300">Используйте только если домен недоступен. Такая запись входит локальным паролем, а не через AD.</p>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Email</label>
-                  <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="user@company.uz" autoComplete="off" className={inp}/>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Пароль</label>
-                  <div className="relative">
-                    <input type={showPwd?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Минимум 10 символов, не только цифры" autoComplete="new-password" className={inp + " pr-10"}/>
-                    <button type="button" onClick={()=>setShowPwd(v=>!v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                      {showPwd ? <EyeOff className="w-4 h-4"/> : <Eye className="w-4 h-4"/>}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
           {error && <p className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{error}</p>}
         </div>
 
@@ -151,7 +105,7 @@ function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void
           <Button variant="outline" onClick={onClose}>Отмена</Button>
           <Button onClick={handleCreate} disabled={busy} className="gap-2 bg-blue-600 hover:bg-blue-700">
             {busy ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/> : <Plus className="w-4 h-4"/>}
-            {emergency ? "Создать аварийную запись" : "Выдать доступ"}
+            Выдать доступ
           </Button>
         </div>
       </div>
@@ -160,9 +114,8 @@ function CreateUserModal({ onClose, onCreated, sections }: { onClose: () => void
 }
 
 /* ─── Модал редактирования пользователя ─── */
-function EditUserModal({ profile, isMe, onClose, onSaved, sections }: {
+function EditUserModal({ profile, onClose, onSaved, sections }: {
   profile: Profile
-  isMe: boolean
   onClose: () => void
   onSaved: () => void
   sections: SectionData[]
@@ -171,14 +124,8 @@ function EditUserModal({ profile, isMe, onClose, onSaved, sections }: {
   const [role,     setRole]     = useState<UserRole>(profile.role)
   const [section,  setSection]  = useState(profile.section_id ?? "")
   const [isActive, setIsActive] = useState(profile.is_active)
-  const [newPassword, setNewPassword] = useState("")
   const [busy,     setBusy]     = useState(false)
-  const [resetBusy, setResetBusy] = useState(false)
   const [error,    setError]    = useState("")
-  const [resetSuccess, setResetSuccess] = useState(false)
-  const [adLogin, setAdLogin] = useState("")
-  const [convertBusy, setConvertBusy] = useState(false)
-  const isAd = profile.auth_source === "ad"
 
   const handleSave = async () => {
     if (role === "master" && !section) {
@@ -200,43 +147,6 @@ function EditUserModal({ profile, isMe, onClose, onSaved, sections }: {
     } catch (error) {
       setError(error instanceof Error ? error.message : "Не удалось обновить пользователя.")
       setBusy(false)
-    }
-  }
-
-  const handlePasswordReset = async () => {
-    if (newPassword.length < 10) {
-      setError("Пароль: не менее 10 символов, не только цифры, без логина.")
-      return
-    }
-    setResetBusy(true)
-    setError("")
-    setResetSuccess(false)
-    try {
-      await api.users.resetPassword(profile.id, newPassword)
-      setNewPassword("")
-      setResetSuccess(true)
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Не удалось сбросить пароль.")
-    } finally {
-      setResetBusy(false)
-    }
-  }
-
-  const handleConvert = async () => {
-    if (!/^[A-Za-z0-9._-]{1,64}$/.test(adLogin.trim().replace(/@agmk\.uz$/i, ""))) {
-      setError("Укажите доменный логин, например t.turakulov.")
-      return
-    }
-    if (!window.confirm(`Перевести «${profile.full_name}» на вход через домен? Локальный пароль будет удалён, сессии завершены. Действие записывается в журнал.`)) return
-    setConvertBusy(true)
-    setError("")
-    try {
-      await api.users.convertToAd(profile.id, adLogin.trim())
-      onSaved()
-      onClose()
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Не удалось перевести пользователя на AD.")
-      setConvertBusy(false)
     }
   }
 
@@ -289,42 +199,11 @@ function EditUserModal({ profile, isMe, onClose, onSaved, sections }: {
             Активная учетная запись
           </label>
           <div className="border-t border-gray-200 dark:border-gray-800 pt-4 text-sm text-gray-600 dark:text-gray-300">
-            Вход: <b>{isAd ? "через домен (AD)" : "локальный пароль"}</b>
-            {isAd && (
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Вход: <b>через домен (AD)</b>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 Логин: {profile.ad_username}. {profile.ad_confirmed ? "Учётная запись подтверждена в домене." : "Ещё не входил: подтверждение в домене произойдёт при первом входе."}
               </p>
-            )}
           </div>
-          {!isAd && (
-<div className="border-t border-gray-200 dark:border-gray-800 pt-4">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Сбросить пароль</label>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={e=>setNewPassword(e.target.value)}
-                  placeholder="Новый пароль (минимум 10 символов, не только цифры)"
-                  className={inp}
-                  autoComplete="new-password"
-                />
-                <Button variant="outline" onClick={handlePasswordReset} disabled={resetBusy || !newPassword}>
-                  {resetBusy ? "..." : "Сбросить"}
-                </Button>
-              </div>
-            </div>
-          )}
-          {!isAd && !isMe && (
-            <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Перевести на вход через домен</label>
-              <div className="flex gap-2">
-                <input value={adLogin} onChange={e=>setAdLogin(e.target.value)} placeholder="Доменный логин" autoComplete="off" className={inp}/>
-                <Button variant="outline" onClick={handleConvert} disabled={convertBusy || !adLogin}>{convertBusy ? "..." : "Перевести"}</Button>
-              </div>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Локальный пароль будет удалён безвозвратно.</p>
-            </div>
-          )}
-          {resetSuccess && <p role="status" className="text-emerald-700 text-sm dark:text-emerald-400">Пароль успешно обновлён.</p>}
           {error && <p className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{error}</p>}
         </div>
 
@@ -421,7 +300,7 @@ export default function AdminUsersPage() {
   return (
     <div className="p-8 space-y-6">
       {showCreate && <CreateUserModal onClose={()=>setShowCreate(false)} onCreated={fetchUsers} sections={sectionsData}/>}
-      {editing    && <EditUserModal   profile={editing} isMe={editing.id === myProfile?.id} onClose={()=>setEditing(null)} onSaved={fetchUsers} sections={sectionsData}/>}
+      {editing    && <EditUserModal   profile={editing} onClose={()=>setEditing(null)} onSaved={fetchUsers} sections={sectionsData}/>}
 
       {/* Заголовок */}
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -523,8 +402,8 @@ export default function AdminUsersPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{u.email || "—"}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${u.auth_source === "ad" ? "bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-300" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"}`}>
-                        {u.auth_source === "ad" ? "AD" : "Локальный"}
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-300`}>
+                        AD
                       </span>
                     </td>
                     <td className="px-4 py-3">

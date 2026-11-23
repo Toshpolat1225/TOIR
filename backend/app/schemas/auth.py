@@ -1,11 +1,12 @@
 import re
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 from app.schemas.users import validate_email
 
 class LoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # unknown fields are refused, not silently ignored (CODEX INJ-04)
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=1, max_length=256)
 

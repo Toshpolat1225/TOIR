@@ -9,6 +9,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import today_local
 from app.core.database import SessionFactory
 from app.models.assets import FixedAsset
 from app.models.identity import User
@@ -313,7 +314,7 @@ async def _analyze_asset(
         event_dates,
         mileage_samples,
         asset.mileage if has_wagon_projection else None,
-        today=date.today(),
+        today=today_local(),
     )
     prediction_count = 0
     if prediction is not None:
