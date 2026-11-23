@@ -578,3 +578,10 @@ Rassvet (qum+terrakota) va Sakura (atirgul+siren): CSS tokenlar + hover/active/k
 - DATA-05: repositories/dashboard.py oy-oxiri ::date Toshkent bo'yicha. Qoldi: tmc.py doc_date server_default CURRENT_DATE (migratsiya talab qiladi).
 - Toza bazada 905 passed. Deploy qilinmagan.
 - CONF-04 (npm audit): package.json overrides next->postcss 8.5.30 (high zaiflik yopildi; tsc, 178 unit va docker frontend build o'tdi). Qoldi: next@15.5.28 moderate (GHSA-7qx7, f3mh, pc..): 15.5 tarmog'ida tuzatish yo'q, faqat 16 preview. pip-audit o'rnatilmagan, ishga tushirilmadi.
+
+## 2026-11-23 — CONF-01: git tarixi sirlar uchun skanerlandi (gitleaks v8.21.2, 237 commit, --redact)
+- HEAD toza. Tarixda: `local-backups/server-copy.env.local` (POSTGRES_PASSWORD, JWT_SECRET, WIALON_INGEST_TOKEN, WIALON_TOKEN; 7 commit, 10-23…11-10); eski Supabase anon JWT (HEAD da yo'q); GTK saqlangan sahifalaridagi Google kalit (bizniki emas). Repo GitHub'ga yuborilgan.
+- Qilindi: docs/SECRETS_ROTATION.md (almashtirish tartibi), .gitignore (local-backups/, *.env.local, server-copy*). Sirlar almashtirilmadi (foydalanuvchi bajaradi); tarixni qayta yozish bajarilmadi.
+
+## 2026-11-23 — O'lik fayllar karantinga ko'chirildi (o'chirilmadi)
+- `_QUARANTINE_olik_fayllar/`: ildizdagi requirements.txt, alembic.ini, p03_...dump; scripts/ dagi 6 ta eski yordamchi; handlers/_i18n.py. README.txt ichida asl joylari. Tekshirildi: backend "not pg" testlari, compose config, tsc. Bir hafta kuzatib, keyin papkani o'chirish mumkin.

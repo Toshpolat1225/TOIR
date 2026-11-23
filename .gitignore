@@ -68,3 +68,8 @@ backups/
 *.accdb
 *.ldb
 *.laccdb
+
+# server copies and local backups must never be committed (CODEX CONF-01)
+local-backups/
+*.env.local
+server-copy*
