@@ -24,7 +24,7 @@ from app.integrations.wialon_client import (
 from app.models.assets import FixedAsset
 from app.models.maintenance import MaintenanceInterval, WorkType
 from app.models.organization import Department, Section
-from app.services.auth import create_initial_admin
+from app.services.auth import create_first_ad_admin, issue_emergency_session
 from app.services import maintenance as maintenance_service
 from app.models.identity import User
 from app.services import mileage_opening_bulk, wagon_mileage_report
@@ -68,45 +68,45 @@ MAINTENANCE_INTERVALS = (
 )
 
 
-def _read_create_admin_inputs() -> tuple[str, str, str]:
-    email = input("Admin email: ").strip()
-    full_name = input("Admin full name: ").strip()
-    password = getpass.getpass("Admin password: ")
-    password_confirmation = getpass.getpass("Confirm password: ")
-    if not email or not full_name:
-        raise ValueError("Email and full name are required")
-    if password != password_confirmation:
-        raise ValueError("Passwords do not match")
-    if not password:
-        raise ValueError("Password must not be empty")
-    if len(password.encode("utf-8")) > 72:
-        raise ValueError("Password must not exceed 72 UTF-8 bytes")
-    return email, full_name, password
-
-
-async def _create_admin() -> int:
-    try:
-        email, full_name, password = _read_create_admin_inputs()
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-
+async def _create_ad_admin(email: str, ad_username: str, full_name: str) -> int:
     try:
         async with SessionFactory() as db:
-            user_id = await create_initial_admin(db, email, full_name, password)
+            user_id = await create_first_ad_admin(db, email, ad_username, full_name)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
     except IntegrityError:
-        print("Could not create admin; the email may already be registered.", file=sys.stderr)
+        print("Could not create admin; the email or login may already be registered.", file=sys.stderr)
         return 2
     except SQLAlchemyError:
         print("Database operation failed; verify the database connection and schema.", file=sys.stderr)
         return 2
     finally:
         await engine.dispose()
+    print(f"Admin user created successfully (id: {user_id}). Sign in with the domain password.")
+    return 0
 
-    print(f"Admin user created successfully (id: {user_id}).")
+
+async def _emergency_session(admin: str) -> int:
+    """Server-shell only: 15 minutes for an active directory administrator when the domain is down (audited)."""
+    import socket
+
+    operator = f"{getpass.getuser()}@{socket.gethostname()}"
+    try:
+        async with SessionFactory() as db:
+            token = await issue_emergency_session(db, admin, operator=operator)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except SQLAlchemyError:
+        print("Database operation failed; verify the database connection and schema.", file=sys.stderr)
+        return 2
+    finally:
+        await engine.dispose()
+    print("Emergency session started (15 minutes, audited). It cannot be extended.")
+    print("In the browser, open the TOIR site, press F12, Console, and run:")
+    print(f"  cookieStore.set({{name: 'toir_refresh_token', value: '{token}', path: '/api/v1/auth'}}).then(() => location.reload())")
+    print("The token is shown once. Do not share it; it is not stored anywhere in plain text.")
     return 0
 
 
@@ -386,39 +386,6 @@ async def _wagon_opening_bulk(
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
 
-
-async def _user_convert_to_ad(email: str, ad_username: str, apply: bool) -> int:
-    from app.schemas.users import ConvertToAd
-    from app.services import users as users_service
-
-    try:
-        payload = ConvertToAd(ad_username=ad_username)
-        async with SessionFactory() as db:
-            user = await db.scalar(select(User).where(User.email == email.strip()))
-            if user is None:
-                print("Foydalanuvchi topilmadi (--email).", file=sys.stderr)
-                return 2
-            report = {
-                "user": user.email,
-                "role": user.role,
-                "from": user.auth_source,
-                "ad_username": payload.ad_username,
-                "applied": False,
-            }
-            if apply:
-                await users_service.convert_user_to_ad(db, user.id, payload, actor=None)
-                report["applied"] = True
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-    except Exception as exc:
-        detail = getattr(exc, "detail", None) or type(exc).__name__
-        print(f"Bajarilmadi: {detail}", file=sys.stderr)
-        return 2
-    finally:
-        await engine.dispose()
-    print(json.dumps(report, ensure_ascii=False, indent=2))
-    return 0
 
 
 async def _actor_for_cli(db: AsyncSession, actor_email: str | None, apply: bool) -> User | None:
@@ -729,7 +696,12 @@ async def _scales_rematch() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("create-admin", help="Create the first administrator")
+    admin_parser = subparsers.add_parser("create-ad-admin", help="Create the first administrator as a directory (AD) account; no password")
+    admin_parser.add_argument("--email", required=True)
+    admin_parser.add_argument("--ad-username", required=True)
+    admin_parser.add_argument("--full-name", required=True)
+    emergency_parser = subparsers.add_parser("emergency-session", help="15-minute audited session for an active directory administrator when the domain is down (server shell only)")
+    emergency_parser.add_argument("--admin", required=True, help="Administrator email or directory login")
     subparsers.add_parser("seed-reference", help="Create initial directory reference data")
     subparsers.add_parser("seed-intervals", help="Idempotently seed maintenance intervals")
     subparsers.add_parser(
@@ -807,13 +779,6 @@ def main() -> int:
                 action="store_true",
                 help="Also approve zero-km proposals (admin confirms they start from 0)",
             )
-    convert_parser = subparsers.add_parser(
-        "user-convert-to-ad",
-        help="Turn a local TOIR account into an Active Directory account (erases the local password; dry-run by default)",
-    )
-    convert_parser.add_argument("--email", required=True)
-    convert_parser.add_argument("--ad-username", required=True)
-    convert_parser.add_argument("--apply", action="store_true")
     for name, text in (
         ("wialon-counter-release", "Release Wialon counters blocked by same-time odometer differences, only when the data prove them healthy (dry-run by default)"),
         ("asset-conflicts-clean", "Reject pending GTK number conflicts that differ only by leading zeros (dry-run by default)"),
@@ -846,10 +811,6 @@ def main() -> int:
         )
     if arguments.command == "asset-conflicts-clean":
         return asyncio.run(_asset_conflicts_clean(arguments.actor_email, arguments.apply))
-    if arguments.command == "user-convert-to-ad":
-        return asyncio.run(
-            _user_convert_to_ad(arguments.email, arguments.ad_username, arguments.apply)
-        )
     if arguments.command == "wagon-mileage-report":
         return asyncio.run(_wagon_mileage_report(arguments.csv))
     if arguments.command in ("wagon-opening-propose", "wagon-opening-approve"):
@@ -862,8 +823,10 @@ def main() -> int:
                 include_zero=getattr(arguments, "include_zero", False),
             )
         )
-    if arguments.command == "create-admin":
-        return asyncio.run(_create_admin())
+    if arguments.command == "create-ad-admin":
+        return asyncio.run(_create_ad_admin(arguments.email, arguments.ad_username, arguments.full_name))
+    if arguments.command == "emergency-session":
+        return asyncio.run(_emergency_session(arguments.admin))
     if arguments.command == "seed-reference":
         return asyncio.run(_seed_reference())
     if arguments.command == "seed-intervals":

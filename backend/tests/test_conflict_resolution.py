@@ -1,4 +1,5 @@
 """Benign same-time counter advance, counter release, leading-zero number conflicts."""
+from user_factory import ad_user
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
@@ -298,7 +299,7 @@ async def test_clean_rejects_only_leading_zero_conflicts_and_keeps_real_ones():
     actor_id, same_id, diff_id = uuid4(), uuid4(), uuid4()
     async with SessionFactory() as db:
         db.add(User(id=actor_id, email=f"a-{tag}@example.com", full_name="A",
-                    hashed_password="x", auth_source="local", role="admin"))
+                    **ad_user(), role="admin"))
         db.add_all([
             FixedAsset(id=same_id, inv_number=f"Z-{tag}", asset_type="wagon", status="operational", serial_number="69"),
             FixedAsset(id=diff_id, inv_number=f"D-{tag}", asset_type="wagon", status="operational", serial_number="4315"),

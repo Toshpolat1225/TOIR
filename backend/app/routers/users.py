@@ -1,7 +1,7 @@
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -11,29 +11,18 @@ from app.models.identity import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.users import (
     AdUserCreate,
-    ConvertToAd,
-    PasswordReset,
-    UserCreate,
     UserRead,
     UserUpdate,
 )
 from app.services.users import (
-    convert_user_to_ad,
     create_ad_user,
-    create_user,
     list_users_page,
-    reset_user_password,
     update_user,
 )
 
 router = APIRouter(prefix="/users", tags=["users"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
 AdminUser = Annotated[User, Depends(require_permission("users.manage_users"))]
-
-
-def _require_admin_role(actor: User) -> None:
-    if actor.role != "admin":
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
 
 
 @router.get("", response_model=PaginatedResponse[UserRead])
@@ -65,21 +54,6 @@ async def get_users(
 
 
 @router.post(
-    "",
-    response_model=UserRead,
-    status_code=status.HTTP_201_CREATED,
-)
-async def post_user(
-    payload: UserCreate,
-    actor: AdminUser,
-    db: DatabaseSession,
-) -> User:
-    """Emergency local account (login + password). Administrators only."""
-    _require_admin_role(actor)
-    return await create_user(db, payload)
-
-
-@router.post(
     "/ad",
     response_model=UserRead,
     status_code=status.HTTP_201_CREATED,
@@ -92,17 +66,6 @@ async def post_ad_user(
     return await create_ad_user(db, payload)
 
 
-@router.post("/{user_id}/convert-to-ad", response_model=UserRead)
-async def post_convert_to_ad(
-    user_id: UUID,
-    payload: ConvertToAd,
-    actor: AdminUser,
-    db: DatabaseSession,
-) -> User:
-    _require_admin_role(actor)
-    return await convert_user_to_ad(db, user_id, payload, actor)
-
-
 @router.patch("/{user_id}", response_model=UserRead)
 async def patch_user(
     user_id: UUID,
@@ -113,14 +76,3 @@ async def patch_user(
     if "is_active" in payload.model_fields_set and not await user_has_permission(db, actor, "users.set_active"):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     return await update_user(db, user_id, payload, actor.id)
-
-
-@router.post("/{user_id}/reset-password", status_code=status.HTTP_204_NO_CONTENT)
-async def post_password_reset(
-    user_id: UUID,
-    payload: PasswordReset,
-    _: AdminUser,
-    db: DatabaseSession,
-) -> Response:
-    await reset_user_password(db, user_id, payload)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)

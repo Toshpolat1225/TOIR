@@ -238,11 +238,13 @@ class GtkRepositoryTests(unittest.IsolatedAsyncioTestCase):
 
         await repository.upsert_mirror(db, snapshot, synced_at=now)
 
-        self.assertEqual(db.execute.await_count, 3)
+        self.assertEqual(db.execute.await_count, 4)  # three upserts + closing the trains missing from the snapshot
         statements = [
             call.args[0].compile(dialect=postgresql.dialect())
             for call in db.execute.await_args_list
         ]
+        closing = str(statements.pop())
+        self.assertTrue(closing.startswith("UPDATE gtk_trains SET is_open"), closing)
         for statement in statements:
             sql = str(statement)
             self.assertIn("ON CONFLICT (gtk_id) DO UPDATE", sql)

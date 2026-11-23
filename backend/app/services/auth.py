@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -13,16 +13,12 @@ from app.core.config import settings
 from app.core.security import (
     create_access_token,
     create_refresh_token,
-    hash_password,
     hash_refresh_token,
     unauthorized_exception,
-    verify_password,
-    verify_unknown_user_password,
 )
 from app.models.identity import LoginAttempt, RefreshToken, User
 from app.services import ad_auth
 from app.schemas.auth import LoginRequest, TokenResponse
-from app.schemas.users import validate_email
 from app.services.audit_log import add_auth_audit_event, set_audit_actor
 
 logger = logging.getLogger(__name__)
@@ -33,7 +29,7 @@ AD_LOGIN_FAILURE_LIMIT = 3
 # Per source IP over all directory logins (stops one host from guessing many accounts).
 AD_IP_FAILURE_LIMIT = 20
 LOGIN_FAILURE_WINDOW = timedelta(minutes=15)
-MAX_LOCAL_PASSWORD_BYTES = 72
+EMERGENCY_SESSION_MINUTES = 15
 REFRESH_REUSE_GRACE = timedelta(seconds=30)
 
 
@@ -92,12 +88,10 @@ async def authenticate(
     user = await _find_login_user(db, request.email, ad_login)
     # The backend that checks the password is decided by the account's stored
     # auth_source, never by the shape of the typed login.
-    if user is not None:
-        source = user.auth_source
-        ad_login = user.ad_username.lower() if user.ad_username else ad_login
-    else:
-        source = "ad" if ad_login is not None else "local"
-    if source == "ad" and ad_login is not None:
+    source = "ad"  # the directory is the only way in (AUTH-01): TOIR keeps no passwords of its own
+    if user is not None and user.ad_username:
+        ad_login = user.ad_username.lower()
+    if ad_login is not None:
         # One counter per directory account (not per IP) so that we stay below
         # AD's own lock threshold.
         key_hash = login_attempt_key_hash("ad-account", ad_login)
@@ -151,13 +145,11 @@ async def authenticate(
 
     password_is_valid = False
     pending_guid: UUID | None = None
-    local_ok_to_check = len(request.password.encode("utf-8")) <= MAX_LOCAL_PASSWORD_BYTES
     if user is None:
         # No TOIR account: nothing is created and the directory is not asked
         # (TOIR must not become a password oracle for domain accounts).
-        if local_ok_to_check:
-            await run_in_threadpool(verify_unknown_user_password, request.password)
-    elif user.auth_source == "ad":
+        pass
+    else:
         if not settings.ad_auth_enabled or not user.ad_username:
             logger.warning("Directory login refused for %s: AD login is disabled", user.id)
         else:
@@ -206,10 +198,6 @@ async def authenticate(
                         password_is_valid = False
                     else:
                         pending_guid = guid
-    elif local_ok_to_check and user.hashed_password:
-        password_is_valid = await run_in_threadpool(
-            verify_password, request.password, user.hashed_password
-        )
     if user is None or not password_is_valid or not user.is_active:
         db.add(LoginAttempt(key_hash=key_hash, failed_at=now))
         if ip_key_hash is not None:
@@ -336,7 +324,9 @@ async def rotate_refresh_token(
         RefreshToken(
             user_id=user.id,
             token_hash=hash_refresh_token(next_refresh_token),
-            expires_at=now + timedelta(days=settings.refresh_token_expire_days),
+            expires_at=next_refresh_expiry(
+                created_at=stored_token.created_at, expires_at=stored_token.expires_at, now=now
+            ),
         )
     )
     await db.commit()
@@ -381,30 +371,73 @@ async def revoke_refresh_token(db: AsyncSession, presented_token: str) -> None:
         await db.commit()
 
 
-async def create_initial_admin(
-    db: AsyncSession,
-    email: str,
-    full_name: str,
-    password: str,
-) -> UUID:
-    normalized_email = validate_email(email)
-    normalized_name = full_name.strip()
-    if not normalized_name:
-        raise ValueError("Full name is required")
-    existing_user = await db.execute(select(User.id).where(User.email == normalized_email))
-    if existing_user.scalar_one_or_none() is not None:
-        raise ValueError("A user with this email already exists")
-    existing_admin = await db.execute(select(User.id).where(User.role == "admin").limit(1))
-    if existing_admin.scalar_one_or_none() is not None:
-        raise ValueError("An admin user already exists")
+def next_refresh_expiry(*, created_at: datetime, expires_at: datetime, now: datetime) -> datetime:
+    """Expiry of the refresh token that replaces `expires_at`'s token.
 
-    user = User(
-        email=normalized_email,
-        full_name=normalized_name,
-        hashed_password=hash_password(password),
-        role="admin",
-        is_active=True,
+    A normal session slides (a fresh full lifetime at every refresh). A short one, like an emergency session,
+    keeps its original deadline: refreshing must never turn 15 minutes into 7 days.
+    """
+    normal = timedelta(days=settings.refresh_token_expire_days)
+    if expires_at - created_at < normal / 2:
+        return expires_at
+    return now + normal
+
+
+async def issue_emergency_session(
+    db: AsyncSession,
+    identifier: str,
+    *,
+    operator: str,
+    now: datetime | None = None,
+) -> str:
+    """A 15-minute session for an ACTIVE directory administrator, started only from the server shell.
+
+    Not an HTTP endpoint and not a password: it is for the case when the domain is down. Every use is written to
+    the audit log with the operator; the token itself is never logged. Returns the refresh token.
+    """
+    now = now or datetime.now(timezone.utc)
+    value = identifier.strip()
+    user = (
+        await db.execute(
+            select(User).where(or_(User.email == value.lower(), User.ad_username == value.lower()))
+        )
+    ).scalar_one_or_none()
+    if user is None or not user.is_active or user.role != "admin" or user.auth_source != "ad":
+        raise ValueError("Emergency session is only for an active directory administrator")
+    token = create_refresh_token()
+    db.add(
+        RefreshToken(
+            user_id=user.id,
+            token_hash=hash_refresh_token(token),
+            expires_at=now + timedelta(minutes=EMERGENCY_SESSION_MINUTES),
+        )
     )
+    add_auth_audit_event(
+        db,
+        action="login",
+        actor_id=user.id,
+        actor_name=user.full_name,
+        route="cli:emergency-session",
+        status_code=200,
+        auth_source="ad",
+        extra={"event": "emergency_session", "operator": operator, "ttl_minutes": EMERGENCY_SESSION_MINUTES},
+    )
+    await db.commit()
+    return token
+
+
+async def create_first_ad_admin(db: AsyncSession, email: str, ad_username: str, full_name: str) -> UUID:
+    """The very first administrator of a fresh install: a directory account, no password. Only while no admin exists."""
+    from app.schemas.users import validate_ad_username, validate_email
+
+    normalized_email = validate_email(email)
+    login = validate_ad_username(ad_username)
+    name = full_name.strip()
+    if not name:
+        raise ValueError("Full name is required")
+    if (await db.execute(select(User.id).where(User.role == "admin").limit(1))).scalar_one_or_none() is not None:
+        raise ValueError("An admin user already exists")
+    user = User(email=normalized_email, full_name=name, auth_source="ad", ad_username=login, role="admin", is_active=True)
     db.add(user)
     await db.commit()
     await db.refresh(user)

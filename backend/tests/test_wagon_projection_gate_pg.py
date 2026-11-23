@@ -4,6 +4,7 @@ A wagon's mileage is a published projection once an administrator approved its o
 projection = approved opening + eligible CONFIRMED *and* ESTIMATED ledger km. The planner used to ask for
 a CONFIRMED ledger row, which dropped ~480 of 481 wagons that had a real, approved projection.
 """
+from user_factory import ad_user
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
@@ -46,7 +47,7 @@ class Fleet:
 async def fleet():
     f = Fleet()
     async with SessionFactory() as db:
-        db.add(User(id=f.admin_id, email=f"gate-{f.tag}@example.test", full_name="Gate", role="admin", hashed_password="x", is_active=True))
+        db.add(User(id=f.admin_id, email=f"gate-{f.tag}@example.test", full_name="Gate", role="admin", **ad_user(), is_active=True))
         db.add(GtkTrain(gtk_id=TRAIN_ID, is_open=False))
         db.add(MileageCalculationRun(id=f.run_id, status="completed", algorithm_version="test"))
         db.add(MaintenanceInterval(id=f.interval_id, code=f"W-{f.tag}", name="wagon gate", interval_km=Decimal("90"),

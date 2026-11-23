@@ -1,4 +1,5 @@
 """PostgreSQL tests: bulk opening-balance proposal and approval (needs pg_rehearse)."""
+from user_factory import ad_user
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
@@ -34,7 +35,7 @@ async def _setup():
                     id=uid,
                     email=f"{role}-{uuid4()}@example.test",
                     full_name=role,
-                    hashed_password="x",
+                    **ad_user(),
                     role=role_name,
                 )
                 for uid, role, role_name in (

@@ -7,7 +7,6 @@ from uuid import UUID
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,25 +15,7 @@ from app.core.database import get_db
 from app.models.identity import User
 from app.services.audit_log import set_audit_actor
 
-password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-_dummy_password_hash = password_context.hash(secrets.token_urlsafe(32))
 bearer_scheme = HTTPBearer(auto_error=False)
-
-
-def hash_password(password: str) -> str:
-    if len(password.encode("utf-8")) > 72:
-        raise ValueError("Password must not exceed 72 UTF-8 bytes")
-    return password_context.hash(password)
-
-
-def verify_password(password: str, password_hash: str) -> bool:
-    if len(password.encode("utf-8")) > 72:
-        return False
-    return password_context.verify(password, password_hash)
-
-
-def verify_unknown_user_password(password: str) -> None:
-    verify_password(password, _dummy_password_hash)
 
 
 def hash_refresh_token(token: str) -> str:

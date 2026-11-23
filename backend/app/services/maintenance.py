@@ -821,7 +821,7 @@ async def get_schedule(
                 startDate=start_date,
                 depot=asset.depot or "",
                 tech="",
-                status="overdue" if start_date < today else "upcoming",
+                status="overdue" if (start_date < today or overdue) else "upcoming",  # over the limit with an unknown pace has no past date but is still overdue
                 mileage=asset.mileage if trusted else None,
                 remainingKm=ob.due_km - asset.mileage if ob.due_km is not None else None,
                 nextThreshold=ob.due_km,

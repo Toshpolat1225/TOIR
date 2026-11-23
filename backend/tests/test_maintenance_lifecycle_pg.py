@@ -33,6 +33,8 @@ from app.schemas.work_orders import WorkOrderUpdate
 from app.services import maintenance, maintenance_lifecycle as lifecycle, maintenance_obligations as obligations
 from app.services import work_orders
 
+from pace_factory import seed_pace
+
 pytestmark = [pytest.mark.pg, pytest.mark.asyncio]
 
 ADMIN = SimpleNamespace(role="admin", section_id=None)
@@ -62,6 +64,8 @@ class World:
             await db.flush()
             db.add(FixedAsset(id=self.asset_id, inv_number=f"LC-{self.tag}", asset_type="locomotive",
                               status="operational", mileage=Decimal(mileage), section_id=self.section_id))
+            await db.flush()
+            await seed_pace(db, self.asset_id, mileage)
             db.add(MaintenanceInterval(id=self.low_id, code=f"L1-{self.tag}", name="low", interval_km=Decimal("5000"),
                                        rank=1, warn_percent=Decimal("10"), asset_types=["locomotive"], is_active=True))
             if with_high:

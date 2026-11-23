@@ -12,7 +12,18 @@ from app.models.assets import FixedAsset
 from app.models.maintenance import AssetMaintenanceBaseline, MaintenanceInterval
 from app.services import maintenance
 
+from pace_factory import seed_pace
+
 pytestmark = [pytest.mark.pg, pytest.mark.asyncio]
+
+
+@pytest.fixture(autouse=True)
+def _fresh_pace_book():
+    from app.services import maintenance_obligations as obligations
+
+    obligations.reset_pace_book()
+    yield
+    obligations.reset_pace_book()
 
 
 async def test_forecast_item_carries_interval_km_and_threshold():
@@ -63,6 +74,8 @@ async def test_schedule_items_carry_joined_names_and_one_consistent_unit_label()
         db.add(FixedAsset(id=asset_id, inv_number=inv, serial_number="777", asset_type="locomotive",
                           status="operational", mileage=Decimal("4800"), model_id=model_id,
                           section_id=section_id, wialon_online=True))
+        await db.flush()
+        await seed_pace(db, asset_id, "4800")
         db.add(MaintenanceInterval(id=interval_id, code=f"N-{tag}", name="Names test",
                                    interval_km=Decimal("5000"), warn_percent=Decimal("60"),
                                    asset_types=["locomotive"], is_active=True))

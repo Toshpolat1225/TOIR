@@ -538,3 +538,20 @@ Rassvet (qum+terrakota) va Sakura (atirgul+siren): CSS tokenlar + hover/active/k
 ## 2026-11-23 — Baseline shablon CSV (ТО-1/2/3)
 - docs/templates/maintenance_baseline_TO1-3_template.csv: 86 texnika × 3 interval = 258 qator (faqat o'qish SQL bilan yaratildi, bazaga yozilmadi). To'ldiriladigan ustunlar: done_at, odometer_km (hours, note ixtiyoriy). Ma'lumot qo'shilgani yo'q — import hali ishga tushirilmadi.
 - Topildi: inv_number 38956 ikki dizelga tegishli (3189-38956 probeg 0 va 3188-38956 probeg 1260, ЖДЦ-2) — import bu qatorlarni rad etadi.
+
+## 2026-11-23 — AUTH-01 (1–2-qadam): mahalliy parollarni olib tashlash rejasi
+- 1: zaxira backups/pre_auth01_20261123_1929.dump (529 MB; pg_restore -l bilan tarkibi o'qildi).
+- 2: backend/tests/test_auth01_no_local_passwords.py (12 test) — eski kodda 12/12 FAIL (to'g'ri sabablar bilan). backend/tests/user_factory.py (`ad_user()`); 10 ta test fayli `hashed_password="x"` o'rniga `**ad_user()` ga o'tkazildi (faqat py_compile; pg testlar hali ishga tushirilmadi).
+- Qaror: avariya yo'li = `emergency-session` CLI (15 daq., faqat faol AD-admin, auditga yoziladi, rotatsiya muddatni uzaytirmaydi).
+- Keyingi: 3-qadam (kodni olib tashlash), test_ad_users_pg/test_ad_auth/test_user_password_policy ni qisqartirish.
+
+## 2026-11-23 — AUTH-01 (3-qadam): kod olib tashlandi
+- Olib tashlandi: core/security.py parol heshi, auth.py mahalliy login va create_initial_admin, users.py create_user/convert_user_to_ad/reset_user_password, routerlar (POST /users, convert-to-ad, reset-password), schemas (UserCreate, PasswordReset, ConvertToAd), User.hashed_password (model), passlib/bcrypt (requirements), CLI create-admin/user-convert-to-ad.
+- Yangi: auth.issue_emergency_session (15 daq., audit), next_refresh_expiry (qisqa seans uzaymaydi), create_first_ad_admin; CLI `emergency-session --admin`, `create-ad-admin`.
+- Testlar: test_auth01 12/12 yashil; "not pg" 780 o'tdi, 1 FAIL = test_schema_drift (schema.sql/migratsiya 4-qadamda). Bugungi oldingi ishdan 2 ta eski test tuzatildi (test_gtk upsert 4 ta so'rov, test_fixall_units pace_km). test_user_password_policy.py o'chirildi; test_ad_auth/test_ad_users_pg qisqartirildi.
+- DEPLOY QILMANG: frontend admin sahifasi hali o'chirilgan endpointlarni chaqiradi (5-qadam), migratsiya yozilmagan (4-qadam).
+
+## 2026-11-23 — AUTH-01 (4-qadam): migratsiya 0042 + schema.sql
+- Migratsiya `0042_auth01_no_local_passwords`: `users.hashed_password` olib tashlanadi; CHECK `auth_source='ad'`, `ad_username IS NOT NULL`; mahalliy foydalanuvchi bo'lsa RAISE bilan rad etadi (tekshirildi, versiya 0041 da qoldi). `postgres/schema.sql` moslandi; test_asset_p6_audit head 0042 ga yangilandi.
+- Tekshirildi (vaqtiga `pg_rehearse`, jonli zaxira nusxasi, keyin to'liq bo'sh `clean` baza): up/down/up (3 foydalanuvchi saqlandi); to'liq backend to'plami `clean` bazada 886 passed. Jonli nusxada 21 test yiqildi: 7 tasi jonli ma'lumot bilan to'qnashuv (gps_analytics, wagon_mileage*, scales_insights, wagon_projection_gate), qolgani quyidagilar bilan tuzatildi.
+- Kodda topilgan va tuzatilgan xato (menda bugun): kilometr hisobi bo'lmagan, limitdan oshgan texnika jadvalda «upcoming» bo'lib qolardi → endi «overdue» (maintenance.py). Eski ТО pg testlari 200 km/sutka standart taxminga tayangan edi → tests/pace_factory.py (`seed_pace`). test_maintenance_reschedule_pg oy chegarasiga bog'liq xato (today+9 kun) tuzatildi.

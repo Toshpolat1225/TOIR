@@ -1,3 +1,4 @@
+from user_factory import ad_user
 import asyncio
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -55,14 +56,14 @@ async def test_parallel_runs_create_one_idempotent_ledger_set():
                     id=submitter_id,
                     email=f"pg-submitter-{uuid4()}@example.test",
                     full_name="PG test submitter",
-                    hashed_password="not-a-real-password-hash",
+                    **ad_user(),
                     role="admin",
                 ),
                 User(
                     id=approver_id,
                     email=f"pg-approver-{uuid4()}@example.test",
                     full_name="PG test approver",
-                    hashed_password="not-a-real-password-hash",
+                    **ad_user(),
                     role="admin",
                 ),
             ]

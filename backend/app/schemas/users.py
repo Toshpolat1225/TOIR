@@ -27,7 +27,7 @@ class UserRead(BaseModel):
     role: UserRole
     section_id: UUID | None
     is_active: bool
-    auth_source: Literal["local", "ad"] = "local"
+    auth_source: Literal["ad"] = "ad"
     ad_username: str | None = None
     # read from the model but never sent: an internal directory identifier is not the client's business
     ad_object_guid: UUID | None = Field(default=None, exclude=True)
@@ -83,67 +83,6 @@ class AdUserCreate(BaseModel):
         return self
 
 
-class ConvertToAd(BaseModel):
-    ad_username: str = Field(min_length=1, max_length=320)
-
-    @field_validator("ad_username")
-    @classmethod
-    def validate_username(cls, value: str) -> str:
-        return validate_ad_username(value)
-
-
-MIN_PASSWORD_LENGTH = 10
-
-
-def validate_password_policy(value: str, *, email: str | None = None) -> str:
-    """Local accounts only (directory accounts have no TOIR password). Applies when a password is SET."""
-    if len(value) < MIN_PASSWORD_LENGTH:
-        raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters long")
-    if value.isdigit() or len(set(value)) < 4:
-        raise ValueError("Password is too simple: use letters, digits and different characters")
-    if email:
-        local_part = email.split("@", 1)[0].strip().casefold()
-        if len(local_part) >= 4 and local_part in value.casefold():
-            raise ValueError("Password must not contain the login")
-    return value
-
-
-class UserCreate(BaseModel):
-    email: str = Field(min_length=3, max_length=320)
-    full_name: str = Field(min_length=1, max_length=300)
-    password: str = Field(min_length=1, max_length=256)
-    role: UserRole
-    section_id: UUID | None = None
-    is_active: bool = True
-
-    @field_validator("email")
-    @classmethod
-    def validate_email_field(cls, value: str) -> str:
-        return validate_email(value)
-
-    @field_validator("full_name")
-    @classmethod
-    def validate_full_name(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("Full name must not be empty")
-        return normalized
-
-    @field_validator("password")
-    @classmethod
-    def validate_password_length(cls, value: str) -> str:
-        if len(value.encode("utf-8")) > 72:
-            raise ValueError("Password must not exceed 72 UTF-8 bytes")
-        return value
-
-    @model_validator(mode="after")
-    def require_master_section(self) -> "UserCreate":
-        if self.role == "master" and self.section_id is None:
-            raise ValueError("Master users must be assigned to a section")
-        validate_password_policy(self.password, email=self.email)
-        return self
-
-
 class UserUpdate(BaseModel):
     full_name: str | None = Field(default=None, min_length=1, max_length=300)
     role: UserRole | None = None
@@ -168,14 +107,3 @@ class UserUpdate(BaseModel):
             if field_name in self.model_fields_set and getattr(self, field_name) is None:
                 raise ValueError(f"{field_name} cannot be null")
         return self
-
-
-class PasswordReset(BaseModel):
-    password: str = Field(min_length=1, max_length=256)
-
-    @field_validator("password")
-    @classmethod
-    def validate_password_length(cls, value: str) -> str:
-        if len(value.encode("utf-8")) > 72:
-            raise ValueError("Password must not exceed 72 UTF-8 bytes")
-        return validate_password_policy(value)

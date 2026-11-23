@@ -17,7 +17,18 @@ from app.schemas.maintenance import MaintenancePlanFromForecast, MaintenancePlan
 from app.services import maintenance
 from app.services.maintenance import estimate_date
 
+from pace_factory import seed_pace
+
 pytestmark = [pytest.mark.pg, pytest.mark.asyncio]
+
+
+@pytest.fixture(autouse=True)
+def _fresh_pace_book():
+    from app.services import maintenance_obligations as obligations
+
+    obligations.reset_pace_book()
+    yield
+    obligations.reset_pace_book()
 
 ADMIN = SimpleNamespace(role="admin", section_id=None)
 TODAY = date.today()
@@ -32,6 +43,8 @@ async def _seed(mileage="4000"):
         db.add(MaintenanceInterval(id=interval_id, code=f"R-{tag}", name="Reschedule test",
                                    interval_km=Decimal("5000"), warn_percent=Decimal("60"),
                                    asset_types=["locomotive"], is_active=True))
+        await db.flush()
+        await seed_pace(db, asset_id, mileage)
         await db.commit()
     return asset_id, interval_id
 
@@ -43,9 +56,10 @@ async def _cleanup(asset_id, interval_id):
         await db.commit()
 
 
-async def _schedule_item(asset_id, interval_id):
+async def _schedule_item(asset_id, interval_id, on=None):
+    # `on`: the day whose month is shown (a date 9 days ahead may already fall into the next month)
     async with SessionFactory() as db:
-        result = await maintenance.get_schedule(db, ADMIN, TODAY.strftime("%Y-%m"))
+        result = await maintenance.get_schedule(db, ADMIN, (on or TODAY).strftime("%Y-%m"))
     return next((i for i in result.schedule if i.asset_id == asset_id and i.interval_id == interval_id), None)
 
 
@@ -68,7 +82,7 @@ async def test_forecast_becomes_a_manual_plan_and_the_automatic_forecast_keeps_i
         assert plan.trigger_mileage == Decimal("5000.00")
 
         # the schedule now shows the plan (not the forecast) on the chosen day
-        item = await _schedule_item(asset_id, interval_id)
+        item = await _schedule_item(asset_id, interval_id, on=chosen)
         assert item.entity_type == "maintenance_plan" and item.startDate == chosen
         assert item.dateManual is True and item.recommendedDate == recommended
 

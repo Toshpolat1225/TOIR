@@ -137,7 +137,7 @@ def _interval(asset_type="locomotive"):
 
 
 def _ob(asset, *, planned=None, state="forecast", plan=None):
-    return SimpleNamespace(asset=asset, plan=plan, markers=SimpleNamespace(state=state), planned_date=planned)
+    return SimpleNamespace(asset=asset, plan=plan, markers=SimpleNamespace(state=state), planned_date=planned, pace_km=SimpleNamespace(source="asset"))
 
 
 def test_unforecasted_units_explain_every_gap():

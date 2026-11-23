@@ -1,5 +1,6 @@
 """Work order automation on PostgreSQL: planned start/end defaults from the repair-type duration,
 actual start/end stamped by the server on status changes, creator/editor audit with names (needs pg_rehearse)."""
+from user_factory import ad_user
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
@@ -39,7 +40,7 @@ class World:
             db.add(Employee(id=self.employee_id, tab_number=f"T{self.tag}", full_name=f"Исполнитель {self.tag}", section_id=self.section_id))
             for uid, name in ((self.creator_id, "Создатель"), (self.editor_id, "Редактор")):
                 db.add(User(id=uid, email=f"{name.lower()}-{self.tag}@test.local", full_name=f"{name} {self.tag}",
-                            role="admin", hashed_password="x", auth_source="local", is_active=True))
+                            role="admin", **ad_user(), is_active=True))
             for wid, code, hours in ((self.four, "A", Decimal("4")), (self.two_half, "B", Decimal("2.5")), (self.none, "C", None)):
                 db.add(WorkType(id=wid, code=f"{code}-{self.tag}", name=f"тип {code}", unit_type="locomotive", duration_hours=hours))
             await db.commit()

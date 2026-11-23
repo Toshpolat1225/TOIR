@@ -1,4 +1,5 @@
 """PostgreSQL tests for the unified wagon mileage run (needs pg_rehearse)."""
+from user_factory import ad_user
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -71,14 +72,14 @@ async def scenario(
                     id=submitter,
                     email=f"s-{uuid4()}@example.test",
                     full_name="s",
-                    hashed_password="x",
+                    **ad_user(),
                     role="admin",
                 ),
                 User(
                     id=approver,
                     email=f"a-{uuid4()}@example.test",
                     full_name="a",
-                    hashed_password="x",
+                    **ad_user(),
                     role="admin",
                 ),
             ]

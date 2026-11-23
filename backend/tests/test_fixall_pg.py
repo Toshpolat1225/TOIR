@@ -1,4 +1,5 @@
 """Database tests for the "fix everything" batch of 2026-11-16 (need the pg_rehearse database)."""
+from user_factory import ad_user
 from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -25,7 +26,7 @@ pytestmark = [pytest.mark.pg, pytest.mark.asyncio]
 async def _make_user(**extra) -> User:
     user = User(
         id=uuid4(), email=f"fx-{uuid4().hex[:8]}@example.test", full_name="FX", role="operator",
-        hashed_password="x", is_active=True, **extra,
+        **ad_user(), is_active=True, **extra,
     )
     async with SessionFactory() as db:
         db.add(user)

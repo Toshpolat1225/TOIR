@@ -1,4 +1,5 @@
 """Regression tests for defects found by the live end-to-end run (needs pg_rehearse)."""
+from user_factory import ad_user
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -60,7 +61,7 @@ async def test_a_second_opening_balance_supersedes_the_first_whatever_the_ids_ar
     when = datetime.now(timezone.utc) - timedelta(days=1)
     async with SessionFactory() as db:
         for uid, role in ((admin_id, "admin"), (maker_id, "operator")):
-            db.add(User(id=uid, email=f"rg-{uid.hex[:8]}@example.test", full_name="RG", role=role, hashed_password="x", is_active=True))
+            db.add(User(id=uid, email=f"rg-{uid.hex[:8]}@example.test", full_name="RG", role=role, **ad_user(), is_active=True))
         db.add(FixedAsset(id=wagon_id, inv_number=f"RG-W-{uuid4().hex[:6]}", asset_type="wagon", status="operational"))
         await db.flush()
         db.add(Opening(id=old_id, asset_id=wagon_id, mileage_km=Decimal("100"), effective_at=when, status="approved",

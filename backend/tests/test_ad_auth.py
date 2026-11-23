@@ -9,7 +9,6 @@ from sqlalchemy import delete, select
 
 from app.core.config import settings as real_settings
 from app.core.database import SessionFactory
-from app.core.security import hash_password
 from app.models.audit_log import AuditLog
 from app.models.identity import LoginAttempt, RefreshToken, User
 from app.schemas.auth import LoginRequest
@@ -169,7 +168,7 @@ def test_login_request_accepts_bare_login_and_long_directory_passwords():
 pytestmark_pg = [pytest.mark.pg, pytest.mark.asyncio]
 
 
-async def _make_user(*, active=True, password="LocalPass-123", source="ad", guid=None):
+async def _make_user(*, active=True, guid=None):
     tag = uuid4().hex[:10]
     login = f"adtest-{tag}"
     user_id = uuid4()
@@ -179,9 +178,8 @@ async def _make_user(*, active=True, password="LocalPass-123", source="ad", guid
                 id=user_id,
                 email=f"{login}@agmk.uz",
                 full_name="AD Test",
-                hashed_password=hash_password(password) if source == "local" else None,
-                auth_source=source,
-                ad_username=login if source == "ad" else None,
+                auth_source="ad",
+                ad_username=login,
                 ad_object_guid=guid,
                 role="admin",
                 is_active=active,
@@ -309,58 +307,8 @@ async def test_directory_down_is_503_for_ad_users_and_never_uses_a_local_passwor
 
 @pytest.mark.pg
 @pytest.mark.asyncio
-async def test_local_user_with_agmk_email_never_reaches_the_directory():
-    user_id, login = await _make_user(source="local", password="LocalPass-123")
-    try:
-        with (
-            patch.object(auth_service, "settings", _settings()),
-            patch.object(ad_auth, "verify_password") as check,
-        ):
-            assert (await _login(f"{login}@agmk.uz", "LocalPass-123")).access_token
-            with pytest.raises(HTTPException) as wrong:
-                await _login(f"{login}@agmk.uz", "bad")
-            assert wrong.value.status_code == 401
-            check.assert_not_called()
-    finally:
-        await _cleanup(user_id, login)
-
-
-@pytest.mark.pg
-@pytest.mark.asyncio
-async def test_same_password_is_checked_by_the_backend_of_the_account_source():
-    same = "Same-Password-1"
-    ad_id, ad_login = await _make_user(source="ad")
-    local_id, local_login = await _make_user(source="local", password=same)
-    try:
-        identity = ad_auth.AdIdentity(str(uuid4()), ad_login, "x", None)
-        with (
-            patch.object(auth_service, "settings", _settings()),
-            patch.object(ad_auth, "verify_password", return_value=identity) as check,
-            patch.object(auth_service, "verify_password", return_value=True) as local_check,
-        ):
-            await _login(ad_login, same)
-            assert check.call_count == 1 and local_check.call_count == 0
-            await _login(f"{local_login}@agmk.uz", same)
-            assert check.call_count == 1 and local_check.call_count == 1
-        async with SessionFactory() as db:
-            rows = (
-                await db.execute(
-                    select(AuditLog.details).where(
-                        AuditLog.action == "login", AuditLog.module == "auth"
-                    )
-                )
-            ).scalars().all()
-        sources = [row.get("auth_source") for row in rows]
-        assert "ad" in sources and "local" in sources
-    finally:
-        await _cleanup(ad_id, ad_login)
-        await _cleanup(local_id, local_login)
-
-
-@pytest.mark.pg
-@pytest.mark.asyncio
 async def test_ad_user_is_refused_when_ad_login_is_disabled():
-    user_id, login = await _make_user(source="ad")
+    user_id, login = await _make_user()
     try:
         with (
             patch.object(
@@ -381,7 +329,7 @@ async def test_ad_user_is_refused_when_ad_login_is_disabled():
 @pytest.mark.pg
 @pytest.mark.asyncio
 async def test_first_login_binds_object_guid_and_a_different_guid_is_refused_later():
-    user_id, login = await _make_user(source="ad")
+    user_id, login = await _make_user()
     first = uuid4()
     try:
         with patch.object(auth_service, "settings", _settings()):
@@ -415,8 +363,8 @@ async def test_first_login_binds_object_guid_and_a_different_guid_is_refused_lat
 @pytest.mark.asyncio
 async def test_guid_already_bound_to_another_user_is_refused():
     shared = uuid4()
-    owner_id, owner_login = await _make_user(source="ad", guid=shared)
-    other_id, other_login = await _make_user(source="ad")
+    owner_id, owner_login = await _make_user(guid=shared)
+    other_id, other_login = await _make_user()
     try:
         with (
             patch.object(auth_service, "settings", _settings()),
@@ -442,11 +390,9 @@ async def test_database_rejects_inconsistent_credential_rows():
     from sqlalchemy.exc import IntegrityError
 
     bad_rows = [
-        dict(auth_source="ad", hashed_password=hash_password("x"), ad_username="bad1"),
-        dict(auth_source="ad", hashed_password=None, ad_username=None),
-        dict(auth_source="local", hashed_password=None, ad_username=None),
-        dict(auth_source="local", hashed_password=hash_password("x"), ad_username="bad2"),
-        dict(auth_source="other", hashed_password=hash_password("x"), ad_username=None),
+        dict(auth_source="ad", ad_username=None),
+        dict(auth_source="local", ad_username="bad2"),
+        dict(auth_source="other", ad_username="bad3"),
     ]
     for row in bad_rows:
         async with SessionFactory() as db:

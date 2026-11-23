@@ -1,4 +1,5 @@
 """The command centre's handlers on a real PostgreSQL: every intent answers, a master sees only his section, write intents only ask, the executors write once."""
+from user_factory import ad_user
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
@@ -61,9 +62,9 @@ async def test_handlers_scope_writes_and_help():
         db.add_all([Section(id=sec_a, name=f"ZZAH-A-{tag}"), Section(id=sec_b, name=f"ZZAH-B-{tag}")])
         await db.flush()
         db.add_all([
-            User(id=admin_u, email=f"zzah-admin-{tag}@example.test", full_name="ZZ Admin", hashed_password="x", role="admin"),
-            User(id=master_a_u, email=f"zzah-ma-{tag}@example.test", full_name="ZZ Master A", hashed_password="x", role="master", section_id=sec_a),
-            User(id=master_b_u, email=f"zzah-mb-{tag}@example.test", full_name="ZZ Master B", hashed_password="x", role="master", section_id=sec_b),
+            User(id=admin_u, email=f"zzah-admin-{tag}@example.test", full_name="ZZ Admin", **ad_user(), role="admin"),
+            User(id=master_a_u, email=f"zzah-ma-{tag}@example.test", full_name="ZZ Master A", **ad_user(), role="master", section_id=sec_a),
+            User(id=master_b_u, email=f"zzah-mb-{tag}@example.test", full_name="ZZ Master B", **ad_user(), role="master", section_id=sec_b),
             FixedAsset(id=loco_a, inv_number=f"ZZAH-L-{tag}", asset_type="locomotive", status="operational", section_id=sec_a, mileage=Decimal("1234")),
             FixedAsset(id=wagon_a, inv_number=f"ZZAH-W-{tag}", asset_type="wagon", status="operational", section_id=sec_a),
             FixedAsset(id=loco_b, inv_number=f"ZZAH-B-{tag}", asset_type="diesel", status="operational", section_id=sec_b),
@@ -232,7 +233,7 @@ async def test_handlers_scope_writes_and_help():
             r = await run("wo.set_status", mk("ma"), work_order=digits[-6:])  # no status
             assert r.status == "needs_clarification"
             # an operator without the update permission is refused by the handler itself
-            users["op"] = User(id=uuid4(), email=f"zzah-op-{tag}@example.test", full_name="ZZ Op", hashed_password="x", role="management")
+            users["op"] = User(id=uuid4(), email=f"zzah-op-{tag}@example.test", full_name="ZZ Op", **ad_user(), role="management")
             r = await HANDLERS["admin.audit_recent"](mk("op"), Slots())
             assert r.status == "denied"
     finally:

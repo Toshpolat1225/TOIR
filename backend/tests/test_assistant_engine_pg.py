@@ -1,4 +1,5 @@
 """The command centre pipeline on a real PostgreSQL: resolution of units, scoping, permissions, clarification, the two-step write confirmation, logging."""
+from user_factory import ad_user
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -21,7 +22,7 @@ UTC = timezone.utc
 
 
 def mkuser(role, section_id=None):
-    return User(id=uuid4(), email=f"as-{uuid4().hex[:8]}@example.test", full_name="as", hashed_password="x", role=role, section_id=section_id)
+    return User(id=uuid4(), email=f"as-{uuid4().hex[:8]}@example.test", full_name="as", **ad_user(), role=role, section_id=section_id)
 
 
 @pytest.fixture
