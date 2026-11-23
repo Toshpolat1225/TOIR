@@ -82,3 +82,6 @@ Short log of decisions and why. Add a new entry only when a real decision is mad
 
 ## #76 O'rtacha kunlik probeg normasi
 Guruh = uchastka × tur, aralashmaydi. Katta/kichik ro'yxat chegaralari 10%/80%, oyna 7 kun. Vagonlarda GPS yo'q — km wagon_mileage_ledger'dan. Ma'lumot yetarli bo'lmasa son o'rniga sabab ko'rsatiladi.
+
+## #77 Prognoz tezligi
+Ma'lumoti yo'q texnikaga taxminiy tezlik berilmaydi (Без прогноза, sabab: no_pace_data). Uchastka×tur normasi faqat ≥3 texnika GPS ma'lumotiga ega bo'lsa va faqat kam (<7 kun) ma'lumotli texnikani to'ldirish uchun ishlatiladi.

@@ -258,3 +258,29 @@ async def test_a_voided_twin_of_a_due_cycle_comes_back_instead_of_being_lost():
     with patch.object(mo.repository, "upsert_scheduled_plan_with_created", new=upsert):
         assert await mo.persist_obligations(Mock(flush=AsyncMock()), [ob], TODAY) == 1
     assert twin.status == "scheduled" and twin.scheduled_date is not None
+
+
+def test_a_unit_without_gps_history_has_no_pace_and_no_forecast_date():
+    a, i = asset(mileage=4650), interval()
+    ctx = context(a, days=0)
+    assert ctx.pace_km(a).source == "none"
+    [ob] = mo.evaluate_asset(a, [i], ctx)
+    assert ob.markers.date_p75 is None  # never a guessed date (the flat default of 200 km/day is not used any more)
+
+
+def test_thin_history_is_pulled_toward_the_section_type_norm_not_the_flat_default():
+    a = asset(mileage=100)
+    ctx = context(a, per_day=10, days=2)
+    ctx.book.section_norms[(a.section_id, a.asset_type)] = D(100)
+    p50 = ctx.pace_km(a).p50
+    assert D(10) < p50 < D(100)  # weight 2/9 on its own 10, the rest on the norm of 100
+    other = asset(mileage=100)  # another section: the norm must not leak across sections
+    ctx.book.km_deltas[other.id] = [D(10)] * 2
+    assert ctx.pace_km(other).p50 == D(10)  # no reliable norm -> its own days, not blended with 200
+
+
+def test_a_parked_unit_with_enough_days_is_not_pulled_toward_the_norm():
+    a = asset(mileage=100)
+    ctx = context(a, per_day=0, days=30)
+    ctx.book.section_norms[(a.section_id, a.asset_type)] = D(100)
+    assert ctx.pace_km(a).p50 == 0  # 30 days of zero stay zero: it keeps "не движется"

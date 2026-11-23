@@ -529,3 +529,12 @@ Rassvet (qum+terrakota) va Sakura (atirgul+siren): CSS tokenlar + hover/active/k
 ## 2026-11-23 — /dashboard/maintenance ixchamlashtirish
 - Yangi Fold.tsx (yig'iladigan panel, holati localStorage'da). «Тип техники и виды работ» va «Показатели и сводка» panellari yopiq boshlanadi, «Средний суточный пробег» ham yopiq. Kartochka bosilsa hisob oynasi ochiladi (/maintenance-avg-daily-mileage/detail).
 - Edge testi b20_maintenance_folds.mjs 5/5 o'tdi (test akkaunt o'chirildi). Telefon ko'rinishi tekshirilmadi.
+
+## 2026-11-23 — Prognoz yangi normaga ulandi
+- maintenance_obligations.py: PaceBook.section_norms (uchastka×tur, kamida 3 texnika GPS ma'lumoti bilan); Context.pace_km: ma'lumoti yo'q → Pace(0,"none") → «Без прогноза» (yangi sabab no_pace_data); 1–6 kun ma'lumot → norma bilan aralashadi; ≥7 kun → o'z tezligi (to'xtab turgan texnika normaga tortilmaydi); norma yo'q bo'lsa tekis 200 km/sutka taxmin ishlatilmaydi.
+- Testlar: 82 o'tdi (lokal). Jonli: remontdagi (repair/maintenance) texnika 0 ta, ma'lumotsizlar hammasi operational. Eski mantiqda 20 texnika tezligi 0 edi, yangisida 3 ta.
+- Eslatma: serverda e2e ishga tushirilmadi; GTK sync bitta IntegrityError (restartdan keyin) kuzatildi.
+
+## 2026-11-23 — Baseline shablon CSV (ТО-1/2/3)
+- docs/templates/maintenance_baseline_TO1-3_template.csv: 86 texnika × 3 interval = 258 qator (faqat o'qish SQL bilan yaratildi, bazaga yozilmadi). To'ldiriladigan ustunlar: done_at, odometer_km (hours, note ixtiyoriy). Ma'lumot qo'shilgani yo'q — import hali ishga tushirilmadi.
+- Topildi: inv_number 38956 ikki dizelga tegishli (3189-38956 probeg 0 va 3188-38956 probeg 1260, ЖДЦ-2) — import bu qatorlarni rad etadi.

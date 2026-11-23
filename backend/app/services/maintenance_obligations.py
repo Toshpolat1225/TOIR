@@ -285,6 +285,11 @@ class Context:
             return Pace(ZERO, ZERO, ZERO, 0, "none")
         norm = self.book.section_norms.get((asset.section_id, asset.asset_type)) if asset.section_id is not None else None
         group = Pace(norm, norm, norm, 0, "norm") if norm is not None else self.book.group_km.get(asset.asset_type)
+        if group is None or len(deltas) >= settings.maintenance_pace_min_days:
+            # enough own days (or nothing reliable to compare with): its own pace as it is - a parked unit is not pulled
+            # toward the norm, and never toward a flat guess like 200 km/day
+            own = own_pace(deltas)
+            return Pace(own.p25, own.p50, own.p75, own.n_days, "asset" if own.n_days >= settings.maintenance_pace_min_days else "blend")
         return estimate_pace(
             deltas,
             group=group,
