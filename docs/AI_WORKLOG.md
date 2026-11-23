@@ -519,3 +519,13 @@ Yangi: `backend/app/services/asset_overview.py`, `POST /fixed-assets/overview`, 
 
 ## 2026-11-23 — yangi mavzular
 Rassvet (qum+terrakota) va Sakura (atirgul+siren): CSS tokenlar + hover/active/karta/tugma qoidalari. Edge 11/11. Tekshirilmadi: boshqa sahifalar ko'rinishi.
+
+## 2026-11-23 — O'rtacha kunlik probeg (ТО и ремонты)
+- Yangi: backend/app/services/avg_daily_mileage.py, GET /maintenance-avg-daily-mileage (master — faqat o'z uchastkasi), frontend app/dashboard/maintenance/_components/AvgDailyMileage.tsx, tests/test_avg_daily_mileage.py (6 unit test o'tdi).
+- Qoida: (uchastka, tur) guruhi; faol = status operational; katta ro'yxat 10–100% max, kichik 80–100%; oxirgi 7 kun: lokomotivlar asset_meter_daily, vagonlar wagon_mileage_ledger (active, eligible); ma'lumot yo'q bo'lsa son chiqmaydi.
+- Jonli bazada compute() ishladi (ЖДЦ-1 vagon 40.91, lokomotiv 92.76 km/sutki va h.k.). Brauzer/e2e tekshirilmadi.
+- Eslatma: `docker compose up --build` bake xatosi beradi → COMPOSE_BAKE=false bilan `docker compose build`.
+
+## 2026-11-23 — /dashboard/maintenance ixchamlashtirish
+- Yangi Fold.tsx (yig'iladigan panel, holati localStorage'da). «Тип техники и виды работ» va «Показатели и сводка» panellari yopiq boshlanadi, «Средний суточный пробег» ham yopiq. Kartochka bosilsa hisob oynasi ochiladi (/maintenance-avg-daily-mileage/detail).
+- Edge testi b20_maintenance_folds.mjs 5/5 o'tdi (test akkaunt o'chirildi). Telefon ko'rinishi tekshirilmadi.

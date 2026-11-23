@@ -615,6 +615,7 @@ def _unforecasted_units(
     """Units whose maintenance cannot be dated, with the reason, so an empty chart is never a silent gap.
 
     * no_movement: the obligation exists but the unit does not move, so no date can be forecast.
+    * no_pace_data: the unit has no GPS mileage history of its own, so its pace is unknown (never guessed).
     * no_mileage_baseline: a wagon without an approved opening balance (its km are not trusted yet).
     * no_mileage: no odometer value at all.
     * no_data: the intervals need a baseline (hours / calendar) nobody has entered.
@@ -644,7 +645,8 @@ def _unforecasted_units(
         if not applicable:
             continue
         if asset.id in undated:
-            reason, count = "no_movement", undated[asset.id]
+            no_pace = any(ob.pace_km.source == "none" for ob in by_key.values() if ob.asset.id == asset.id)
+            reason, count = ("no_pace_data" if no_pace else "no_movement"), undated[asset.id]
         elif asset.id not in with_obligations:
             if asset.asset_type == "wagon" and asset.id not in ctx.trusted_wagons:
                 reason = "no_mileage_baseline"

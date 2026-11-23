@@ -10,6 +10,7 @@ from app.core.security import get_current_user
 from app.models.identity import User
 from app.schemas.common import PaginatedResponse
 from app.schemas.maintenance import (
+    AvgDailyMileageRow,
     MaintenanceBaselineRead,
     MaintenanceBaselineUpsert,
     MaintenanceDecisionRead,
@@ -27,6 +28,7 @@ from app.schemas.maintenance import (
     MaintenanceSettingsUpdate,
     MaintenanceUrgency,
 )
+from app.services import avg_daily_mileage
 from app.services import maintenance as service
 from app.services import maintenance_lifecycle as lifecycle
 
@@ -246,3 +248,25 @@ async def read_maintenance_health(
 ) -> MaintenanceHealthRead:
     _require_planner(current_user)
     return await lifecycle.run_health(db, fix=False)
+
+
+@router.get("/maintenance-avg-daily-mileage", response_model=list[AvgDailyMileageRow])
+async def read_avg_daily_mileage(
+    current_user: AuthenticatedUser, db: DatabaseSession
+) -> list[dict]:
+    """Average daily mileage per section and equipment type (a master sees only their own section)."""
+    return await avg_daily_mileage.compute(db, section_id=service._master_section_scope(current_user))
+
+
+@router.get("/maintenance-avg-daily-mileage/detail")
+async def read_avg_daily_mileage_detail(
+    current_user: AuthenticatedUser, db: DatabaseSession, section_id: UUID, asset_type: str
+) -> dict:
+    """How one group's average was calculated. A master asking for another section gets 404."""
+    scope = service._master_section_scope(current_user)
+    if scope is not None and scope != section_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    result = await avg_daily_mileage.detail(db, section_id=section_id, asset_type=asset_type)
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return result

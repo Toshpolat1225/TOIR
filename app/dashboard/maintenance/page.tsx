@@ -14,6 +14,8 @@ import {
 import { RescheduleDialog } from "./_components/RescheduleDialog"
 import { LivePlanCard } from "./_components/LivePlanCard"
 import { LiveOverview } from "./_components/LiveOverview"
+import { Fold } from "./_components/Fold"
+import { AvgDailyMileage } from "./_components/AvgDailyMileage"
 import { BaselineDialog, BlockDialog, DisruptionDialog, WaiveDialog } from "./_components/PlanDialogs"
 import {
   CONFIDENCE_LABEL, NEAR_THRESHOLD_PCT, NO_DEPOT, PRIORITY_CLS, buildCsv, compareEnriched, defaultSortDir, enrich,
@@ -38,6 +40,7 @@ type ScheduleItem = MaintenanceScheduleItem
 
 const UNFORECASTED_REASON: Record<string, string> = {
   no_movement: "не движется (пробег не растёт)",
+  no_pace_data: "нет данных GPS о пробеге — темп неизвестен",
   no_mileage_baseline: "вагон без утверждённого начального пробега",
   no_mileage: "нет показаний пробега",
   no_data: "нет исходных данных (часы/календарь)",
@@ -1365,7 +1368,7 @@ function DetailDrawer({ entry, siblings, onSelect, plan, canUpdate, updating, er
 }
 
 export default function MaintenancePage() {
-  const { hasPermission, user } = useAuth()
+  const { user } = useAuth()
   const locale = "ru-RU"
   const [schedule,  setSchedule]  = useState<ScheduleItem[]>([])
   const [plans, setPlans] = useState<MaintenancePlan[]>([])
@@ -1380,9 +1383,8 @@ export default function MaintenancePage() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [workTypes, setWorkTypes] = useState<WorkType[]>([])
   const [dailyAverageKm, setDailyAverageKm] = useState("")
-  const [settingsLoading, setSettingsLoading] = useState(true)
-  const [settingsSaving, setSettingsSaving] = useState(false)
-  const [settingsError, setSettingsError] = useState<string | null>(null)
+  const [, setSettingsLoading] = useState(true)
+  const [, setSettingsError] = useState<string | null>(null)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
   const [plansError, setPlansError] = useState<string | null>(null)
   const [planUpdateError, setPlanUpdateError] = useState<string | null>(null)
@@ -1637,9 +1639,6 @@ export default function MaintenancePage() {
     }
   }, [])
 
-  const canConfigureMaintenance =
-    hasPermission("maintenance_settings.update") || hasPermission("maintenance.update")
-
   const updatePlanStatus = async (
     item: ScheduleItem,
     status: MaintenancePlan["status"],
@@ -1660,27 +1659,6 @@ export default function MaintenancePage() {
       )
     } finally {
       setUpdatingPlanId(null)
-    }
-  }
-
-  const saveDailyAverageKm = async () => {
-    const value = Number(dailyAverageKm)
-    if (!Number.isFinite(value) || value < 5 || value > 1000) {
-      setSettingsError("Средний пробег должен быть от 5 до 1000 км в день")
-      return
-    }
-    setSettingsSaving(true)
-    setSettingsError(null)
-    try {
-      const result = await api.maintenanceSettings.update({ daily_average_km: value })
-      setDailyAverageKm(String(result.daily_average_km))
-      await fetchSchedule(monthOffset)
-    } catch (cause) {
-      setSettingsError(
-        cause instanceof Error ? cause.message : "Не удалось сохранить настройку"
-      )
-    } finally {
-      setSettingsSaving(false)
     }
   }
 
@@ -2179,75 +2157,10 @@ export default function MaintenancePage() {
         </div>
       </div>
 
-      <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">{"Расчётная средняя суточная наработка"}</h2>
-            <p className="mt-1 text-xs text-gray-500">
-              {"Значение используется для прогноза дат ТО по пробегу. Настраивают администратор, оператор или инженер."}
-            </p>
-          </div>
-          {canConfigureMaintenance ? (
-            <div className="flex w-full gap-2 md:max-w-sm">
-              <label className="flex-1 text-xs text-gray-500">
-                {"км в день"}
-                <input
-                  type="number"
-                  min="5"
-                  max="1000"
-                  step="0.01"
-                  value={dailyAverageKm}
-                  onChange={(event) => setDailyAverageKm(event.target.value)}
-                  disabled={settingsLoading || settingsSaving}
-                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() => void saveDailyAverageKm()}
-                disabled={settingsLoading || settingsSaving}
-                className="self-end rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                {settingsSaving ? "Сохранение..." : "Сохранить"}
-              </button>
-            </div>
-          ) : (
-            <p className="text-sm text-gray-700 dark:text-gray-300">
-              {dailyAverageKm ? `${dailyAverageKm} ${"км в день"}` : "Значение ещё не настроено"}
-            </p>
-          )}
-        </div>
-        {settingsError && <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">{settingsError}</p>}
-        {!settingsLoading && !dailyAverageKm && (
-          <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">
-            {"Суточный пробег не настроен: календарные прогнозы по километровым интервалам не рассчитываются."}
-          </p>
-        )}
-      </section>
-
       {scheduleError && (
         <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
           {"Не удалось загрузить график:"} {scheduleError}
         </p>
-      )}
-      {unforecasted.total > 0 && (
-        <details className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-          <summary className="cursor-pointer font-medium">
-            {`Без прогноза: ${unforecasted.total} ед.`}
-            <span className="ml-2 font-normal">
-              {Object.entries(unforecasted.counts).map(([reason, count]) => `${UNFORECASTED_REASON[reason] ?? reason}: ${count}`).join(" · ")}
-            </span>
-          </summary>
-          <p className="mt-2 text-xs">{"Этих единиц нет на графике: для них нельзя назвать дату ТО. Причина указана рядом с каждой."}</p>
-          <ul className="mt-2 max-h-64 space-y-0.5 overflow-y-auto text-xs">
-            {unforecasted.items.map((item) => (
-              <li key={item.asset_id}>{`${item.unit} — ${UNFORECASTED_REASON[item.reason] ?? item.reason}`}</li>
-            ))}
-          </ul>
-          {unforecasted.total > unforecasted.items.length && (
-            <p className="mt-1 text-xs">{`Показаны первые ${unforecasted.items.length} из ${unforecasted.total}.`}</p>
-          )}
-        </details>
       )}
       {plansError && (
         <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
@@ -2520,6 +2433,8 @@ export default function MaintenancePage() {
         <span className="ml-auto text-xs text-gray-400">{"Записи без данных о пробеге всегда внизу списка"}</span>
       </div>
 
+      <Fold id="filters" title="Тип техники и виды работ" hint="Нажмите, чтобы выбрать тип техники или вид работ"
+        badge={(filterAssetType ? 1 : 0) + (filterType ? 1 : 0) || null}>
       {assetTypeList.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-gray-400">{"Техника:"}</span>
@@ -2543,6 +2458,29 @@ export default function MaintenancePage() {
         </div>
       )}
 
+
+      {/* Виды работ: из справочника; нажмите, чтобы отфильтровать */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="mr-1 text-xs text-gray-400">{"Виды работ:"}</span>
+        {workTypeLegend.map((entry) => {
+          const active = filterType === entry.code
+          return (
+            <button key={entry.code} type="button" aria-pressed={active} title={entry.title}
+              onClick={() => toggleTypeFilter(entry.code)}
+              style={active ? { backgroundColor: entry.cfg.color, borderColor: entry.cfg.color } : undefined}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-all ${
+                active ? "text-white shadow-md" : `${entry.cfg.text} ${entry.cfg.border} bg-white hover:shadow-sm dark:bg-gray-900`
+              } ${entry.count === 0 && !active ? "opacity-60" : ""}`}>
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: active ? "#fff" : entry.cfg.color }} />
+              {entry.code}
+              <span className={`rounded-full px-1.5 text-[10px] ${active ? "bg-white/25" : "bg-gray-100 dark:bg-gray-800"}`}>{entry.count}</span>
+            </button>
+          )
+        })}
+        <a href="/dashboard/directories/work-types" className="ml-1 text-xs text-blue-600 hover:underline">{"Справочник →"}</a>
+      </div>
+      </Fold>
+
       {activePills.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-gray-400">{"Применено:"}</span>
@@ -2556,6 +2494,7 @@ export default function MaintenancePage() {
         </div>
       )}
 
+      <Fold id="summary" title="Показатели и сводка" hint="Простои, рекордсмены по пробегу, KPI">
       <LiveOverview kpis={kpis} disruptions={disruptions} sections={sections} canUpdate={canUpdatePlans}
         assetLabel={(id) => assetOptions.find(([assetId]) => assetId === id)?.[1] ?? "техника"}
         busyId={closingDisruptionId} onClose={(id) => void closeDisruption(id)}
@@ -2616,27 +2555,9 @@ export default function MaintenancePage() {
           )
         })}
       </div>
+      </Fold>
 
-      {/* Виды работ: из справочника; нажмите, чтобы отфильтровать */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="mr-1 text-xs text-gray-400">{"Виды работ:"}</span>
-        {workTypeLegend.map((entry) => {
-          const active = filterType === entry.code
-          return (
-            <button key={entry.code} type="button" aria-pressed={active} title={entry.title}
-              onClick={() => toggleTypeFilter(entry.code)}
-              style={active ? { backgroundColor: entry.cfg.color, borderColor: entry.cfg.color } : undefined}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-all ${
-                active ? "text-white shadow-md" : `${entry.cfg.text} ${entry.cfg.border} bg-white hover:shadow-sm dark:bg-gray-900`
-              } ${entry.count === 0 && !active ? "opacity-60" : ""}`}>
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: active ? "#fff" : entry.cfg.color }} />
-              {entry.code}
-              <span className={`rounded-full px-1.5 text-[10px] ${active ? "bg-white/25" : "bg-gray-100 dark:bg-gray-800"}`}>{entry.count}</span>
-            </button>
-          )
-        })}
-        <a href="/dashboard/directories/work-types" className="ml-1 text-xs text-blue-600 hover:underline">{"Справочник →"}</a>
-      </div>
+      <AvgDailyMileage />
 
       {/* ДИАГРАММА ГАНТА */}
       {view === "gantt" && (
@@ -2996,6 +2917,25 @@ export default function MaintenancePage() {
         </span>
       </div>
 
+      {unforecasted.total > 0 && (
+        <details className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          <summary className="cursor-pointer font-medium">
+            {`Без прогноза: ${unforecasted.total} ед.`}
+            <span className="ml-2 font-normal">
+              {Object.entries(unforecasted.counts).map(([reason, count]) => `${UNFORECASTED_REASON[reason] ?? reason}: ${count}`).join(" · ")}
+            </span>
+          </summary>
+          <p className="mt-2 text-xs">{"Этих единиц нет на графике: для них нельзя назвать дату ТО. Причина указана рядом с каждой."}</p>
+          <ul className="mt-2 max-h-64 space-y-0.5 overflow-y-auto text-xs">
+            {unforecasted.items.map((item) => (
+              <li key={item.asset_id}>{`${item.unit} — ${UNFORECASTED_REASON[item.reason] ?? item.reason}`}</li>
+            ))}
+          </ul>
+          {unforecasted.total > unforecasted.items.length && (
+            <p className="mt-1 text-xs">{`Показаны первые ${unforecasted.items.length} из ${unforecasted.total}.`}</p>
+          )}
+        </details>
+      )}
     </div>
   )
 }

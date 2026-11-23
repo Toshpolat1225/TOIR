@@ -1735,7 +1735,7 @@ export type MaintenanceBlockReason =
   | "parts" | "no_bay" | "no_crew" | "unit_unavailable" | "accident" | "unplanned_repair"
   | "sensor_failure" | "weather" | "other";
 
-export type MaintenanceUnforecastedReason = "no_movement" | "no_mileage_baseline" | "no_mileage" | "no_data";
+export type MaintenanceUnforecastedReason = "no_movement" | "no_mileage_baseline" | "no_mileage" | "no_data" | "no_pace_data";
 
 export type MaintenanceUnforecasted = {
   asset_id: string;
@@ -1782,6 +1782,24 @@ export type MaintenancePlan = {
   blocked_note?: string | null;
   deferral_count?: number;
 };
+
+export type AvgDailyMileageRow = {
+  section_id: string; section_name: string | null; asset_type: string; asset_type_name: string
+  active_count: number; max_mileage: string | null; big_count: number; small_count: number; with_data_count: number
+  avg_daily_km: string | null; reason: "no_mileage" | "no_gps_data" | null; window_days: number
+}
+
+export type AvgDailyMileageUnit = {
+  asset_id: string; inv_number: string | null; name: string | null; mileage: string; percent_of_max: string; in_small: boolean
+  daily_km: string | null; source: "meter" | "ledger" | null; first_day: string | null; first_km: string | null
+  last_day: string | null; last_km: string | null; total_km: string | null; readings: number | null
+}
+
+export type AvgDailyMileageDetail = {
+  section_id: string; section_name: string | null; asset_type: string; active_count: number; max_mileage: string | null
+  big_low: string | null; small_low: string | null; big_count: number; small_count: number; with_data_count: number
+  avg_daily_km: string | null; window_days: number; units: AvgDailyMileageUnit[]
+}
 
 export type MaintenanceKpis = {
   as_of: string;
@@ -2051,6 +2069,12 @@ const maintenancePlans = {
 };
 
 const maintenanceLive = {
+  async avgDailyMileageDetail(sectionId: string, assetType: string): Promise<AvgDailyMileageDetail> {
+    return request<AvgDailyMileageDetail>({ method: "GET", path: `/maintenance-avg-daily-mileage/detail?section_id=${encodeURIComponent(sectionId)}&asset_type=${encodeURIComponent(assetType)}` });
+  },
+  async avgDailyMileage(): Promise<AvgDailyMileageRow[]> {
+    return request<AvgDailyMileageRow[]>({ method: "GET", path: "/maintenance-avg-daily-mileage", suppressNetworkLog: true });
+  },
   async kpis(): Promise<MaintenanceKpis> {
     return request<MaintenanceKpis>({ method: "GET", path: "/maintenance-kpis", suppressNetworkLog: true });
   },

@@ -162,7 +162,7 @@ class MaintenanceScheduleItem(BaseModel):
     mileageEstimated: bool = False  # wagon km that include ESTIMATED km: the forecast is approximate
 
 
-UnforecastedReason = Literal["no_movement", "no_mileage_baseline", "no_mileage", "no_data"]
+UnforecastedReason = Literal["no_movement", "no_mileage_baseline", "no_mileage", "no_data", "no_pace_data"]
 
 
 class MaintenanceUnforecasted(BaseModel):
@@ -281,3 +281,18 @@ class MaintenanceHealthRead(BaseModel):
     as_of: date
     ok: bool
     issues: list[MaintenanceHealthIssue]
+
+
+class AvgDailyMileageRow(BaseModel):
+    section_id: UUID
+    section_name: str | None
+    asset_type: str
+    asset_type_name: str
+    active_count: int
+    max_mileage: Decimal | None
+    big_count: int
+    small_count: int
+    with_data_count: int
+    avg_daily_km: Decimal | None
+    reason: Literal["no_mileage", "no_gps_data"] | None
+    window_days: int

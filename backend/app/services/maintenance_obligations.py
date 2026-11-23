@@ -50,6 +50,7 @@ from app.services.maintenance_engine import (
     partial_day_rates,
     priority_score,
 )
+from app.services import avg_daily_mileage
 from app.services.maintenance_planning import next_mileage_threshold
 
 ZERO = Decimal("0")
@@ -74,6 +75,7 @@ class PaceBook:
     hours_deltas: dict[UUID, list[Decimal]]
     group_km: dict[str, Pace | None]
     group_hours: dict[str, Pace | None]
+    section_norms: dict[tuple[UUID, str], Decimal] = field(default_factory=dict)  # (section, type) -> reliable avg km/day (>= 3 units with GPS data)
 
 
 _book: PaceBook | None = None
@@ -170,9 +172,14 @@ async def _build_pace_book(db: AsyncSession, today: date) -> PaceBook:
             for asset_type, paces in by_type.items()
         }
 
+    norms = {
+        (row["section_id"], row["asset_type"]): row["avg_daily_km"]
+        for row in await avg_daily_mileage.compute(db)
+        if row["avg_daily_km"] is not None and row["with_data_count"] >= avg_daily_mileage.MIN_NORM_UNITS
+    }
     return PaceBook(
         day=today, built_at=time.monotonic(), km_deltas=km_deltas, hours_deltas=hours_deltas,
-        group_km=groups(km_deltas, _GROUP_MIN_DAYS), group_hours=groups(hours_deltas),
+        group_km=groups(km_deltas, _GROUP_MIN_DAYS), group_hours=groups(hours_deltas), section_norms=norms,
     )
 
 
@@ -272,9 +279,15 @@ class Context:
         return self.behavior_of_status.get(asset.status, "operational")
 
     def pace_km(self, asset: FixedAsset) -> Pace:
+        deltas = self.book.km_deltas.get(asset.id, [])
+        if not deltas:
+            # no GPS history of its own: no invented pace -> no date (the unit stays in «Без прогноза»)
+            return Pace(ZERO, ZERO, ZERO, 0, "none")
+        norm = self.book.section_norms.get((asset.section_id, asset.asset_type)) if asset.section_id is not None else None
+        group = Pace(norm, norm, norm, 0, "norm") if norm is not None else self.book.group_km.get(asset.asset_type)
         return estimate_pace(
-            self.book.km_deltas.get(asset.id, []),
-            group=self.book.group_km.get(asset.asset_type),
+            deltas,
+            group=group,
             fallback_per_day=self.default_pace,
             fallback_source=self.default_source,
             min_days=settings.maintenance_pace_min_days,

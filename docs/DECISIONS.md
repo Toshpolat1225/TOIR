@@ -79,3 +79,6 @@ Short log of decisions and why. Add a new entry only when a real decision is mad
 73. **Audit tuzatishlari (2026-11-22):** GTK ko'rinmagan poyezd `is_open=false` bo'ladi (end_time o'zgarmaydi); vagon probeg dvigateli sukut bo'yicha yoqildi va backend xotirasi 1024m (512m da dry-run 137 bilan o'ldi); tarozi kollektori vazifasi har 5 daqiqada qayta ishga tushadi.
 74. **Справочник ОС — «Паспорт 360°» (2026-11-23):** jadvalda faqat asosiy qisqa ma'lumot (GPS hukmi, sostav raqami, oxirgi tarozi, oxirgi ta'mir) chip ko'rinishida; batafsil ma'lumot modalda va boshqa sahifalarning o'sha endpointlaridan olinadi (bir xil manba). GPS hukmi xarita xizmatidan olinadi. Master uchun GTK/Весовая berilmaydi.
 75. **Yangi mavzular (2026-11-23):** «Рассвет» (iliq qum, terrakota, asal) va «Сакура» (sovuq pushti, atirgul, siren) — ikkalasi yorug', bir-biridan keskin farq qiladi; har birida o'z hover/active ranglari (`--theme-hover`, `--theme-active`, `--theme-accent-2`). Semantik holat ranglari (yashil/qizil/sariq belgilar) o'zgarmaydi; faqat ko'k/indigo elementlar va yashil TUGMALAR mavzu rangini oladi.
+
+## #76 O'rtacha kunlik probeg normasi
+Guruh = uchastka × tur, aralashmaydi. Katta/kichik ro'yxat chegaralari 10%/80%, oyna 7 kun. Vagonlarda GPS yo'q — km wagon_mileage_ledger'dan. Ma'lumot yetarli bo'lmasa son o'rniga sabab ko'rsatiladi.
