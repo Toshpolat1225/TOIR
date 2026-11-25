@@ -1,4 +1,5 @@
 "use client"
+import { fmtPercent } from "@/lib/format"
 
 // Hand-drawn visuals of the GPS comparison pages: verdict chips, a stacked verdict bar, a pair-of-bars mini chart and the daily km chart.
 import {
@@ -67,7 +68,7 @@ export function StackBar<K extends string>({
         <svg viewBox={`0 0 ${W} 18`} className="h-4 w-full" preserveAspectRatio="none" role="img" aria-label="распределение вердиктов">
           {segs.map((s) => (
             <rect key={s.key} x={s.x} y={0} width={Math.max(0, s.w - 1.5)} height={18} rx={4} fill={color(s.key)} opacity={anyOn && !isOn(s.key) ? 0.3 : 1}>
-              <title>{`${label(s.key)}: ${s.value} (${Math.round(s.pct)}%)`}</title>
+              <title>{`${label(s.key)}: ${s.value} (${fmtPercent(s.pct)})`}</title>
             </rect>
           ))}
         </svg>

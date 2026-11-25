@@ -8,6 +8,9 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+# Sub-path the site is served under ("" = root, "/demo" = the demo copy)
+ARG NEXT_PUBLIC_BASE_PATH=
+ENV NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH}
 # Google Maps JavaScript API key of the map page (public by design; restrict it by HTTP referrer in Google Cloud)
 ARG NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=
 ENV NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}

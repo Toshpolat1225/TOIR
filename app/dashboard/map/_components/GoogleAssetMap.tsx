@@ -1,5 +1,6 @@
 "use client"
 
+import { withBase } from "@/lib/base-path"
 import { useEffect, useRef, useState } from "react"
 import { MarkerClusterer } from "@googlemaps/markerclusterer"
 import {
@@ -54,7 +55,7 @@ function infoHtml(p: MapPoint): string {
     `<div>Источник: ${SOURCE_LABEL[p.source]}${p.source !== "gtk" ? (p.online ? " · на связи" : " · нет связи") : ""}</div>`,
     `<div>Позиция: ${escapeHtml(ageText(p.position_at))}${p.speed != null && Number(p.speed) > 0 ? ` · ${Math.round(Number(p.speed))} км/ч` : ""}</div>`,
     `<div style="margin-top:4px"><a href="${googleMapsLink(p.lat, p.lon)}" target="_blank" rel="noopener noreferrer">Открыть в Google Maps</a> · ` +
-      `<a href="/dashboard/directories/assets?q=${encodeURIComponent(p.inv_number)}">Карточка ОС</a></div>`,
+      `<a href="${withBase('')}/dashboard/directories/assets?q=${encodeURIComponent(p.inv_number)}">Карточка ОС</a></div>`,
   ]
   return `<div style="font-size:13px;line-height:1.35;color:#111827">${lines.join("")}</div>`
 }

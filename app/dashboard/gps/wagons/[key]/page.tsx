@@ -1,4 +1,5 @@
 "use client"
+import { fmtPercent } from "@/lib/format"
 
 import { PeriodPicker } from "@/components/gps/PeriodPicker"
 import Link from "next/link"
@@ -140,7 +141,7 @@ export default function WagonDetailPage() {
                     <td className="px-2 py-2 text-right font-semibold tabular-nums">{segKm(s.selected_km)}</td>
                     <td className="px-2 py-2"><span title={BASIS_HINT[s.basis]}><BasisChip basis={s.basis} /></span></td>
                     <td className="px-2 py-2"><ConfidenceChip level={s.confidence} /></td>
-                    <td className="px-2 py-2 text-right text-xs tabular-nums">{s.coverage == null ? "—" : `${Math.round(s.coverage * 100)}%`}</td>
+                    <td className="px-2 py-2 text-right text-xs tabular-nums">{s.coverage == null ? "—" : fmtPercent(s.coverage * 100)}</td>
                     <td className="px-2 py-2"><div className="flex flex-wrap gap-1">{s.flags.length === 0 ? <span className="text-xs text-gray-400">—</span> : s.flags.map((f) => <FlagChip key={f} flag={f} />)}</div></td>
                   </tr>
                 ))}

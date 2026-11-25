@@ -1,5 +1,6 @@
 "use client"
 
+import { withBase } from "@/lib/base-path"
 import { useEffect, useMemo, useRef, useState } from "react"
 import type * as Leaflet from "leaflet"
 import "leaflet/dist/leaflet.css"
@@ -29,14 +30,14 @@ function popupHtml(p: MapPoint): string {
       ? `<div style="margin-top:4px;padding:4px 6px;border-radius:6px;background:#f3f4f6"><div style="font-weight:600"><span style="display:inline-block;width:9px;height:9px;border-radius:9999px;background:${positionColor(gps.verdict)};margin-right:5px"></span>${escapeHtml(gps.verdictLabel)}</div>` +
         `<div>Рисуется: ${escapeHtml(gps.drawn)}</div>${gps.other ? `<div>Второй трекер: ${escapeHtml(gps.other)}</div>` : ""}${gps.diff ? `<div>Между точками: ${escapeHtml(gps.diff)}</div>` : ""}</div>`
       : "",
-    `<div style="margin-top:4px"><a href="/dashboard/map/history/${p.asset_id}">Где был и с кем</a>${gps ? ` · <a href="/dashboard/gps/${p.asset_id}">Сравнение GPS</a>` : ""} · <a href="${googleMapsLink(p.lat, p.lon)}" target="_blank" rel="noopener noreferrer">Google Maps</a> · ` +
-      `<a href="/dashboard/directories/assets?q=${encodeURIComponent(p.inv_number)}">Карточка ОС</a></div>`,
+    `<div style="margin-top:4px"><a href="${withBase('')}/dashboard/map/history/${p.asset_id}">Где был и с кем</a>${gps ? ` · <a href="${withBase('')}/dashboard/gps/${p.asset_id}">Сравнение GPS</a>` : ""} · <a href="${googleMapsLink(p.lat, p.lon)}" target="_blank" rel="noopener noreferrer">Google Maps</a> · ` +
+      `<a href="${withBase('')}/dashboard/directories/assets?q=${encodeURIComponent(p.inv_number)}">Карточка ОС</a></div>`,
   ]
   return `<div style="font-size:13px;line-height:1.35;color:#111827">${lines.join("")}</div>`
 }
 
 function trainPopupHtml(t: LiveTrain, focus?: FormationVehicle): string {
-  const link = (id: string | null, label: string) => (id ? `<a href="/dashboard/map/history/${id}">${escapeHtml(label)}</a>` : `<span style="color:#6b7280">${escapeHtml(label)}</span>`)
+  const link = (id: string | null, label: string) => (id ? `<a href="${withBase('')}/dashboard/map/history/${id}">${escapeHtml(label)}</a>` : `<span style="color:#6b7280">${escapeHtml(label)}</span>`)
   const wagons = t.vehicles.filter((v) => v.role === "wagon")
   const rows = [
     `<div style="font-weight:600">⚡ ${escapeHtml(trainCaption(t))}</div>`,

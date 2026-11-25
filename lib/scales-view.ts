@@ -1,3 +1,4 @@
+import { fmtPercent } from "./format.ts"
 // Pure helpers of the weighing-scale (Vesovoy) page: labels, tones, texts. No React.
 // Run the tests with: npm run test:unit
 
@@ -148,7 +149,7 @@ export const netText = (train: Pick<ScaleTrain, "net_total_t" | "net_source">): 
   tonnesText(train.net_total_t, train.net_source === "estimated")
 
 export function percentText(value: number | null): string {
-  return value === null ? "—" : `${Math.round(value * 100)}%`
+  return value === null ? "—" : fmtPercent(value * 100)
 }
 
 export function wagonsText(t: Pick<ScaleTrain, "dump_count" | "carriages_total" | "carriages_linked" | "match_status">): string {
@@ -234,5 +235,5 @@ export function tripTonnes(t: Pick<WagonTrip, "tonnes" | "basis">): string {
 }
 
 export function ownShareText(w: Pick<WagonTotal, "trips" | "own_trips">): string {
-  return w.trips ? `${Math.round((w.own_trips / w.trips) * 100)}% по собственному взвешиванию` : "—"
+  return w.trips ? `${fmtPercent((w.own_trips / w.trips) * 100)} по собственному взвешиванию` : "—"
 }

@@ -4,8 +4,8 @@ import './globals.css'
 
 
 export const metadata: Metadata = {
-  title: 'STTB — Система ТО',
-  description: 'Система управления техническим обслуживанием STTB',
+  title: 'НейроТОиР — Система ТО и ремонта',
+  description: 'Система управления техническим обслуживанием и ремонтом НейроТОиР',
   icons: {
     icon: [
       { url: '/icon.svg', type: 'image/svg+xml' },

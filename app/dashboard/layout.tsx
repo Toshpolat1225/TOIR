@@ -6,7 +6,7 @@ import { useEffect, useState } from "react"
 import {
   Wrench, ClipboardList, LayoutDashboard, PanelLeftIcon,
   ChevronRight, Package, LogOut, Users, FileText, ChevronDown, FolderOpen,
-  BarChart3,
+  Sparkles, Brain,
   Activity,
   Radio,
   MapPin,
@@ -24,14 +24,14 @@ import { ThemeSwitcher } from "@/components/theme-switcher"
 
 const ALL_NAV = [
   { href: "/dashboard",             label: "Дашборд",        icon: LayoutDashboard, permission: "dashboard.view",         exact: true },
-  { href: "/dashboard/analytics",   label: "Аналитика",      icon: BarChart3,       permission: "analytics.view"                    },
+  { href: "/dashboard/analytics",   label: "ИИ-Аналитика",   icon: Sparkles,        permission: "analytics.view"                    },
   { href: "/dashboard/gps",         label: "GPS: Wialon ↔ GTK", icon: Target,       permission: "analytics.view", excludePrefix: "/dashboard/gps/wagons" },
   { href: "/dashboard/map",         label: "Карта",          icon: MapPin,          permission: "analytics.view", child: true       },
   { href: "/dashboard/os/gtk",      label: "Данные GTK",     icon: Radio,           permission: "gtk.view", exact: true, child: true },
   { href: "/dashboard/os/wialon",   label: "Данные Wialon", icon: Radio,           permission: "assets.view", child: true          },
   { href: "/dashboard/gps/wagons",  label: "Вагоны (по составу)", icon: Container,  permission: "analytics.view", child: true       },
   { href: "/dashboard/scales",     label: "Весовая",        icon: Gauge,           permission: "scales.view"                       },
-  { href: "/dashboard/maintenance", label: "ТО и ремонты",   icon: Wrench,          permission: "maintenance.view"                    },
+  { href: "/dashboard/maintenance", label: "ИИ-ТО и ремонты", icon: Brain,           permission: "maintenance.view"                    },
   { href: "/dashboard/work-orders", label: "Наряд-заказы",   icon: ClipboardList,   permission: "work_orders.view"            },
   { href: "/dashboard/tmc",         label: "ТМЦ",            icon: Package,         permission: "tmc.view"                    },
   { href: "/dashboard/reports",     label: "Отчёты",        icon: FileText,       permission: "reports.view"                    },
@@ -233,8 +233,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex h-16 shrink-0 items-center gap-3 border-b border-slate-200 px-5 dark:border-gray-800">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-700 text-white"><Wrench className="h-4 w-4" /></div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold leading-tight tracking-wide text-slate-900 dark:text-white">STTB</p>
-              <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-gray-400">Техническое обслуживание</p>
+              <p className="text-sm font-bold leading-tight tracking-wide text-slate-900 dark:text-white">НейроТОиР</p>
+              <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-gray-400">ТО и ремонт</p>
             </div>
             <button type="button" aria-label="Закрыть навигацию" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 md:hidden dark:text-gray-400 dark:hover:bg-gray-800" onClick={() => setMobileNavOpen(false)}>
               <ChevronRight className="h-4 w-4 rotate-180" />

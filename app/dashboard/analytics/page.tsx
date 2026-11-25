@@ -1,40 +1,68 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import {
-  AiSectionSkeleton,
   ChartSkeleton,
   CustomTooltip,
-  KpiCard,
   KpiSkeleton,
-  formatCurrency,
-  formatPercent,
+  StatCard,
 } from "./_components/AnalyticsElements"
+import { AiBlock } from "./_components/AiBlock"
+import { PartsForecastSection } from "./_components/PartsForecastSection"
 import { useAnalyticsData } from "./_components/useAnalyticsData"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   Line, PieChart, Pie, Cell, AreaChart, Area,
-  ComposedChart
+  ComposedChart, ResponsiveContainer
 } from "recharts"
 import {
   TrendingUp, TrendingDown, DollarSign, AlertTriangle,
   Activity, Gauge, Wrench, RefreshCw,
   BarChart3, PieChartIcon, LineChartIcon,
-  Brain, Shield, Bell, Cpu, Zap, HeartPulse, CheckCircle, XCircle,
   Loader2
 } from "@/components/ui/icons"
 import { Button } from "@/components/ui/button"
+import { ChartZoomControls, useChartZoom } from "@/components/ui/chart-zoom"
+import { fmtInt, fmtMoney, fmtNumber, fmtPercent } from "@/lib/format"
 
 // Цвета для графиков
 const COLORS = {
   primary: "#3b82f6",
-  success: "#22c55e", 
+  success: "#22c55e",
   warning: "#f59e0b",
   danger: "#ef4444",
   purple: "#8b5cf6",
   cyan: "#06b6d4",
-  pink: "#ec4899",
-  sections: ["#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"]
+}
+
+const GRID = { strokeDasharray: "3 3", stroke: "#9ca3af", strokeOpacity: 0.25 }
+const TICK = { fontSize: 11, fill: "#9ca3af" }
+
+const deviationFormat = (value: number, name: string) => (name.startsWith("Отклонение") ? fmtPercent(value) : fmtInt(value))
+const workTypeFormat = (value: number, name: string) => (name === "Затраты" ? fmtMoney(value) : name === "Нарядов" ? fmtInt(value) : fmtNumber(value))
+
+function ChartCard({ title, subtitle, icon: Icon, action, children }: {
+  title: string
+  subtitle: string
+  icon: typeof BarChart3
+  action?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">{title}</h3>
+          <p className="mt-1 text-xs text-gray-500">{subtitle}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {action}
+          <Icon className="h-5 w-5 text-gray-400" />
+        </div>
+      </div>
+      {children}
+    </div>
+  )
 }
 
 export default function AnalyticsDashboard() {
@@ -43,6 +71,7 @@ export default function AnalyticsDashboard() {
     workTypeData,
     monthlyData,
     aiInsights,
+    mlInsights,
     fleetHealth,
     riskEquipment,
     loading,
@@ -72,10 +101,9 @@ export default function AnalyticsDashboard() {
   }))
 
   // Данные для pie chart эффективности
-  const efficiencyPieData = sectionData.map((s, i) => ({
+  const efficiencyPieData = sectionData.map((s) => ({
     name: s.section,
     value: Math.abs(s.total_savings),
-    color: COLORS.sections[i % COLORS.sections.length],
     isPositive: s.total_savings >= 0
   }))
 
@@ -104,6 +132,8 @@ export default function AnalyticsDashboard() {
     return acc
   }, [] as { month: string; actual: number; norm: number; orders: number }[]).reverse()
 
+  const trendZoom = useChartZoom(monthlyTrendData, 4)
+
   // Данные по видам работ для bar chart
   const workTypeChartData = workTypeData.map(wt => ({
     name: wt.repair_kind,
@@ -119,10 +149,10 @@ export default function AnalyticsDashboard() {
       <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Экономическая эффективность
+            ИИ-Аналитика
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Аналитика расхода ТМЦ и эффективности участков
+            Экономическая эффективность: расход ТМЦ и работа участков
           </p>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
@@ -148,507 +178,161 @@ export default function AnalyticsDashboard() {
         </div>
       )}
 
-      {/* KPI Cards - скелетоны при загрузке */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+      {/* KPI: одна карточка для количества, денег и процентов */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {loadingMain ? (
           <>
             {[1, 2, 3, 4, 5, 6].map(i => <KpiSkeleton key={i} />)}
           </>
         ) : (
           <>
-        <KpiCard
-          title="Всего нарядов"
-          value={totalOrders}
-          subtitle="за выбранный период"
-          icon={Wrench}
-          color="blue"
-        />
-        <KpiCard
-          title="Фактические затраты"
-          value={`${formatCurrency(totalCost)} сум`}
-          subtitle="общая сумма"
-          icon={DollarSign}
-          color="amber"
-        />
-        <KpiCard
-          title="Нормативные затраты"
-          value={`${formatCurrency(totalNormCost)} сум`}
-          subtitle="по нормативам"
-          icon={Activity}
-          color="purple"
-        />
-        <KpiCard
-          title={totalSavings >= 0 ? "Экономия" : "Перерасход"}
-          value={`${formatCurrency(Math.abs(totalSavings))} сум`}
-          icon={totalSavings >= 0 ? TrendingUp : TrendingDown}
-          trend={totalSavings >= 0 ? "up" : "down"}
-          trendValue={formatPercent(totalNormCost > 0 ? (totalSavings / totalNormCost) * 100 : 0)}
-          color={totalSavings >= 0 ? "green" : "red"}
-        />
-        <KpiCard
-          title="Ср. отклонение"
-          value={formatPercent(avgDeviation)}
-          subtitle="от норматива"
-          icon={Gauge}
-          color={Math.abs(avgDeviation) <= 10 ? "green" : "amber"}
-        />
-        <KpiCard
-          title="Превышения"
-          value={totalOverruns}
-          subtitle="случаев >20%"
-          icon={AlertTriangle}
-          color={totalOverruns > 10 ? "red" : "amber"}
-        />
-        </>
+            <StatCard title="Всего нарядов" value={fmtInt(totalOrders)} subtitle="за выбранный период" icon={Wrench} color="blue" />
+            <StatCard title="Фактические затраты" value={fmtMoney(totalCost)} unit="сум" subtitle="общая сумма" icon={DollarSign} color="amber" />
+            <StatCard title="Нормативные затраты" value={fmtMoney(totalNormCost)} unit="сум" subtitle="по нормативам" icon={Activity} color="purple" />
+            <StatCard
+              title={totalSavings >= 0 ? "Экономия" : "Перерасход"}
+              value={fmtMoney(Math.abs(totalSavings))}
+              unit="сум"
+              subtitle="факт против норматива"
+              icon={totalSavings >= 0 ? TrendingUp : TrendingDown}
+              trend={totalSavings >= 0 ? "up" : "down"}
+              trendValue={fmtPercent(totalNormCost > 0 ? (totalSavings / totalNormCost) * 100 : 0, true)}
+              color={totalSavings >= 0 ? "green" : "red"}
+              colorValue
+            />
+            <StatCard
+              title="Ср. отклонение"
+              value={fmtPercent(avgDeviation)}
+              subtitle="от норматива"
+              icon={Gauge}
+              color={Math.abs(avgDeviation) <= 10 ? "green" : "amber"}
+            />
+            <StatCard
+              title="Превышения"
+              value={fmtInt(totalOverruns)}
+              subtitle="случаев >20%"
+              icon={AlertTriangle}
+              color={totalOverruns > 10 ? "red" : "amber"}
+            />
+          </>
         )}
       </div>
 
-      {/* ═══════════════════════════════════════════════════════════════════
-          AI INSIGHTS SECTION - с прогрессивной загрузкой
-      ═══════════════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Здоровье парка - Progress Bar */}
-        {loadingAi ? (
-          <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl p-6 shadow-lg text-white animate-pulse">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-9 h-9 bg-white/20 rounded-lg" />
-              <div className="space-y-1">
-                <div className="h-4 w-24 bg-white/30 rounded" />
-                <div className="h-3 w-32 bg-white/20 rounded" />
-              </div>
-            </div>
-            <div className="h-12 bg-white/20 rounded mb-4" />
-            <div className="h-3 bg-white/20 rounded-full mb-4" />
-            <div className="grid grid-cols-4 gap-2">
-              {[1,2,3,4].map(i => <div key={i} className="h-14 bg-white/10 rounded-lg" />)}
-            </div>
-          </div>
-        ) : (
-        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl p-6 shadow-lg text-white">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-white/20 rounded-lg">
-              <HeartPulse className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-semibold">Здоровье парка</h3>
-              <p className="text-xs text-blue-100">Надёжность оборудования</p>
-            </div>
-          </div>
-          
-          {fleetHealth && (
-            <>
-              {/* Главный индикатор */}
-              <div className="mb-4">
-                <div className="flex items-end justify-between mb-2">
-                  <span className="text-4xl font-bold">{fleetHealth.reliability_percent}%</span>
-                  <span className="text-sm text-blue-100">надёжность</span>
-                </div>
-                <div className="h-3 bg-white/20 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-white rounded-full transition-all duration-500"
-                    style={{ width: `${fleetHealth.reliability_percent}%` }}
-                  />
-                </div>
-              </div>
-              
-              {/* Статистика */}
-              <div className="grid grid-cols-4 gap-2 text-center">
-                <div className="bg-white/10 rounded-lg p-2">
-                  <p className="text-lg font-bold text-green-300">{fleetHealth.healthy_count}</p>
-                  <p className="text-[10px] text-blue-100">Норма</p>
-                </div>
-                <div className="bg-white/10 rounded-lg p-2">
-                  <p className="text-lg font-bold text-yellow-300">{fleetHealth.warning_count}</p>
-                  <p className="text-[10px] text-blue-100">Внимание</p>
-                </div>
-                <div className="bg-white/10 rounded-lg p-2">
-                  <p className="text-lg font-bold text-orange-300">{fleetHealth.risk_count}</p>
-                  <p className="text-[10px] text-blue-100">Риск</p>
-                </div>
-                <div className="bg-white/10 rounded-lg p-2">
-                  <p className="text-lg font-bold text-red-300">{fleetHealth.critical_count}</p>
-                  <p className="text-[10px] text-blue-100">Критич.</p>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-        )}
+      <AiBlock
+        loading={loadingAi}
+        fleetHealth={fleetHealth}
+        riskEquipment={riskEquipment}
+        mlInsights={mlInsights}
+        aiSummary={aiInsights}
+        sections={sectionData}
+      />
 
-        {/* AI Прогнозы - карточки с рисками */}
-        {loadingAi ? (
-          <AiSectionSkeleton />
-        ) : (
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-purple-100 dark:bg-purple-900/50 rounded-lg">
-                <Brain className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">AI-Прогнозы</h3>
-                <p className="text-[10px] text-gray-500">Оборудование в зоне риска</p>
-              </div>
-            </div>
-            <Cpu className="w-4 h-4 text-gray-400" />
-          </div>
-          
-          <div className="space-y-3">
-            {riskEquipment.length === 0 ? (
-              <div className="text-center py-6 text-gray-400">
-                <Shield className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p className="text-xs">Нет оборудования в зоне риска</p>
-              </div>
-            ) : (
-              riskEquipment.map(eq => (
-                <div 
-                  key={eq.id}
-                  className={`p-3 rounded-lg border-l-4 ${
-                    eq.failure_probability >= 0.7 
-                      ? "bg-red-50 dark:bg-red-950/30 border-red-500" 
-                      : eq.failure_probability >= 0.5
-                      ? "bg-amber-50 dark:bg-amber-950/30 border-amber-500"
-                      : "bg-yellow-50 dark:bg-yellow-950/30 border-yellow-500"
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900 dark:text-white">{eq.name}</p>
-                      <p className="text-[10px] text-gray-500 mt-0.5">
-                        {eq.predicted_failure_km 
-                          ? `~${eq.predicted_failure_km.toLocaleString()} км до отказа`
-                          : "Требуется диагностика"
-                        }
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className={`text-lg font-bold ${
-                        eq.failure_probability >= 0.7 ? "text-red-600" :
-                        eq.failure_probability >= 0.5 ? "text-amber-600" : "text-yellow-600"
-                      }`}>
-                        {(eq.failure_probability * 100).toFixed(0)}%
-                      </p>
-                      <p className="text-[9px] text-gray-400">риск</p>
-                    </div>
-                  </div>
-                  <div className="mt-2 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full rounded-full ${
-                        eq.failure_probability >= 0.7 ? "bg-red-500" :
-                        eq.failure_probability >= 0.5 ? "bg-amber-500" : "bg-yellow-500"
-                      }`}
-                      style={{ width: `${eq.failure_probability * 100}%` }}
-                    />
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-        )}
-
-        {/* Лента уведомлений AI */}
-        {loadingAi ? (
-          <AiSectionSkeleton />
-        ) : (
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-amber-100 dark:bg-amber-900/50 rounded-lg">
-                <Bell className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">AI-Уведомления</h3>
-                <p className="text-[10px] text-gray-500">Последние инсайты</p>
-              </div>
-            </div>
-            {aiInsights.filter(i => !i.is_resolved).length > 0 && (
-              <span className="px-2 py-0.5 text-[10px] font-bold bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 rounded-full">
-                {aiInsights.filter(i => !i.is_resolved).length} новых
-              </span>
-            )}
-          </div>
-          
-          <div className="space-y-2 max-h-[280px] overflow-y-auto">
-            {aiInsights.length === 0 ? (
-              <div className="text-center py-6 text-gray-400">
-                <Zap className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p className="text-xs">Нет уведомлений</p>
-              </div>
-            ) : (
-              aiInsights.slice(0, 5).map(insight => (
-                <div 
-                  key={insight.id}
-                  className={`p-3 rounded-lg border ${
-                    insight.is_resolved 
-                      ? "bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 opacity-60"
-                      : insight.insight_type === "anomaly"
-                      ? "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"
-                      : insight.insight_type === "prediction"
-                      ? "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800"
-                      : "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800"
-                  }`}
-                >
-                  <div className="flex items-start gap-2">
-                    <div className={`p-1 rounded ${
-                      insight.insight_type === "anomaly" 
-                        ? "bg-red-100 dark:bg-red-900" 
-                        : insight.insight_type === "prediction"
-                        ? "bg-amber-100 dark:bg-amber-900"
-                        : "bg-green-100 dark:bg-green-900"
-                    }`}>
-                      {insight.insight_type === "anomaly" ? (
-                        <XCircle className="w-3 h-3 text-red-600 dark:text-red-400" />
-                      ) : insight.insight_type === "prediction" ? (
-                        <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                      ) : (
-                        <CheckCircle className="w-3 h-3 text-green-600 dark:text-green-400" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      {insight.equipment_name && (
-                        <div className="flex items-center gap-1 mb-1">
-                          <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">
-                            {insight.equipment_name}
-                          </span>
-                          {insight.probability > 0 && (
-                            <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${
-                              insight.probability >= 0.8 ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" :
-                              insight.probability >= 0.5 ? "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300" :
-                              "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300"
-                            }`}>
-                              {Math.round(insight.probability * 100)}%
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      <p className="text-xs text-gray-900 dark:text-white leading-snug line-clamp-2">
-                        {insight.message}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
-                          insight.severity === "critical" ? "bg-red-200 text-red-800 dark:bg-red-900 dark:text-red-200" :
-                          insight.severity === "high" ? "bg-orange-200 text-orange-800 dark:bg-orange-900 dark:text-orange-200" :
-                          insight.severity === "medium" ? "bg-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200" :
-                          "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
-                        }`}>
-                          {insight.severity === "critical" ? "Критично" :
-                           insight.severity === "high" ? "Высокий" :
-                           insight.severity === "medium" ? "Средний" : "Низкий"}
-                        </span>
-                        <span className="text-[9px] text-gray-400">
-                          {new Date(insight.created_at).toLocaleString("ru-RU", { 
-                            day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" 
-                          })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-        )}
-      </div>
+      <PartsForecastSection />
 
       {/* Графики - первый ряд */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Сравнение затрат по участкам */}
-        {loadingMain ? (
-          <ChartSkeleton />
-        ) : (
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-                Затраты по участкам
-              </h3>
-              <p className="text-xs text-gray-500 mt-1">Факт vs Норматив</p>
-            </div>
-            <BarChart3 className="w-5 h-5 text-gray-400" />
-          </div>
-          <BarChart width={500} height={300} data={costComparisonData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={formatCurrency} />
-            <Tooltip content={<CustomTooltip />} />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="actual" name="Факт" fill={COLORS.primary} radius={[4, 4, 0, 0]} />
-            <Bar dataKey="norm" name="Норматив" fill={COLORS.purple} radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {loadingMain ? <ChartSkeleton /> : (
+          <ChartCard title="Затраты по участкам" subtitle="Факт vs Норматив, сум" icon={BarChart3}>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={costComparisonData}>
+                <CartesianGrid {...GRID} />
+                <XAxis dataKey="name" tick={TICK} />
+                <YAxis tick={TICK} tickFormatter={(v: number) => fmtMoney(v)} width={78} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="actual" name="Факт" fill={COLORS.primary} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="norm" name="Норматив" fill={COLORS.purple} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
         )}
 
-        {/* Экономия/Перерасход по участкам */}
-        {loadingMain ? (
-          <ChartSkeleton />
-        ) : (
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-                Экономия / Перерасход
-              </h3>
-              <p className="text-xs text-gray-500 mt-1">По участкам</p>
-            </div>
-            <PieChartIcon className="w-5 h-5 text-gray-400" />
-          </div>
-          <div className="flex items-center gap-8">
-            <PieChart width={200} height={200}>
-              <Pie
-                data={efficiencyPieData}
-                cx="50%"
-                cy="50%"
-                innerRadius={50}
-                outerRadius={80}
-                dataKey="value"
-                labelLine={false}
-              >
-                {efficiencyPieData.map((entry, i) => (
-                  <Cell 
-                    key={i} 
-                    fill={entry.isPositive ? COLORS.success : COLORS.danger} 
-                    opacity={0.7 + (i * 0.1)}
-                  />
-                ))}
-              </Pie>
-              <Tooltip content={<CustomTooltip />} />
-            </PieChart>
-            <div className="flex-1 space-y-2">
-              {sectionData.map((s) => (
-                <div key={s.section} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <div 
-                      className="w-3 h-3 rounded-full" 
-                      style={{ backgroundColor: s.total_savings >= 0 ? COLORS.success : COLORS.danger }}
-                    />
-                    <span className="text-gray-700 dark:text-gray-300">{s.section}</span>
+        {loadingMain ? <ChartSkeleton /> : (
+          <ChartCard title="Экономия / Перерасход" subtitle="По участкам: зелёный - экономия, красный - перерасход" icon={PieChartIcon}>
+            <div className="flex flex-col items-center gap-6 sm:flex-row">
+              <div className="h-48 w-48 shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={efficiencyPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" labelLine={false}>
+                      {efficiencyPieData.map((entry, i) => (
+                        <Cell key={i} fill={entry.isPositive ? COLORS.success : COLORS.danger} opacity={Math.min(1, 0.7 + i * 0.1)} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<CustomTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="w-full flex-1 space-y-2">
+                {sectionData.map((s) => (
+                  <div key={s.section} className="flex items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 w-3 rounded-full" style={{ backgroundColor: s.total_savings >= 0 ? COLORS.success : COLORS.danger }} />
+                      <span className="text-gray-700 dark:text-gray-300">{s.section}</span>
+                    </div>
+                    <span className={`font-semibold tabular-nums ${s.total_savings >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                      {s.total_savings >= 0 ? "+" : ""}{fmtMoney(s.total_savings)} сум
+                    </span>
                   </div>
-                  <span className={`font-semibold ${s.total_savings >= 0 ? "text-green-600" : "text-red-600"}`}>
-                    {s.total_savings >= 0 ? "+" : ""}{formatCurrency(s.total_savings)}
-                  </span>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        </div>
+          </ChartCard>
         )}
       </div>
 
       {/* Графики - второй ряд */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Тренд затрат по месяцам */}
-        {loadingMain ? (
-          <ChartSkeleton />
-        ) : (
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-                Динамика затрат
-              </h3>
-              <p className="text-xs text-gray-500 mt-1">По месяцам</p>
-            </div>
-            <LineChartIcon className="w-5 h-5 text-gray-400" />
-          </div>
-          <AreaChart width={500} height={300} data={monthlyTrendData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={formatCurrency} />
-            <Tooltip content={<CustomTooltip />} />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Area 
-              type="monotone" 
-              dataKey="actual" 
-              name="Факт" 
-              stroke={COLORS.primary} 
-              fill={COLORS.primary} 
-              fillOpacity={0.3} 
-            />
-            <Area 
-              type="monotone" 
-              dataKey="norm" 
-              name="Норматив" 
-              stroke={COLORS.purple} 
-              fill={COLORS.purple} 
-              fillOpacity={0.3} 
-            />
-          </AreaChart>
-        </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {loadingMain ? <ChartSkeleton /> : (
+          <ChartCard title="Динамика затрат" subtitle="По месяцам, сум" icon={LineChartIcon} action={<ChartZoomControls zoom={trendZoom} />}>
+            <ResponsiveContainer width="100%" height={300}>
+              <AreaChart data={trendZoom.view}>
+                <CartesianGrid {...GRID} />
+                <XAxis dataKey="month" tick={TICK} />
+                <YAxis tick={TICK} tickFormatter={(v: number) => fmtMoney(v)} width={78} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Area type="monotone" dataKey="actual" name="Факт" stroke={COLORS.primary} fill={COLORS.primary} fillOpacity={0.3} />
+                <Area type="monotone" dataKey="norm" name="Норматив" stroke={COLORS.purple} fill={COLORS.purple} fillOpacity={0.3} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </ChartCard>
         )}
 
-        {/* Отклонения от нормативов */}
-        {loadingMain ? (
-          <ChartSkeleton />
-        ) : (
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-                Отклонения от нормативов
-              </h3>
-              <p className="text-xs text-gray-500 mt-1">Среднее отклонение и превышения</p>
-            </div>
-            <AlertTriangle className="w-5 h-5 text-gray-400" />
-          </div>
-          <ComposedChart width={500} height={300} data={deviationData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-            <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-            <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
-            <Tooltip content={<CustomTooltip />} />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar 
-              yAxisId="left" 
-              dataKey="deviation" 
-              name="Отклонение %" 
-              fill={COLORS.warning}
-              radius={[4, 4, 0, 0]}
-            />
-            <Line 
-              yAxisId="right" 
-              type="monotone" 
-              dataKey="overruns" 
-              name="Превышения" 
-              stroke={COLORS.danger}
-              strokeWidth={2}
-              dot={{ fill: COLORS.danger }}
-            />
-          </ComposedChart>
-        </div>
+        {loadingMain ? <ChartSkeleton /> : (
+          <ChartCard title="Отклонения от нормативов" subtitle="Среднее отклонение и превышения" icon={AlertTriangle}>
+            <ResponsiveContainer width="100%" height={300}>
+              <ComposedChart data={deviationData}>
+                <CartesianGrid {...GRID} />
+                <XAxis dataKey="name" tick={TICK} />
+                <YAxis yAxisId="left" tick={TICK} tickFormatter={(v: number) => fmtPercent(v)} width={70} />
+                <YAxis yAxisId="right" orientation="right" tick={TICK} />
+                <Tooltip content={<CustomTooltip format={deviationFormat} />} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar yAxisId="left" dataKey="deviation" name="Отклонение %" fill={COLORS.warning} radius={[4, 4, 0, 0]} />
+                <Line yAxisId="right" type="monotone" dataKey="overruns" name="Превышения" stroke={COLORS.danger} strokeWidth={2} dot={{ fill: COLORS.danger }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </ChartCard>
         )}
       </div>
 
       {/* Эффективность по видам работ */}
-      {loadingMain ? (
-        <ChartSkeleton height={300} />
-      ) : (
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-              Эффективность по видам работ
-            </h3>
-            <p className="text-xs text-gray-500 mt-1">Затраты, количество нарядов и средний пробег</p>
-          </div>
-          <Wrench className="w-5 h-5 text-gray-400" />
-        </div>
-        <div className="overflow-x-auto">
-          <BarChart width={1000} height={300} data={workTypeChartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-            <YAxis yAxisId="left" tick={{ fontSize: 11 }} tickFormatter={formatCurrency} />
-            <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
-            <Tooltip content={<CustomTooltip />} />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar yAxisId="left" dataKey="cost" name="Затраты" fill={COLORS.primary} radius={[4, 4, 0, 0]} />
-            <Bar yAxisId="right" dataKey="orders" name="Нарядов" fill={COLORS.success} radius={[4, 4, 0, 0]} />
-            <Bar yAxisId="right" dataKey="mileage" name="Ср. пробег" fill={COLORS.cyan} radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </div>
-      </div>
+      {loadingMain ? <ChartSkeleton height={300} /> : (
+        <ChartCard title="Эффективность по видам работ" subtitle="Затраты, количество нарядов и средний пробег" icon={Wrench}>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={workTypeChartData}>
+              <CartesianGrid {...GRID} />
+              <XAxis dataKey="name" tick={TICK} />
+              <YAxis yAxisId="left" tick={TICK} tickFormatter={(v: number) => fmtMoney(v)} width={78} />
+              <YAxis yAxisId="right" orientation="right" tick={TICK} />
+              <Tooltip content={<CustomTooltip format={workTypeFormat} />} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar yAxisId="left" dataKey="cost" name="Затраты" fill={COLORS.primary} radius={[4, 4, 0, 0]} />
+              <Bar yAxisId="right" dataKey="orders" name="Нарядов" fill={COLORS.success} radius={[4, 4, 0, 0]} />
+              <Bar yAxisId="right" dataKey="mileage" name="Ср. пробег" fill={COLORS.cyan} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
       )}
 
       {/* Таблица эффективности участков */}
@@ -688,34 +372,34 @@ export default function AnalyticsDashboard() {
               {sectionData.map(s => (
                 <tr key={s.section} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                   <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{s.section}</td>
-                  <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">{s.total_orders}</td>
+                  <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">{fmtInt(s.total_orders)}</td>
                   <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">
-                    {formatCurrency(s.total_actual_cost)}
+                    {fmtMoney(s.total_actual_cost)}
                   </td>
                   <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">
-                    {formatCurrency(s.total_norm_cost)}
+                    {fmtMoney(s.total_norm_cost)}
                   </td>
                   <td className={`px-4 py-3 text-right font-semibold ${
                     s.total_savings >= 0 ? "text-green-600" : "text-red-600"
                   }`}>
-                    {s.total_savings >= 0 ? "+" : ""}{formatCurrency(s.total_savings)}
+                    {s.total_savings >= 0 ? "+" : ""}{fmtMoney(s.total_savings)}
                   </td>
                   <td className={`px-4 py-3 text-right font-medium ${
                     Math.abs(s.avg_deviation_percent) <= 10 ? "text-green-600" : 
                     Math.abs(s.avg_deviation_percent) <= 20 ? "text-amber-600" : "text-red-600"
                   }`}>
-                    {formatPercent(s.avg_deviation_percent)}
+                    {fmtPercent(s.avg_deviation_percent, true)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                       s.total_overruns === 0 ? "bg-green-100 text-green-700" :
                       s.total_overruns <= 5 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
                     }`}>
-                      {s.total_overruns}
+                      {fmtInt(s.total_overruns)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">
-                    {s.avg_mileage_between?.toLocaleString() || "—"} км
+                    {s.avg_mileage_between ? `${fmtNumber(s.avg_mileage_between)} км` : "—"}
                   </td>
                 </tr>
               ))}

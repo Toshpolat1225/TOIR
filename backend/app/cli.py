@@ -4,11 +4,12 @@ import csv
 import getpass
 import json
 import logging
+import os
 import sys
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import DBAPIError, IntegrityError, SQLAlchemyError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -105,7 +106,7 @@ async def _emergency_session(admin: str) -> int:
         await engine.dispose()
     print("Emergency session started (15 minutes, audited). It cannot be extended.")
     print("In the browser, open the TOIR site, press F12, Console, and run:")
-    print(f"  cookieStore.set({{name: 'toir_refresh_token', value: '{token}', path: '/api/v1/auth'}}).then(() => location.reload())")
+    print(f"  cookieStore.set({{name: 'toir_refresh_token', value: '{token}', path: '{settings.refresh_cookie_path}'}}).then(() => location.reload())")
     print("The token is shown once. Do not share it; it is not stored anywhere in plain text.")
     return 0
 
@@ -637,6 +638,55 @@ async def _data_migration_import(
     return 0
 
 
+async def _demo_seed(reset: bool = False) -> int:
+    from app.services import demo_seed
+
+    try:
+        async with SessionFactory() as db:
+            if reset:
+                print(json.dumps({"removed": await demo_seed.reset(db)}, ensure_ascii=False, indent=2))
+            counts = None
+            for attempt in range(1, 5):  # the background GTK/Wialon sync can deadlock with the seed: the seed is one transaction, so it is safe to retry
+                try:
+                    counts = await demo_seed.seed(db)
+                    break
+                except DBAPIError as exc:
+                    if "deadlock" not in str(exc).lower() or attempt == 4:
+                        raise
+                    await db.rollback()
+                    print(f"deadlock, retry {attempt}", file=sys.stderr)
+    except (ValueError, SQLAlchemyError) as exc:
+        print(f"Bajarilmadi: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+    finally:
+        await engine.dispose()
+    print(json.dumps(counts, ensure_ascii=False, indent=2))
+    return 0
+
+
+async def _stock_import(path: str, apply: bool, as_of: str | None, kind: str | None) -> int:
+    from datetime import date as _date
+
+    from app.services import stock_import
+
+    try:
+        with open(path, "rb") as handle:
+            content = handle.read()
+        async with SessionFactory() as db:
+            report = await stock_import.import_file(
+                db, content, os.path.basename(path), apply=apply, as_of=_date.fromisoformat(as_of) if as_of else None, kind=kind
+            )
+    except (OSError, ValueError, SQLAlchemyError) as exc:
+        print(f"Bajarilmadi: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+    finally:
+        await engine.dispose()
+    print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
+    if not apply:
+        print("DRY-RUN: hech narsa yozilmadi. Yozish uchun --apply qo'shing.", file=sys.stderr)
+    return 0
+
+
 async def _repair_norms_import(manifest: str, apply: bool) -> int:
     from app.services import repair_norms
 
@@ -842,6 +892,16 @@ def main() -> int:
     migration_parser.add_argument("--field", default="last_maint_date")
     migration_parser.add_argument("--record-only", action="store_true", help="The values are already in the assets: only journal them")
     migration_parser.add_argument("--apply", action="store_true")
+    demo_seed_parser = subparsers.add_parser("demo-seed", help="Load fictional demo data (works ONLY in the database toir_demo; refuses a second run)")
+    demo_seed_parser.add_argument("--reset", action="store_true", help="First remove the earlier demo data (only rows marked as demo), then load it again")
+    stock_parser = subparsers.add_parser(
+        "stock-import",
+        help="Load a 1C export (.xlsx/.csv): stock balances, supplier orders or lead times; dry-run by default",
+    )
+    stock_parser.add_argument("--file", required=True)
+    stock_parser.add_argument("--apply", action="store_true")
+    stock_parser.add_argument("--as-of", help="Balance date YYYY-MM-DD (default: today, Tashkent)")
+    stock_parser.add_argument("--kind", choices=["stock", "orders", "lead_times"], help="Force the file shape (default: detect by header)")
     norms_parser = subparsers.add_parser(
         "repair-norms-import",
         help="Load cleaned repair-norm CSV files listed in a manifest (dry-run by default; refuses a set that already has lines)",
@@ -911,6 +971,10 @@ def main() -> int:
                 arguments.file, arguments.name, arguments.source_file, arguments.field, arguments.record_only, arguments.apply, arguments.manifest
             )
         )
+    if arguments.command == "demo-seed":
+        return asyncio.run(_demo_seed(reset=arguments.reset))
+    if arguments.command == "stock-import":
+        return asyncio.run(_stock_import(arguments.file, arguments.apply, arguments.as_of, arguments.kind))
     if arguments.command == "repair-norms-import":
         return asyncio.run(_repair_norms_import(arguments.manifest, arguments.apply))
     if arguments.command == "wagon-ledger-purge":

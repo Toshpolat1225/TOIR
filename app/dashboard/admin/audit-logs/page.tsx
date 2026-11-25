@@ -56,7 +56,7 @@ function displayModule(module: string) {
     assets: "Основные средства",
     auth: "Авторизация",
     gtk: "Данные GTK",
-    maintenance: "ТО и ремонты",
+    maintenance: "ИИ-ТО и ремонты",
     sections: "Участки",
     users: "Пользователи",
     wialon: "Данные Wialon",

@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.analytics import dashboard_assets_and_orders
 
+MONTHS = 12  # months shown by the dashboard trend charts (the page can zoom into them)
+
 
 async def dashboard_summary(
     db: AsyncSession, *, section_id: UUID | None, today: date
@@ -15,7 +17,7 @@ async def dashboard_summary(
     assets, orders = await dashboard_assets_and_orders(db, section_id=section_id)
     orders.sort(key=lambda order: (order["created_at"], str(order["id"])), reverse=True)
     month_starts = []
-    for offset in range(5, -1, -1):
+    for offset in range(MONTHS - 1, -1, -1):
         year, month = today.year, today.month - offset
         while month <= 0:
             year -= 1
@@ -24,7 +26,7 @@ async def dashboard_summary(
     # Current month is measured at its end, even when that date is in the future.
     month_ends = [date(m.year, m.month, monthrange(m.year, m.month)[1]) for m in month_starts]
     params: dict[str, Any] = {f"end_{i}": end for i, end in enumerate(month_ends)}
-    values_sql = ", ".join(f"(CAST(:end_{i} AS date))" for i in range(6))
+    values_sql = ", ".join(f"(CAST(:end_{i} AS date))" for i in range(MONTHS))
     scope_sql = " AND fa.section_id = :section_id" if section_id is not None else ""
     if section_id is not None:
         params["section_id"] = section_id

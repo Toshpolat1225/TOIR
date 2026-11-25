@@ -1,3 +1,4 @@
+import { fmtPercent } from "./format.ts"
 // Types and pure helpers of the weighing-scale command center (overview, train / wagon / locomotive cards). No React.
 // Run the tests with: npm run test:unit
 
@@ -113,7 +114,7 @@ export function tonnesCompact(value: Num | null | undefined): string {
   return `${fmt(x, 0)} т`
 }
 
-export const percent = (share: number | null | undefined): string => (share === null || share === undefined ? "—" : `${Math.round(share * 100)}%`)
+export const percent = (share: number | null | undefined): string => (share === null || share === undefined ? "—" : fmtPercent(share * 100))
 
 /** Change against the previous period in percent; null when there is nothing to compare with. */
 export function deltaPercent(current: Num, previous: Num): number | null {
@@ -124,8 +125,8 @@ export function deltaPercent(current: Num, previous: Num): number | null {
 
 export function deltaText(delta: number | null): string {
   if (delta === null) return "нет базы сравнения"
-  const rounded = Math.round(delta)
-  return `${rounded > 0 ? "+" : ""}${rounded}% к прошлому периоду`
+  const rounded = delta
+  return `${fmtPercent(rounded, true)} к прошлому периоду`
 }
 
 export const deltaTone = (delta: number | null): "up" | "down" | "flat" => (delta === null || Math.abs(delta) < 1 ? "flat" : delta > 0 ? "up" : "down")

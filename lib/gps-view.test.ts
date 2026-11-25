@@ -96,8 +96,8 @@ describe("formatting", () => {
   })
 
   it("formats ratios, lags, days and moments", () => {
-    assert.equal(ratioText(0.943), "94%")
-    assert.equal(ratioText(1), "100%")
+    assert.equal(ratioText(0.943), "94,30%")
+    assert.equal(ratioText(1), "100,00%")
     assert.equal(ratioText(null), "—")
     assert.equal(lagText(45), "45 с")
     assert.equal(lagText(130), "2 мин")

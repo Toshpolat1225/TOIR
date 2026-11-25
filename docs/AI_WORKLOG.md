@@ -632,3 +632,33 @@ Rassvet (qum+terrakota) va Sakura (atirgul+siren): CSS tokenlar + hover/active/k
 - services/data_migration_import.py: to'liq qaytarilgan (reverted) partiyani qayta yuklash mumkin (eski partiya "[отменён id]" nomi bilan tarix sifatida qoladi); applied elementi bor partiya baribir rad etiladi. Test qo'shildi.
 - ESLint: 2 ogohlantirish — niyatli bog'liqlik, sabab izohi bilan o'chirildi. tsc/eslint toza.
 - Tekshirildi: toza bazada 931 test o'tdi. Deploy va jonli qayta yuklash foydalanuvchi tomonidan, hali qilinmagan. HSTS va audit export (100k bilan cheklangan) o'zgartirilmadi.
+
+## 2026-11-25 — DEMO nusxa (/demo/) infratuzilmasi
+- docker-compose.demo.yml (backend-demo: bir xil image, baza toir_demo, cookie yo'li /demo/api/v1/auth; frontend-demo: basePath /demo), Caddyfile (/demo/api|ws -> backend-demo, /demo -> frontend-demo; caddy validate: Valid), docs/DEMO.md (qurish + o'chirish prompti).
+- Kod: settings.refresh_cookie_path (default o'zgarmagan), lib/base-path.ts, next.config basePath (bo'sh = asosiy sayt), Dockerfile ARG, session-hint cookie yo'li, xom <a href> havolalar, WebSocket yo'li /demo/ws; test api-base.
+- Tekshirildi: 931 backend test, 178 frontend unit test, tsc/eslint, basePath=/demo bilan next build, compose config (soxta env bilan), caddy validate. Demo konteynerlar ishga tushirilmagan; .env/.env.demo ochilmadi.
+- Keyingi qadam: foydalanuvchi deploy; keyin demo-seed (demo ma'lumot, faqat toir_demo ga).
+
+## 2026-11-25 — Demo ma'lumot (demo-seed)
+- backend/app/services/demo_seed.py + CLI `demo-seed`: faqat baza nomi toir_demo bo'lsa ishlaydi, ikkinchi marta rad etadi. Qo'shadi: 16 xodim, 110 nomenklatura, 219 norma/shablon, 93 qadam, 115 naryad (barcha holat/tur), 81 TMC hujjat, jurnal, 210 baseline (35 teplovoz), 9 to'siq, 540 tayyorlik snapshoti, 14 AI-insight; КР-2 ish turi; 20 texnika holati repair/maintenance.
+- Tekshirildi: yengil nusxada (og'ir jadvallarsiz) seed, API orqali ~65 GET endpoint x 5 rol: 5xx yo'q, sahifalar to'la; himoya testi. Haqiqiy toir_demo da hali ishga tushirilmagan.
+
+## 2026-11-25 — Demo ma'lumot v2 (katta, muammoli holatlar bilan)
+- demo_seed.py qayta yozildi: 240 kun, ~727 naryad, ~12% muammoli (kech kirgan, vaqt oshgan, TMC ortiqcha sarf, avariya, takroriy rad, inson omili: noto'g'ri TMC / yopilmagan / hujjatsiz), ~145 AI-insight (topilmalar, bashorat, muddati o'tgan TO, ijobiy), 31 to'siq, 240 kunlik tayyorlik trendi (81%->93%), aktivlar sog'lig'i. Yangi: `demo-seed --reset` (faqat [ДЕМО] belgili qatorlarni o'chirib qayta yozadi; faqat toir_demo).
+- Tekshirildi: toir_demo ning yengil nusxasida reset+seed (o'chirilgan = yozilgan sonlar mos), section_efficiency tejam musbat (10-13%), GET matritsa x 5 rol: 5xx yo'q, guard test. Haqiqiy toir_demo da va brauzerda tekshirilmagan.
+
+## 2026-11-25 — Tezlik, zoom, format, AI-analitika, 10 hisobot
+- Sekinlik sababi: postgres mem_limit 512m (baza 3.6 GB x2 demo) va backend 1 GB chegarada (978/1024 MiB). docker-compose.yml: postgres 3g + shared_buffers 768MB, backend 2g (default). Qayta yaratish kerak.
+- Yangi: lib/format.ts (foiz 2, pul 3 compact, oddiy 1 raqam), components/ui/chart-zoom.tsx (+/-/←/→/⟲), dashboard 12 oy + zoom; analytics sahifasi qayta dizayn (AiBlock, StatCard, api.mlInsights); reports: 13 ta kartochka (10 yangi); gps/scales/maintenance/tmc foizlari fmtPercent.
+- Tekshirildi: tsc, eslint, test:unit 182 pass, next build, dashboard backend testlari. Brauzerda ko'rilmagan; postgres yangi sozlama bilan ishga tushirilmagan; backend MONTHS=12 jonli sinalmagan.
+
+## 2026-11-26 — Tizim nomi «НейроТОиР»
+- STTB / «Система ТО» / «ТОИР» / «TOIR» (UI matnlari) -> «НейроТОиР»: login, sidebar, sahifa sarlavhasi, favicon (НТ), GPS/aktivlar/ТО matnlari, API sarlavhasi (docs). Ichki kalitlar (toir_session_hint, localStorage, source qiymatlari) o'zgarmagan. Tekshirildi: tsc, test:unit; brauzerda ko'rilmagan.
+
+## 2026-11-26 — ИИ-Аналитика: запчасти и склад (A+B)
+- Backend: /analytics/repair-forecast, parts-demand, parts-consumption, stock-risk; yangi jadvallar stock_balances, supplier_terms, purchase_orders (alembic 0046); CLI stock-import (1C xlsx/csv, dry-run default); /stock/import, /supplier-terms, /purchase-orders; demo-seed (sklad, muddatlar, zakazlar) va reset; docs/PARTS_ANALYTICS_API.md, docs/templates/README_1C.md + csv shablonlar.
+- Frontend: «Запчасти и ремонты: прогноз» bo'limi (4 kartochka), lib/parts-analytics.ts (+test). «AI-аналитика» -> «ИИ-Аналитика».
+- Tekshirildi: tsc, eslint, test:unit, next build; backend: 34 yangi test + to'liq suite toza bazada 964 pass / 2 fail (gps_analytics_pg, maintenance_reschedule_pg: baseline bilan solishtirilmagan). Brauzerda, haqiqiy 1C faylida, e2e t18 ishga tushirilmagan.
+
+## 2026-11-26 — Yordamchi: «Помощник» + yangi belgi
+- «AI yordamchi» -> «Помощник» (tugma, sarlavha, tooltip), «Online» -> «На связи»; yangi AssistantMark (neyron shar: yadro, uchqun, orbitada aylanuvchi tugunlar; matnsiz); menyu: ИИ-Аналитика = Sparkles, ИИ-ТО и ремонты = Brain. tsc/eslint toza, brauzerda ko'rilmagan.

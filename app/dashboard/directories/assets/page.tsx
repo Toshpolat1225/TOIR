@@ -968,7 +968,7 @@ function AssetModal({ asset, onClose, onSave, onDelete, sections, sectionsData, 
 
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                {asset.assetType === "wagon" ? mileageLabels.summary : "Пробег из источника ТОИР (км)"}
+                {asset.assetType === "wagon" ? mileageLabels.summary : "Пробег из источника НейроТОиР (км)"}
               </p>
               <p className={fieldCls(false)}>
                 {asset.assetType === "wagon"
@@ -1371,12 +1371,12 @@ function apiDate(value: string): string | null {
 }
 
 const SOURCE_LABELS: Record<UnifiedAsset["source"], string> = {
-  toir: "ТОИР",
+  toir: "НейроТОиР",
   wialon: "Wialon",
   gtk: "ГТК",
-  both: "ТОИР + Wialon",
-  toir_gtk: "ТОИР + ГТК",
-  toir_wialon_gtk: "ТОИР + Wialon + ГТК",
+  both: "НейроТОиР + Wialon",
+  toir_gtk: "НейроТОиР + ГТК",
+  toir_wialon_gtk: "НейроТОиР + Wialon + ГТК",
 }
 
 const SOURCE_BADGES: Record<UnifiedAsset["source"], string> = {
@@ -1470,7 +1470,7 @@ const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: "section", label: "Участок" },
   { value: "status", label: "Статус" },
   { value: "source", label: "Источник" },
-  { value: "mileage", label: "Пробег ТОИР" },
+  { value: "mileage", label: "Пробег НейроТОиР" },
   { value: "wialon_cnm", label: "Пробег Wialon" },
   { value: "wialon_cneh", label: "Моточасы" },
   { value: "speed", label: "Скорость" },
@@ -1482,7 +1482,7 @@ const TABLE_COLUMNS: { label: string; sort: string }[] = [
   { label: "Тип", sort: "asset_type" },
   { label: "Наименование / Номер", sort: "name" },
   { label: "Участок", sort: "section" },
-  { label: "Пробег ТОИР, км", sort: "mileage" },
+  { label: "Пробег НейроТОиР, км", sort: "mileage" },
   { label: "Пробег Wialon, км", sort: "wialon_cnm" },
   { label: "Моточасы", sort: "wialon_cneh" },
   { label: "Скорость", sort: "speed" },
@@ -2283,12 +2283,12 @@ export default function OsPage() {
           <div className="relative">
             <select aria-label="Источник" value={fSource} onChange={(event) => setFSource(event.target.value as UnifiedAsset["source"] | "")} className={selCls}>
               <option value="">Все источники</option>
-              <option value="toir">ТОИР</option>
+              <option value="toir">НейроТОиР</option>
               <option value="wialon">Wialon</option>
               <option value="gtk">ГТК</option>
-              <option value="both">ТОИР + Wialon</option>
-              <option value="toir_gtk">ТОИР + ГТК</option>
-              <option value="toir_wialon_gtk">ТОИР + Wialon + ГТК</option>
+              <option value="both">НейроТОиР + Wialon</option>
+              <option value="toir_gtk">НейроТОиР + ГТК</option>
+              <option value="toir_wialon_gtk">НейроТОиР + Wialon + ГТК</option>
             </select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"/>
           </div>
@@ -2356,11 +2356,11 @@ export default function OsPage() {
               </div>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Пробег ТОИР, км</label>
+              <label className="mb-1 block text-xs font-medium text-gray-500">Пробег НейроТОиР, км</label>
               <div className="flex items-center gap-2">
-                <Input type="number" min="0" inputMode="decimal" placeholder="от" aria-label="Пробег ТОИР от" value={fMileageMin} onChange={(event) => setFMileageMin(event.target.value)} />
+                <Input type="number" min="0" inputMode="decimal" placeholder="от" aria-label="Пробег НейроТОиР от" value={fMileageMin} onChange={(event) => setFMileageMin(event.target.value)} />
                 <span className="text-gray-400">—</span>
-                <Input type="number" min="0" inputMode="decimal" placeholder="до" aria-label="Пробег ТОИР до" value={fMileageMax} onChange={(event) => setFMileageMax(event.target.value)} />
+                <Input type="number" min="0" inputMode="decimal" placeholder="до" aria-label="Пробег НейроТОиР до" value={fMileageMax} onChange={(event) => setFMileageMax(event.target.value)} />
               </div>
             </div>
             <div>
@@ -2426,7 +2426,7 @@ export default function OsPage() {
               const tc = typeConfig[a.assetType] || { label: assetTypes.find((item) => item.code === a.assetType)?.names.ru || a.assetTypeLabel || a.assetType || "—", cls: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300", Icon: Container }
               const stale = !a.lastMessageAt || Date.now() - new Date(a.lastMessageAt).getTime() > 24 * 60 * 60 * 1000
               const connection = stale ? "Давно" : a.wialonOnline ? "Онлайн" : "Нет связи"
-              const sourceLabel = SOURCE_LABELS[a.source] ?? "ТОИР"
+              const sourceLabel = SOURCE_LABELS[a.source] ?? "НейроТОиР"
               const orgUnit = sectionsData.find((section) => section.id === a.orgUnitId)
               const rowUnit: WialonUnit | null = a.unitId ? {
                 unit_id: a.unitId,
@@ -2483,7 +2483,7 @@ export default function OsPage() {
                   })()}
                   <td className="px-4 py-3.5">
                     {a.source === "gtk" ? (
-                      <span className="text-xs font-medium text-amber-700 dark:text-amber-400 whitespace-nowrap">Нет в ТОИР</span>
+                      <span className="text-xs font-medium text-amber-700 dark:text-amber-400 whitespace-nowrap">Нет в НейроТОиР</span>
                     ) : a.source === "wialon" ? (
                       canWrite && rowUnit ? <Button size="sm" className="whitespace-nowrap" onClick={(event) => { event.stopPropagation(); setSelectedUnit(rowUnit); setShowAdd(true) }}>Создать ОС</Button> : "—"
                     ) : (

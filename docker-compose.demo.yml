@@ -1,0 +1,38 @@
+# DEMO copy of the system, served at https://<host>/demo/ next to the main site. NOT loaded by a plain `docker compose up`.
+# Always started with the demo env file and only these two services:
+#   docker compose --env-file .env.demo -f docker-compose.yml -f docker-compose.demo.yml up -d --no-deps backend-demo frontend-demo
+# It uses the SAME postgres container but its own database (toir_demo) and its own JWT secret (from .env.demo), so a demo login
+# never opens the main site and nothing typed in the demo reaches the real database.
+# The backend image is the main one (toir-backend:latest): a code change reaches both after `docker compose build backend`.
+# Remove it all with docs/DEMO.md ("Removing the demo").
+services:
+  backend-demo:
+    extends:
+      file: docker-compose.yml
+      service: backend
+    image: toir-backend:latest
+    build: !reset null
+    pull_policy: never
+    environment:
+      POSTGRES_DB: toir_demo
+      REFRESH_COOKIE_PATH: /demo/api/v1/auth
+
+  frontend-demo:
+    extends:
+      file: docker-compose.yml
+      service: frontend
+    image: toir-frontend-demo:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: /demo/api/v1
+        NEXT_PUBLIC_BASE_PATH: /demo
+    depends_on: !override
+      - backend-demo
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/demo/auth/login"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

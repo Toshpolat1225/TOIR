@@ -22,6 +22,8 @@ from app.routers.data_migration import router as data_migration_router
 from app.routers.repair_norms import router as repair_norms_router
 from app.routers.asset_links import router as asset_links_router
 from app.routers.analytics import router as analytics_router
+from app.routers.parts_analytics import router as parts_analytics_router
+from app.routers.stock import router as stock_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.asset_map import router as asset_map_router
 from app.routers.assistant import router as assistant_router
@@ -131,7 +133,7 @@ def database_error_response(request: Request, exc: DBAPIError) -> Response:
 
 
 app = FastAPI(
-    title="TOIR API",
+    title="НейроТОиР API",
     version="1.0.0",
     docs_url="/docs" if settings.api_docs_enabled else None,
     redoc_url="/redoc" if settings.api_docs_enabled else None,
@@ -304,6 +306,8 @@ app.include_router(scales_router, prefix="/api/v1")
 app.include_router(localization_router, prefix="/api/v1")
 app.include_router(asset_catalogs_router, prefix="/api/v1")
 app.include_router(ml_router, prefix="/api/v1")
+app.include_router(parts_analytics_router, prefix="/api/v1")  # before analytics_router: /analytics/{block} would swallow these paths
+app.include_router(stock_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(tmc_documents_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")

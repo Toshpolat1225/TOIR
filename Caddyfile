@@ -22,6 +22,19 @@
     @api path /api /api/*
     header @api Cache-Control "no-store"
 
+    # DEMO copy under /demo/ (own backend + own database toir_demo; see docker-compose.demo.yml, docs/DEMO.md).
+    # If the demo containers are not running only /demo/ answers 502; the main site below is not affected.
+    @demo_backend path /demo/api /demo/api/* /demo/ws
+    handle @demo_backend {
+        header Cache-Control "no-store"
+        uri strip_prefix /demo
+        reverse_proxy backend-demo:8000
+    }
+    @demo path /demo /demo/*
+    handle @demo {
+        reverse_proxy frontend-demo:3000
+    }
+
     @backend path /api /api/* /ws /docs /redoc /openapi.json
     reverse_proxy @backend backend:8000
 

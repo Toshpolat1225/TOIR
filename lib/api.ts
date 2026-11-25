@@ -2496,7 +2496,96 @@ export type AnalyticsBlock =
   | "work-order-tmc-details"
   | "maintenance-schedule";
 
+const mlInsights = {
+  async list(params: ListParams & { insight_type?: string; severity?: string; is_resolved?: boolean } = {}): Promise<Paginated<Record<string, unknown>>> {
+    return request({ method: "GET", path: "/ml/insights", params, suppress404Log: true });
+  },
+};
+
+export type PartsHorizon = "quarter" | "half" | "year";
+export type PartsAssetSplit = { locomotive: number; diesel: number; wagon: number };
+export type PartsAgeSplit = { new: number; middle: number; old: number; unknown: number };
+export type RepairForecastItem = {
+  interval_code: string; interval_name: string; work_type_code: string | null; rank: number;
+  planned: number; projected: number; total: number; by_asset_type: PartsAssetSplit; by_age: PartsAgeSplit;
+};
+export type RepairForecastUpcoming = {
+  asset_id: string; inv_number: string; asset_type: string; interval_code: string; interval_name: string;
+  scheduled_date: string; days_left: number; overdue: boolean; status: string; age_cohort: string;
+};
+export type RepairForecast = {
+  horizon: PartsHorizon; horizon_days: number; today: string; date_to: string; section_id: string | null;
+  include_cycles: boolean; age_rule: string;
+  summary: { planned: number; projected: number; overdue: number; total: number; by_asset_type: PartsAssetSplit; by_age: PartsAgeSplit };
+  items: RepairForecastItem[]; upcoming: RepairForecastUpcoming[];
+};
+export type PartsDemandItem = {
+  nomenclature_id: string; name: string; code: string | null; unit: string | null; department: string | null;
+  qty_quarter: number; qty_half: number; qty_year: number; cost_quarter: number; cost_half: number; cost_year: number;
+  history_monthly_avg: number; history_monthly_cost: number; note: string | null;
+};
+export type PartsDemand = {
+  horizon: string; today: string; section_id: string | null; include_cycles: boolean; total: number; limit: number; offset: number;
+  items: PartsDemandItem[];
+  summary: { cost_quarter: number; cost_half: number; cost_year: number; items_without_norm: number };
+  norm_gaps: { interval_code: string; department: string | null; repairs_year: number; reason: string }[];
+};
+export type PartsConsumptionItem = {
+  nomenclature_id: string; name: string; code: string | null; unit: string | null; rank: number;
+  total_qty: number; total_cost: number; monthly_avg: number; series: { month: string; qty: number }[];
+  trend_pct: number | null; trend: "up" | "down" | "flat" | null; over_qty: number; over_cost: number;
+  top_work_types: { work_type: string; qty: number }[]; top_asset_types: { asset_type: string; qty: number }[];
+};
+export type PartsConsumption = {
+  months: number; today: string; date_from: string; section_id: string | null; note: string | null;
+  totals: { items: number; cost: number; overuse_cost: number };
+  monthly_cost: { month: string; cost: number }[]; items: PartsConsumptionItem[]; fastest_growing: string[];
+  saving_potential: { nomenclature_id: string; name: string; unit: string | null; over_qty: number; over_cost: number }[];
+};
+export type StockStatus = "critical" | "order_now" | "ok" | "no_data";
+export type StockCoverage = { demand?: number; covers?: boolean; shortfall_qty?: number; shortfall_cost?: number };
+export type StockRiskItem = {
+  nomenclature_id: string; name: string; code: string | null; unit: string | null; department: string | null;
+  stock: number | null; stock_as_of: string | null; stock_age_days: number | null; supplier: string | null; price: number | null;
+  history_monthly_avg: number; daily_demand: number; lead_time_days: number; lead_time_unknown: boolean; safety_days: number;
+  runs_out_in_days: number | null; runs_out_with_orders_in_days: number | null; order_arrives_in_days: number | null;
+  need_by_days: number | null; order_by_in_days: number | null; open_orders_qty: number;
+  status: StockStatus; message: string;
+  coverage: { quarter?: StockCoverage; half?: StockCoverage; year?: StockCoverage };
+  shortfall_cost_quarter: number; shortfall_cost_half: number; shortfall_cost_year: number;
+};
+export type StockRisk = Paginated<StockRiskItem> & {
+  summary: { critical: number; order_now: number; ok: number; no_data: number; shortfall_cost_quarter: number; shortfall_cost_half: number; shortfall_cost_year: number };
+  today: string; section_id: string | null; rule: string;
+};
+export type StockRiskParams = {
+  section_id?: string; status?: StockStatus; sort_by?: string; sort_dir?: "asc" | "desc"; limit?: number; offset?: number; include_cycles?: boolean;
+};
+export type SupplierTerm = { nomenclature_id: string; supplier: string | null; lead_time_days: number | null; min_order_qty: number | null; safety_days: number | null; note: string | null };
+export type PurchaseOrder = {
+  id: string; nomenclature_id: string; supplier: string | null; doc_no: string | null; qty: number; qty_received: number;
+  ordered_on: string | null; expected_on: string | null; status: string; note: string | null;
+};
+
 const analytics = {
+  async repairForecast(params: { horizon: PartsHorizon; section_id?: string; include_cycles?: boolean }): Promise<RepairForecast> {
+    return request({ method: "GET", path: "/analytics/repair-forecast", params, suppress404Log: true });
+  },
+  async partsDemand(params: { horizon?: PartsHorizon | "all"; section_id?: string; include_cycles?: boolean; limit?: number; offset?: number } = {}): Promise<PartsDemand> {
+    return request({ method: "GET", path: "/analytics/parts-demand", params, suppress404Log: true });
+  },
+  async partsConsumption(params: { months?: number; section_id?: string; limit?: number } = {}): Promise<PartsConsumption> {
+    return request({ method: "GET", path: "/analytics/parts-consumption", params, suppress404Log: true });
+  },
+  async stockRisk(params: StockRiskParams = {}): Promise<StockRisk> {
+    return request({ method: "GET", path: "/analytics/stock-risk", params, suppress404Log: true });
+  },
+  async supplierTerms(params: { nomenclature_id?: string } = {}): Promise<Paginated<SupplierTerm>> {
+    return request({ method: "GET", path: "/supplier-terms", params, suppress404Log: true });
+  },
+  async purchaseOrders(params: { nomenclature_id?: string; status?: string; open_only?: boolean; sort_by?: string; sort_dir?: "asc" | "desc"; limit?: number; offset?: number } = {}): Promise<Paginated<PurchaseOrder>> {
+    return request({ method: "GET", path: "/purchase-orders", params, suppress404Log: true });
+  },
   async list(
     block: AnalyticsBlock,
     params: ListParams & { section_id?: string } = {}
@@ -2716,6 +2805,7 @@ export const api = {
   maintenanceSettings,
   dashboard,
   analytics,
+  mlInsights,
   reports,
   employees,
   workTypes,

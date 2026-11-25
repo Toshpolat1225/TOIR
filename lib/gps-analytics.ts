@@ -1,3 +1,4 @@
+import { fmtPercent } from "./format.ts"
 // Analytics layer of the GPS pages: causes of a daily difference, tracker health, confidence, wagon labels, and the URL <-> filter state.
 // Pure functions, no React. Tests: lib/gps-analytics.test.ts (npm run test:unit).
 
@@ -74,14 +75,14 @@ export const healthColor = (v: string | null | undefined): string => TONE_COLOR[
 /** «12 из 30 дн. (40%)». */
 export function okShareText(h: GpsHealth | null | undefined): string {
   if (!h || h.active_days <= 0) return "—"
-  return `${h.ok_days} из ${h.active_days} дн. (${Math.round((h.ok_share ?? h.ok_days / h.active_days) * 100)}%)`
+  return `${h.ok_days} из ${h.active_days} дн. (${fmtPercent((h.ok_share ?? h.ok_days / h.active_days) * 100)})`
 }
 
 // ---- confidence ----------------------------------------------------------------------------------------------------------
 /** A 0..1 day confidence (backend `confidence`) -> «высокая 94%». */
 export function confidenceText(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—"
-  return `${value >= 0.9 ? "высокая" : value >= 0.7 ? "средняя" : "низкая"} ${Math.round(value * 100)}%`
+  return `${value >= 0.9 ? "высокая" : value >= 0.7 ? "средняя" : "низкая"} ${fmtPercent(value * 100)}`
 }
 export const confidenceTone = (value: number | null | undefined): Tone =>
   value === null || value === undefined || !Number.isFinite(value) ? "mute" : value >= 0.9 ? "ok" : value >= 0.7 ? "warn" : "bad"

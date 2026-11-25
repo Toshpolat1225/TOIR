@@ -1,5 +1,7 @@
 "use client"
 
+import { ChartZoomControls, useChartZoom } from "@/components/ui/chart-zoom"
+import { fmtPercent } from "@/lib/format"
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import Link from "next/link"
 import { useRealtime } from "@/lib/use-realtime"
@@ -53,7 +55,7 @@ const renderPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }:
   return (
     <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central"
       fontSize={11} fontWeight="bold">
-      {`${(percent * 100).toFixed(0)}%`}
+      {fmtPercent(percent * 100)}
     </text>
   )
 }
@@ -169,7 +171,8 @@ export default function DashboardPage() {
   )
   const onRepair     = filteredAssets.filter((a: { status?: string }) => a.status === "repair").length
   const outOfService = filteredAssets.filter((a: { status?: string }) => a.status === "out_of_service").length
-  const availPct     = totalAssets > 0 ? Math.round((operational / totalAssets) * 100) : 0
+  const availExact   = totalAssets > 0 ? (operational / totalAssets) * 100 : 0
+  const availPct     = Math.round(availExact)
 
   /* ── Разбивка по сериям ── */
   const seriesMap: Record<string, { loco: number; wagon: number }> = {}
@@ -199,13 +202,13 @@ export default function DashboardPage() {
     },
     {
       title: "В эксплуатации",    value: operational,   unit:"ед.",
-      sub: totalAssets ? `${availPct}% ${"% от парка"}` : "—", Icon: CheckCircle,
+      sub: totalAssets ? `${fmtPercent(availExact)} от парка` : "—", Icon: CheckCircle,
       light:"bg-emerald-50 dark:bg-emerald-950/60", text:"text-emerald-600 dark:text-emerald-400", bar:"bg-emerald-500",
       pct: availPct,
     },
     {
       title: "На техобслуживании", value: onMaint + onRepair, unit:"ед.",
-      sub: totalAssets ? `${Math.round(((onMaint+onRepair)/totalAssets)*100)}% ${"% от парка"}` : "—", Icon: Wrench,
+      sub: totalAssets ? `${fmtPercent(((onMaint+onRepair)/totalAssets)*100)} от парка` : "—", Icon: Wrench,
       light:"bg-amber-50 dark:bg-amber-950/60", text:"text-amber-600 dark:text-amber-400", bar:"bg-amber-500",
       pct: totalAssets ? Math.round(((onMaint+onRepair)/totalAssets)*100) : 0,
     },
@@ -225,10 +228,10 @@ export default function DashboardPage() {
     { name:"Списан",          value: outOfService, color:"#ef4444" },
   ].filter(s => s.value > 0)
 
-  /* ── Последние 6 месяцев ── */
+  /* ── Последние 12 месяцев (на графиках можно приближать) ── */
   const now = new Date()
-  const months6 = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
+  const months6 = Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1)
     return {
       key:   `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`,
       label: new Intl.DateTimeFormat("ru-RU", { month: "short" }).format(d),
@@ -262,6 +265,9 @@ export default function DashboardPage() {
     pct: readinessByMonth.get(key) ?? null,
   }))
   const hasReadinessHistory = availability.length > 0
+  const zoomBar = useChartZoom(workOrdersTrend, 3)
+  const zoomArea = useChartZoom(workOrdersTrend, 3)
+  const zoomLine = useChartZoom(availability, 3)
 
   /* ── Виды ремонта ── */
   const rkMap: Record<string,number> = {}
@@ -347,7 +353,7 @@ export default function DashboardPage() {
                 <div className="flex items-end gap-6">
                   <div><p className="text-3xl font-semibold tabular-nums">{totalAssets}</p><p className="mt-1 text-xs text-slate-400">{"единиц в парке"}</p></div>
                   <div className="h-10 border-l border-white/15" />
-                  <div><p className="text-3xl font-semibold tabular-nums">{availPct}%</p><p className="mt-1 text-xs text-slate-400">{"готовность парка"}</p></div>
+                  <div><p className="text-3xl font-semibold tabular-nums">{fmtPercent(availExact)}</p><p className="mt-1 text-xs text-slate-400">{"готовность парка"}</p></div>
                 </div>
                 <Link href="/dashboard/directories/assets" className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 transition hover:bg-blue-50">
                   {"Реестр основных средств"} <ArrowUpRight className="h-4 w-4" />
@@ -456,7 +462,7 @@ export default function DashboardPage() {
                       style={{ width: item.total ? `${Math.round(item.value / item.total * 100)}%` : "0%" }}/>
                   </div>
                   <p className="text-[10px] text-gray-400 mt-1">
-                    {item.total ? Math.round(item.value / item.total * 100) : 0}% от общего парка ({totalAssets} ед.)
+                    {fmtPercent(item.total ? item.value / item.total * 100 : 0)} от общего парка ({totalAssets} ед.)
                   </p>
                 </div>
               </div>
@@ -542,10 +548,11 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">{"Наряд-заказы по месяцам"}</p>
-                <p className="text-xs text-gray-400">{"Последние 6 месяцев"}</p>
+                <p className="text-xs text-gray-400">{"Последние 12 месяцев"}</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 text-xs">
+            <div className="flex flex-wrap items-center justify-end gap-3 text-xs">
+              <ChartZoomControls zoom={zoomBar}/>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-purple-500"/><span className="text-gray-500">Открыто</span></span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-emerald-500"/><span className="text-gray-500">Закрыто</span></span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-amber-400"/><span className="text-gray-500">В работе</span></span>
@@ -555,7 +562,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-center h-40 text-gray-400 text-xs">Нет данных</div>
           ) : (
             <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={workOrdersTrend} barGap={2} barSize={14}>
+              <BarChart data={zoomBar.view} barGap={2} barSize={14}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false}/>
                 <XAxis dataKey="month" tick={{ fontSize:11, fill:"#9ca3af" }} axisLine={false} tickLine={false}/>
                 <YAxis tick={{ fontSize:11, fill:"#9ca3af" }} axisLine={false} tickLine={false} width={24} allowDecimals={false}/>
@@ -574,20 +581,23 @@ export default function DashboardPage() {
 
         {/* Area */}
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-950 flex items-center justify-center">
-              <Activity className="w-3.5 h-3.5 text-purple-600"/>
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-950 flex items-center justify-center">
+                <Activity className="w-3.5 h-3.5 text-purple-600"/>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">{"Динамика нарядов"}</p>
+                <p className="text-xs text-gray-400">{"Открыто / закрыто / в работе"}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">{"Динамика нарядов"}</p>
-              <p className="text-xs text-gray-400">{"Открыто / закрыто / в работе"}</p>
-            </div>
+            <ChartZoomControls zoom={zoomArea}/>
           </div>
           {workOrdersTrend.length === 0 ? (
             <div className="flex items-center justify-center h-40 text-gray-400 text-xs">Нет данных</div>
           ) : (
             <ResponsiveContainer width="100%" height={180}>
-              <AreaChart data={workOrdersTrend}>
+              <AreaChart data={zoomArea.view}>
                 <defs>
                   <linearGradient id="gradOpen"  x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%"  stopColor="#8b5cf6" stopOpacity={0.15}/>
@@ -622,8 +632,9 @@ export default function DashboardPage() {
                 <p className="text-xs text-gray-400">{"% исправных единиц ОС · приблизительно"}</p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-xl font-bold text-gray-900 dark:text-white">{availPct}%</p>
+            <div className="flex flex-col items-end gap-1">
+              <ChartZoomControls zoom={zoomLine}/>
+              <p className="text-xl font-bold text-gray-900 dark:text-white">{fmtPercent(availExact)}</p>
               <p className="text-[10px] text-gray-400">от {totalAssets} ед.</p>
             </div>
           </div>
@@ -633,12 +644,12 @@ export default function DashboardPage() {
             <div className="flex items-center justify-center h-40 text-xs text-gray-400">Нет данных</div>
           ) : (
             <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={availability}>
+              <LineChart data={zoomLine.view}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false}/>
                 <XAxis dataKey="month" tick={{ fontSize:11, fill:"#9ca3af" }} axisLine={false} tickLine={false}/>
                 <YAxis domain={[0,100]} tick={{ fontSize:11, fill:"#9ca3af" }} axisLine={false} tickLine={false} width={30}
                   tickFormatter={v=>`${v}%`}/>
-                <Tooltip content={<CustomTooltip/>} formatter={(v: number)=>[`${v}%`,"Готовность"]}/>
+                <Tooltip content={<CustomTooltip/>} formatter={(v: number)=>[fmtPercent(v),"Готовность"]}/>
                 <Line type="monotone" dataKey="pct" name="Готовность"
                   stroke="#10b981" strokeWidth={2.5}
                   dot={{ r:4, fill:"#10b981", strokeWidth:2, stroke:"#fff" }}

@@ -54,9 +54,9 @@ describe("causes, health, confidence and wagon vocabularies", () => {
 
 describe("formatting of the analytics figures", () => {
   it("states the confidence in words and tone", () => {
-    assert.equal(confidenceText(0.94), "высокая 94%")
-    assert.equal(confidenceText(0.8), "средняя 80%")
-    assert.equal(confidenceText(0.31), "низкая 31%")
+    assert.equal(confidenceText(0.94), "высокая 94,00%")
+    assert.equal(confidenceText(0.8), "средняя 80,00%")
+    assert.equal(confidenceText(0.31), "низкая 31,00%")
     assert.equal(confidenceText(null), "—")
     assert.equal(confidenceTone(0.95), "ok")
     assert.equal(confidenceTone(0.75), "warn")
@@ -76,7 +76,7 @@ describe("formatting of the analytics figures", () => {
     assert.equal(nb(hoursText(null)), "—")
     assert.equal(nb(segKm(12.4)), "12,4 км")
     assert.equal(nb(segKm(null)), "—")
-    assert.equal(okShareText({ health_class: "intermittent", window_days: 30, active_days: 20, ok_days: 8, partial_days: 5, none_days: 7, km_lost_m: 0 }), "8 из 20 дн. (40%)")
+    assert.equal(okShareText({ health_class: "intermittent", window_days: 30, active_days: 20, ok_days: 8, partial_days: 5, none_days: 7, km_lost_m: 0 }), "8 из 20 дн. (40,00%)")
     assert.equal(okShareText(null), "—")
     assert.equal(okShareText({ health_class: "no_gtk", window_days: 30, active_days: 0, ok_days: 0, partial_days: 0, none_days: 0, km_lost_m: 0 }), "—")
   })

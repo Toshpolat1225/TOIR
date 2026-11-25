@@ -180,11 +180,11 @@ export function BaselineDialog({ item, todayIso, busy, error, onConfirm, onCance
         <legend className="text-xs font-semibold text-gray-600 dark:text-gray-300">{"Пробег на тот момент"}</legend>
         <label className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300">
           <input type="radio" name="baseline-mode" checked={mode === "odometer"} onChange={() => setMode("odometer")} className="mt-0.5" />
-          <span>{"Показание одометра (как в паспорте или Wialon). Система сама пересчитает его в шкалу ТОИР."}</span>
+          <span>{"Показание одометра (как в паспорте или Wialon). Система сама пересчитает его в шкалу НейроТОиР."}</span>
         </label>
         <label className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300">
           <input type="radio" name="baseline-mode" checked={mode === "toir"} onChange={() => setMode("toir")} className="mt-0.5" />
-          <span>{"Пробег в шкале ТОИР (км с момента подключения слежения; до подключения — отрицательный)."}</span>
+          <span>{"Пробег в шкале НейроТОиР (км с момента подключения слежения; до подключения — отрицательный)."}</span>
         </label>
         <input inputMode="decimal" value={km} onChange={(event) => setKm(event.target.value)} disabled={busy}
           placeholder={mode === "odometer" ? "Например: 121 500" : "Например: 1 500"} aria-label={"Пробег, км"} className={FIELD} />

@@ -1,5 +1,7 @@
 "use client"
+import { fmtPercent } from "@/lib/format"
 
+import { withBase } from "@/lib/base-path"
 import { Fragment, useState, useEffect, useCallback, useRef } from "react"
 import {
   api, type Employee, type MaintenanceBlockReason, type MaintenanceDecision, type MaintenanceDisruption,
@@ -591,7 +593,7 @@ function GanttChart({ items, rangeStart, rangeDays, onCreateOrder, onOpen, canRe
 
                         {toNum(firstItem.mileage) !== null && (
                           <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/50" title={"Пробег по данным ТОИР"}>
+                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/50" title={"Пробег по данным НейроТОиР"}>
                               <Gauge className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                               <span className="text-base font-bold text-emerald-700 dark:text-emerald-300">
                                 {fmtNum(toNum(firstItem.mileage) as number)} км
@@ -1208,7 +1210,7 @@ function DetailDrawer({ entry, siblings, onSelect, plan, canUpdate, updating, er
           {progress !== null && (
             <div>
               <div className="mb-1 flex justify-between text-xs text-gray-500">
-                <span>{"Выработка порога"}</span><span className="font-semibold">{Math.round(progress)}%</span>
+                <span>{"Выработка порога"}</span><span className="font-semibold">{fmtPercent(progress)}</span>
               </div>
               <div className="h-2.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
                 <div className={`h-full rounded-full ${barCls}`} style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
@@ -1352,11 +1354,11 @@ function DetailDrawer({ entry, siblings, onSelect, plan, canUpdate, updating, er
             <a href={assetHref(item)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">
               {"Открыть в основных средствах"}
             </a>
-            <a href="/dashboard/directories/maintenance-intervals" className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">
+            <a href={withBase("/dashboard/directories/maintenance-intervals")} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">
               {"Интервалы ТО"}
             </a>
             {item.work_order_id && (
-              <a href="/dashboard/work-orders" className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">
+              <a href={withBase("/dashboard/work-orders")} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">
                 {"Наряды"}
               </a>
             )}
@@ -2124,7 +2126,7 @@ export default function MaintenancePage() {
       {/* Заголовок */}
       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{"ТО и ремонты"}</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{"ИИ-ТО и ремонты"}</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             {"График ТО и ремонтов"}
           </p>
@@ -2180,7 +2182,7 @@ export default function MaintenancePage() {
             className="rounded-lg border border-amber-300 px-3 py-1 text-xs font-medium hover:bg-amber-100 dark:border-amber-800 dark:hover:bg-amber-900/40">
             {"Показать без участка"}
           </button>
-          <a href="/dashboard/directories/assets" className="text-xs font-medium underline">{"Назначить участки →"}</a>
+          <a href={withBase("/dashboard/directories/assets")} className="text-xs font-medium underline">{"Назначить участки →"}</a>
         </div>
       )}
       {testEntries.length > 0 && (
@@ -2190,7 +2192,7 @@ export default function MaintenancePage() {
             className="rounded-lg border border-amber-300 px-3 py-1 text-xs font-medium hover:bg-amber-100 dark:border-amber-800 dark:hover:bg-amber-900/40">
             {hideTest ? "Показать тестовые" : "Скрыть тестовые"}
           </button>
-          <a href="/dashboard/directories/maintenance-intervals" className="text-xs font-medium underline">{"Справочник интервалов →"}</a>
+          <a href={withBase("/dashboard/directories/maintenance-intervals")} className="text-xs font-medium underline">{"Справочник интервалов →"}</a>
         </div>
       )}
 
@@ -2477,7 +2479,7 @@ export default function MaintenancePage() {
             </button>
           )
         })}
-        <a href="/dashboard/directories/work-types" className="ml-1 text-xs text-blue-600 hover:underline">{"Справочник →"}</a>
+        <a href={withBase("/dashboard/directories/work-types")} className="ml-1 text-xs text-blue-600 hover:underline">{"Справочник →"}</a>
       </div>
       </Fold>
 
@@ -2531,7 +2533,7 @@ export default function MaintenancePage() {
         {(["upcoming","in_progress","completed","overdue","blocked"] as Status[]).map(s => {
           const cfg = statusConfig[s]
           const count = counts[s]
-          const pct = counts.all > 0 ? Math.round((count / counts.all) * 100) : 0
+          const pct = counts.all > 0 ? (count / counts.all) * 100 : 0
           return (
             <button key={s} onClick={() => setFilter(filter===s ? "all" : s)}
               className={`text-left p-5 rounded-2xl border-2 transition-all ${
@@ -2550,7 +2552,7 @@ export default function MaintenancePage() {
                 <div className={`h-full rounded-full transition-all ${cfg.cls.split(" ")[0].replace("bg-","bg-").replace("-100","-500").replace("-950","-500")}`}
                   style={{ width: `${pct}%` }}/>
               </div>
-              <p className="text-[10px] text-gray-400 mt-1">{pct}% {"от всех"}</p>
+              <p className="text-[10px] text-gray-400 mt-1">{fmtPercent(pct)} {"от всех"}</p>
             </button>
           )
         })}
@@ -2789,11 +2791,11 @@ export default function MaintenancePage() {
                     </td>
                     <td className="px-4 py-3 min-w-[110px]">
                       {progress !== null ? (
-                        <div title={`${Math.round(progress)}% текущего интервала`}>
+                        <div title={`${fmtPercent(progress)} текущего интервала`}>
                           <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
                             <div className={`h-full rounded-full ${barCls}`} style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
                           </div>
-                          <p className="mt-1 text-[10px] text-gray-400">{Math.round(progress)}%</p>
+                          <p className="mt-1 text-[10px] text-gray-400">{fmtPercent(progress)}</p>
                         </div>
                       ) : (
                         <span className="text-sm text-gray-400">—</span>
@@ -2911,7 +2913,7 @@ export default function MaintenancePage() {
           <strong className="text-emerald-700 dark:text-emerald-400">{"График ТО:"}</strong>{" "}
           {"Данные о пробеге поступают в реальном времени. При приближении к порогу ТО система автоматически показывает уведомление."}
           {"Нажмите «Открыть наряд» чтобы создать наряд-задание на основе пробега."}{" "}
-          <a href="/dashboard/directories/maintenance-intervals" className="ml-1 text-emerald-600 hover:underline">
+          <a href={withBase("/dashboard/directories/maintenance-intervals")} className="ml-1 text-emerald-600 hover:underline">
             {"Настроить интервалы ТО →"}
           </a>
         </span>

@@ -1,5 +1,6 @@
 import type { ElementType } from "react"
 import { TrendingDown, TrendingUp } from "@/components/ui/icons"
+import { fmtMoney } from "@/lib/format"
 
 export function KpiSkeleton() {
   return (
@@ -54,72 +55,74 @@ export function AiSectionSkeleton() {
   )
 }
 
-export function formatCurrency(value: number | null | undefined) {
-  if (value == null) return "0"
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
-  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`
-  return value.toFixed(0)
+export type Tone = "blue" | "green" | "red" | "amber" | "purple" | "indigo"
+
+const TONES: Record<Tone, { chip: string; bar: string; value: string }> = {
+  blue: { chip: "bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400", bar: "from-blue-500 to-blue-400", value: "text-gray-900 dark:text-white" },
+  green: { chip: "bg-green-50 text-green-600 dark:bg-green-950 dark:text-green-400", bar: "from-green-500 to-emerald-400", value: "text-green-600 dark:text-green-400" },
+  red: { chip: "bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-400", bar: "from-red-500 to-rose-400", value: "text-red-600 dark:text-red-400" },
+  amber: { chip: "bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400", bar: "from-amber-500 to-yellow-400", value: "text-gray-900 dark:text-white" },
+  purple: { chip: "bg-purple-50 text-purple-600 dark:bg-purple-950 dark:text-purple-400", bar: "from-purple-500 to-fuchsia-400", value: "text-gray-900 dark:text-white" },
+  indigo: { chip: "bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400", bar: "from-violet-500 to-indigo-500", value: "text-gray-900 dark:text-white" },
 }
 
-export function formatPercent(value: number | null | undefined) {
-  if (value == null) return "0%"
-  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`
-}
-
-export function KpiCard({ title, value, subtitle, icon: Icon, trend, trendValue, color = "blue" }: {
+/** One card style for every headline value on the page: KPI, money and AI figures. */
+export function StatCard({ title, value, unit, subtitle, icon: Icon, trend, trendValue, color = "blue", colorValue = false }: {
   title: string
   value: string | number
+  unit?: string
   subtitle?: string
   icon: ElementType
   trend?: "up" | "down" | "neutral"
   trendValue?: string
-  color?: "blue" | "green" | "red" | "amber" | "purple"
+  color?: Tone
+  /** paint the number itself with the tone (savings green / overrun red) */
+  colorValue?: boolean
 }) {
-  const colorClasses = {
-    blue: "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400",
-    green: "bg-green-50 dark:bg-green-950 text-green-600 dark:text-green-400",
-    red: "bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400",
-    amber: "bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400",
-    purple: "bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400",
-  }
-
+  const tone = TONES[color]
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{title}</p>
-          <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-          {subtitle && <p className="mt-1 text-xs text-gray-500">{subtitle}</p>}
+    <div className="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${tone.bar}`} />
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{title}</p>
+          <p className={`mt-2 flex flex-wrap items-baseline gap-x-1.5 text-2xl font-bold tabular-nums ${colorValue ? tone.value : "text-gray-900 dark:text-white"}`}>
+            {value}
+            {unit && <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{unit}</span>}
+          </p>
+          {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
           {trend && trendValue && (
             <div className={`mt-2 flex items-center gap-1 text-xs font-medium ${
-              trend === "up" ? "text-green-600" : trend === "down" ? "text-red-600" : "text-gray-500"
+              trend === "up" ? "text-green-600 dark:text-green-400" : trend === "down" ? "text-red-600 dark:text-red-400" : "text-gray-500"
             }`}>
-              {trend === "up" ? <TrendingUp className="w-3 h-3" /> :
-               trend === "down" ? <TrendingDown className="w-3 h-3" /> : null}
+              {trend === "up" ? <TrendingUp className="h-3 w-3" /> : trend === "down" ? <TrendingDown className="h-3 w-3" /> : null}
               {trendValue}
             </div>
           )}
         </div>
-        <div className={`p-3 rounded-xl ${colorClasses[color]}`}>
-          <Icon className="w-5 h-5" />
+        <div className={`shrink-0 rounded-xl p-3 ${tone.chip}`}>
+          <Icon className="h-5 w-5" />
         </div>
       </div>
     </div>
   )
 }
 
-export const CustomTooltip = ({ active, payload, label }: {
+export const KpiCard = StatCard
+
+export const CustomTooltip = ({ active, payload, label, format = fmtMoney }: {
   active?: boolean
   payload?: Array<{ name: string; value: number; color: string }>
   label?: string
+  format?: (value: number, name: string) => string
 }) => {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3">
-      <p className="text-xs font-semibold text-gray-900 dark:text-white mb-2">{label}</p>
+    <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+      <p className="mb-2 text-xs font-semibold text-gray-900 dark:text-white">{label}</p>
       {payload.map((entry, index) => (
         <p key={index} className="text-xs" style={{ color: entry.color }}>
-          {entry.name}: {typeof entry.value === "number" ? formatCurrency(entry.value) : entry.value}
+          {entry.name}: {typeof entry.value === "number" ? format(entry.value, entry.name) : entry.value}
         </p>
       ))}
     </div>

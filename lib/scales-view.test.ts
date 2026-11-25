@@ -25,7 +25,7 @@ describe("scales helpers", () => {
     assert.equal(tonnesText("1234.5").replace(/\s/g, " "), "1 235 т".replace(/\s/g, " "))
     assert.match(netText({ net_total_t: 300, net_source: "estimated" }), /^≈ 300/)
     assert.doesNotMatch(netText({ net_total_t: 300, net_source: "weighings" }), /≈/)
-    assert.equal(percentText(0.876), "88%")
+    assert.equal(percentText(0.876), "87,60%")
     assert.equal(percentText(null), "—")
   })
 
@@ -63,7 +63,7 @@ describe("wagon ledger helpers", () => {
     assert.equal(tripTonnes({ tonnes: null, basis: "unknown" }), "—")
   })
   it("tells how many trips were weighed individually", () => {
-    assert.equal(ownShareText({ trips: 4, own_trips: 3 }), "75% по собственному взвешиванию")
+    assert.equal(ownShareText({ trips: 4, own_trips: 3 }), "75,00% по собственному взвешиванию")
     assert.equal(ownShareText({ trips: 0, own_trips: 0 }), "—")
   })
 })

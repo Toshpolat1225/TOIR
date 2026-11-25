@@ -28,5 +28,6 @@ describe("realtimeSocketUrl", () => {
     assert.equal(realtimeSocketUrl("http://192.168.28.104/api/v1"), "ws://192.168.28.104/ws")
     assert.equal(realtimeSocketUrl("https://192.168.28.104/api/v1"), "wss://192.168.28.104/ws")
     assert.equal(realtimeSocketUrl("http://localhost:8010/api/v1"), "ws://localhost:8010/ws")
+    assert.equal(realtimeSocketUrl("https://192.168.28.104/demo/api/v1"), "wss://192.168.28.104/demo/ws")
   })
 })

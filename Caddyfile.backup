@@ -1,0 +1,54 @@
+{
+    # Browsers do not send SNI when the address is an IP, and inside Docker Caddy cannot match the connection's
+    # local address to the site: without this the TLS handshake fails for every client that opens https://<ip>.
+    default_sni {$DOMAIN}
+}
+
+# Shared by the plain-HTTP and the HTTPS site below, so both behave exactly the same.
+(toir) {
+    encode zstd gzip
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(self), geolocation=()"
+        # Only the directives that cannot break the Next.js pages: no framing, no foreign <base>/forms/plugins.
+        Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+        -Server
+    }
+
+    # API answers carry personal and operational data: browsers and proxies must not keep them.
+    @api path /api /api/*
+    header @api Cache-Control "no-store"
+
+    # DEMO copy under /demo/ (own backend + own database toir_demo; see docker-compose.demo.yml, docs/DEMO.md).
+    # If the demo containers are not running only /demo/ answers 502; the main site below is not affected.
+    @demo_backend path /demo/api /demo/api/* /demo/ws
+    handle @demo_backend {
+        header Cache-Control "no-store"
+        uri strip_prefix /demo
+        reverse_proxy backend-demo:8000
+    }
+    @demo path /demo /demo/*
+    handle @demo {
+        reverse_proxy frontend-demo:3000
+    }
+
+    @backend path /api /api/* /ws /docs /redoc /openapi.json
+    reverse_proxy @backend backend:8000
+
+    reverse_proxy frontend:3000
+}
+
+# Plain HTTP stays available (no redirect, no HSTS): clients that have not installed the root certificate yet.
+http://{$DOMAIN} {
+    import toir
+}
+
+# HTTPS with Caddy's own local CA (`tls internal`). Its root certificate is /data/caddy/pki/authorities/local/root.crt
+# in the caddy_data volume (copy in the repo: toir-local-root.crt); install it on the client PCs once.
+https://{$DOMAIN} {
+    tls internal
+    import toir
+}

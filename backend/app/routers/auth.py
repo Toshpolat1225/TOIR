@@ -16,7 +16,6 @@ from app.services.audit_log import add_auth_audit_event
 router = APIRouter(prefix="/auth", tags=["authentication"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
 REFRESH_COOKIE_NAME = "toir_refresh_token"
-REFRESH_COOKIE_PATH = "/api/v1/auth"
 
 
 def _set_refresh_cookie(response: Response, request: Request, token: str) -> None:
@@ -27,7 +26,7 @@ def _set_refresh_cookie(response: Response, request: Request, token: str) -> Non
         httponly=True,
         secure=request.url.scheme == "https",
         samesite="lax",
-        path=REFRESH_COOKIE_PATH,
+        path=settings.refresh_cookie_path,
     )
 
 
@@ -37,7 +36,7 @@ def _clear_refresh_cookie(response: Response, request: Request) -> None:
         httponly=True,
         secure=request.url.scheme == "https",
         samesite="lax",
-        path=REFRESH_COOKIE_PATH,
+        path=settings.refresh_cookie_path,
     )
 
 

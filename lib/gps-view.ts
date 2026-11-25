@@ -1,3 +1,4 @@
+import { fmtPercent } from "./format.ts"
 // Pure helpers of the GPS comparison pages (Wialon vs GTK): contract types, Russian labels, colours, formatting and chart geometry. No React.
 // Run the tests with: npm run test:unit
 
@@ -224,7 +225,7 @@ export function ageMinText(minutes: number | null | undefined): string {
 /** GTK / Wialon as a percentage: 0.943 -> «94%». */
 export function ratioText(ratio: number | null | undefined): string {
   if (ratio === null || ratio === undefined || !Number.isFinite(ratio)) return "—"
-  return `${Math.round(ratio * 100)}%`
+  return fmtPercent(ratio * 100)
 }
 
 /** A lag in seconds: «45 с», «2 мин». */

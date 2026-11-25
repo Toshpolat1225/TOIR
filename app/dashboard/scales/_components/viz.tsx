@@ -1,4 +1,5 @@
 "use client"
+import { fmtPercent } from "@/lib/format"
 
 // Hand-drawn SVG/CSS visuals of the weighing-scale screens: no chart library, so every shape can carry the railway meaning.
 import Link from "next/link"
@@ -14,7 +15,7 @@ export function Delta({ delta, invert = false }: { delta: number | null; invert?
   const color = good === null ? "text-white/60" : good ? "text-emerald-300" : "text-rose-300"
   return (
     <span className={`inline-flex items-center gap-1 text-xs ${color}`} title={deltaText(delta)}>
-      {tone === "up" ? "▲" : tone === "down" ? "▼" : "■"} {delta === null ? "—" : `${delta > 0 ? "+" : ""}${Math.round(delta)}%`}
+      {tone === "up" ? "▲" : tone === "down" ? "▼" : "■"} {delta === null ? "—" : fmtPercent(delta, true)}
     </span>
   )
 }

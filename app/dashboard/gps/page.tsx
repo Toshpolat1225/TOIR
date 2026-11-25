@@ -1,4 +1,5 @@
 "use client"
+import { fmtPercent } from "@/lib/format"
 
 import Link from "next/link"
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
@@ -132,7 +133,7 @@ function GpsPageInner() {
       label: `${r.inv_number} ${r.name} · ${source === "wialon" ? "Wialon" : "GTK"}: ${ageMinText(fix.age_min)} · ${POSITION_LABEL[r.position.verdict]}`,
     }]
   }), [mapRows])
-  // «Карта TOIR (единая)»: the point /map/assets draws for each of these locomotives, ringed by the verdict, plus the other tracker's fix as a ghost
+  // «Карта НейроТОиР (единая)»: the point /map/assets draws for each of these locomotives, ringed by the verdict, plus the other tracker's fix as a ghost
   const byAsset = useMemo(() => new Map(points.map((p) => [p.asset_id, p])), [points])
   const toirMarkers = useMemo<GpsMarker[]>(() => mapRows.flatMap((r) => {
     const p = byAsset.get(r.asset_id)
@@ -140,7 +141,7 @@ function GpsPageInner() {
     const color = positionColor(p.gps_verdict ?? r.position.verdict)
     const own: GpsMarker = {
       id: r.asset_id, lat: p.lat, lon: p.lon, color, hollow: p.online === false,
-      label: `${r.inv_number} ${r.name} · TOIR: ${p.source === "gtk_gps" ? "GTK GPS" : "Wialon"}${p.gps_diff_m != null ? ` · между трекерами ${distText(p.gps_diff_m)}` : ""} · ${POSITION_LABEL[(p.gps_verdict ?? r.position.verdict) as PositionVerdict] ?? ""}`,
+      label: `${r.inv_number} ${r.name} · НейроТОиР: ${p.source === "gtk_gps" ? "GTK GPS" : "Wialon"}${p.gps_diff_m != null ? ` · между трекерами ${distText(p.gps_diff_m)}` : ""} · ${POSITION_LABEL[(p.gps_verdict ?? r.position.verdict) as PositionVerdict] ?? ""}`,
     }
     if (p.alt_lat == null || p.alt_lon == null) return [own]
     return [own, { id: `${r.asset_id}:alt`, selectId: r.asset_id, ghost: true, lat: p.alt_lat, lon: p.alt_lon, color, label: `${r.inv_number} · другой трекер (${p.alt_source === "gtk_gps" ? "GTK GPS" : "Wialon"}), ${ageMinText(p.alt_source === "gtk_gps" ? p.gps_gtk_age_min : p.gps_wialon_age_min)}`, hollow: true }]
@@ -289,7 +290,7 @@ function GpsPageInner() {
         {([
           ["wialon", "Карта Wialon", WIALON_COLOR, wialonMarkers, [] as GpsLine[], "только позиции Wialon"],
           ["gtk", "Карта GTK", GTK_COLOR, gtkMarkers, [] as GpsLine[], "только позиции GTK GPS"],
-          ["toir", "Карта TOIR (единая)", "#7c3aed", toirMarkers, toirLines, "одна точка на локомотив: свежая; пунктир и кружок — позиция другого трекера"],
+          ["toir", "Карта НейроТОиР (единая)", "#7c3aed", toirMarkers, toirLines, "одна точка на локомотив: свежая; пунктир и кружок — позиция другого трекера"],
         ] as const).map(([key, title, color, markers, lines, note]) => (
           <section key={key} className="min-w-0 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <header className="mb-2 flex flex-wrap items-baseline justify-between gap-2 px-1">
@@ -336,7 +337,7 @@ function GpsPageInner() {
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {rows.map((r) => {
-                  const lead = r.week_wialon_m > 0 ? Math.round((r.week_gtk_m / r.week_wialon_m) * 100) : null
+                  const lead = r.week_wialon_m > 0 ? (r.week_gtk_m / r.week_wialon_m) * 100 : null
                   return (
                     <tr
                       key={r.asset_id} id={`gps-row-${r.asset_id}`} data-testid="gps-row" data-verdict={r.position.verdict} data-status={r.status} onClick={() => openUnit(r.asset_id)}
@@ -365,7 +366,7 @@ function GpsPageInner() {
                       <td className="px-2 py-2 text-right font-semibold tabular-nums">{fusedText(r.week_fused_m ?? r.week_unified_m, sumGap(r.days))}</td>
                       <td className="px-2 py-2">{r.week_confidence == null ? <span className="text-xs text-gray-400">—</span> : <Chip tone={confidenceTone(r.week_confidence)}>{confidenceText(r.week_confidence)}</Chip>}</td>
                       <td className="px-2 py-2"><MiniPair days={r.days.slice(0, 14)} /></td>
-                      <td className="px-2 py-2 text-right tabular-nums">{lead === null ? "—" : `${lead}%`}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{lead === null ? "—" : fmtPercent(lead)}</td>
                     </tr>
                   )
                 })}

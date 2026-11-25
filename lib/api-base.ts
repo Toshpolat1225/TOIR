@@ -23,7 +23,8 @@ export function resolveApiBase(configured: string | undefined, origin: string | 
 /** The WebSocket address of the realtime channel: same host as the API, `/ws`, wss:// when the API is https://. */
 export function realtimeSocketUrl(apiBase: string): string {
   const api = new URL(apiBase)
-  const socket = new URL("/ws", api)
+  // "/ws" sits next to "/api/v1": under a sub-path (the demo copy: /demo/api/v1) it is "/demo/ws"
+  const socket = new URL(`${api.pathname.replace(/\/api\/v1\/?$/, "")}/ws`, api)
   socket.protocol = api.protocol === "https:" ? "wss:" : "ws:"
   return socket.toString()
 }

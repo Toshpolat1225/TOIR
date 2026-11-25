@@ -56,6 +56,7 @@ from app.models.maintenance import (
 from app.models.organization import Department, Employee, Section
 from app.models.permissions import Permission, PermissionAudit, RolePermission
 from app.models.tmc import TmcDocument, TmcDocumentItem
+from app.models.stock import PurchaseOrder, StockBalance, SupplierTerm
 from app.models.wialon_counters import WialonCounterState, WialonRejectedReading
 from app.models.wialon_units import WialonUnitRecord
 from app.models.work_orders import WorkOrder, WorkOrderItem, WorkOrderRepair

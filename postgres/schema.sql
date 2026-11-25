@@ -1779,3 +1779,50 @@ CREATE TABLE assistant_pending (
 );
 CREATE INDEX ix_assistant_pending_user ON assistant_pending(user_id, expires_at);
 
+
+-- Spare-part stock risk (stock from 1C, supplier lead times, purchase orders), migration 0046
+CREATE TABLE stock_balances (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    nomenclature_id uuid NOT NULL REFERENCES nomenclature(id) ON DELETE CASCADE,
+    warehouse text NOT NULL DEFAULT '',
+    qty numeric(14,3) NOT NULL,
+    unit text,
+    as_of date NOT NULL,
+    source text NOT NULL DEFAULT '1c_import',
+    batch_id uuid,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_stock_balances_qty CHECK (qty >= 0),
+    CONSTRAINT ck_stock_balances_source CHECK (source IN ('1c_import','manual','demo')),
+    CONSTRAINT uq_stock_balances_key UNIQUE (nomenclature_id, warehouse, as_of)
+);
+CREATE INDEX ix_stock_balances_nomenclature ON stock_balances(nomenclature_id, as_of);
+CREATE TABLE supplier_terms (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    nomenclature_id uuid NOT NULL UNIQUE REFERENCES nomenclature(id) ON DELETE CASCADE,
+    supplier text,
+    lead_time_days integer NOT NULL,
+    min_order_qty numeric(14,3),
+    safety_days integer NOT NULL DEFAULT 14,
+    note text,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_supplier_terms_lead CHECK (lead_time_days > 0),
+    CONSTRAINT ck_supplier_terms_safety CHECK (safety_days >= 0),
+    CONSTRAINT ck_supplier_terms_moq CHECK (min_order_qty IS NULL OR min_order_qty > 0)
+);
+CREATE TABLE purchase_orders (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    nomenclature_id uuid NOT NULL REFERENCES nomenclature(id) ON DELETE CASCADE,
+    doc_no text,
+    supplier text,
+    qty numeric(14,3) NOT NULL,
+    qty_received numeric(14,3) NOT NULL DEFAULT 0,
+    ordered_on date,
+    expected_on date,
+    status text NOT NULL DEFAULT 'ordered',
+    note text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_purchase_orders_qty CHECK (qty > 0),
+    CONSTRAINT ck_purchase_orders_received CHECK (qty_received >= 0),
+    CONSTRAINT ck_purchase_orders_status CHECK (status IN ('ordered','in_transit','partial','received','cancelled'))
+);
+CREATE INDEX ix_purchase_orders_nomenclature ON purchase_orders(nomenclature_id, status);

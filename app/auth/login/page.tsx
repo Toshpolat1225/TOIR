@@ -48,8 +48,8 @@ export default function LoginPage() {
             <Wrench className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-lg font-bold tracking-wide text-slate-950 dark:text-white">STTB</h1>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-gray-400">{"Система технического обслуживания"}</p>
+            <h1 className="text-lg font-bold tracking-wide text-slate-950 dark:text-white">НейроТОиР</h1>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-gray-400">{"Система технического обслуживания и ремонта"}</p>
           </div>
         </div>
 

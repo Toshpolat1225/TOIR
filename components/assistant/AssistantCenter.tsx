@@ -1,4 +1,5 @@
 "use client"
+import { fmtPercent } from "@/lib/format"
 
 // The command centre: header buttons (microphone, «Команды»), Ctrl+K, and a panel with the conversation of result cards, push-to-talk voice,
 // a confirmation flow for writes, help and text-to-speech. Everything goes through api.assistant.*.
@@ -6,7 +7,8 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react"
 import { createPortal } from "react-dom"
-import { ClockHistory, HelpCircle, Loader2, Mic, MicFill, PencilSquare, Robot, Send, StopFill, Volume2, X } from "@/components/ui/icons"
+import { AssistantMark } from "@/components/assistant/AssistantMark"
+import { ClockHistory, HelpCircle, Loader2, Mic, MicFill, PencilSquare, Send, StopFill, Volume2, X } from "@/components/ui/icons"
 import { useAuth } from "@/lib/auth-context"
 import { api, type AssistantCommandOut, type AssistantEntityRef, type AssistantHelpOut, type AssistantStatusOut } from "@/lib/api"
 import type { AssistantHistoryItem } from "@/lib/assistant"
@@ -463,10 +465,10 @@ export function AssistantCenter() {
       >
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 dark:border-gray-800 dark:bg-gray-900">
           <div className="mr-auto flex min-w-0 items-center gap-2">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 to-violet-500 text-white"><Robot /></span>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-slate-900 via-indigo-900 to-violet-800 shadow-inner"><AssistantMark className="h-9 w-9" /></span>
             <div className="min-w-0">
-              <h2 className="truncate text-sm font-semibold leading-tight text-slate-900 dark:text-white">AI yordamchi</h2>
-              <p className="flex items-center gap-1 text-[11px] leading-tight text-slate-500 dark:text-gray-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Online</p>
+              <h2 className="truncate text-sm font-semibold leading-tight text-slate-900 dark:text-white">Помощник</h2>
+              <p className="flex items-center gap-1 text-[11px] leading-tight text-slate-500 dark:text-gray-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> На связи</p>
             </div>
           </div>
           <button type="button" data-testid="assistant-history-toggle" aria-label="История запросов" title="История запросов" aria-pressed={showHistory} onClick={toggleHistory} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:text-gray-400 dark:hover:bg-gray-800"><ClockHistory /></button>
@@ -666,7 +668,7 @@ export function AssistantCenter() {
           {notice ? <p className="mb-2 break-words rounded-lg bg-slate-100 px-2.5 py-1 text-xs text-slate-700 dark:bg-gray-800 dark:text-gray-200">{notice}</p> : null}
           {review ? (
             <div className="mb-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-sm dark:border-amber-800 dark:bg-amber-950/30">
-              <p className="break-words text-amber-950 dark:text-amber-100">Siz aytdingiz: «{review.text}»{review.confidence !== null ? <span className="text-xs opacity-70"> ({Math.round(review.confidence * 100)}%)</span> : null}</p>
+              <p className="break-words text-amber-950 dark:text-amber-100">Siz aytdingiz: «{review.text}»{review.confidence !== null ? <span className="text-xs opacity-70"> ({fmtPercent(review.confidence * 100)})</span> : null}</p>
               <div className="mt-1.5 flex flex-wrap gap-2">
                 <button type="button" onClick={() => void submit(review.text, "voice", review.confidence)} className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700">Отправить</button>
                 <button type="button" onClick={() => { setInput(review.text); setReview(null); inputRef.current?.focus() }} className="rounded-lg bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50 dark:bg-gray-900 dark:text-gray-200 dark:ring-gray-700">Править</button>
@@ -735,12 +737,12 @@ export function AssistantCenter() {
     <button
       type="button"
       data-testid="assistant-fab"
-      aria-label="AI yordamchi"
-      title="AI yordamchi (Ctrl+K)"
+      aria-label="Помощник"
+      title="Помощник (Ctrl+K)"
       onClick={() => setOpen(true)}
-      className="fixed bottom-5 right-5 z-[60] flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 to-violet-500 text-2xl text-white shadow-lg ring-4 ring-white/70 transition hover:scale-105 focus:outline-none focus-visible:ring-indigo-300 dark:ring-gray-900/70"
+      className="fixed bottom-5 right-5 z-[60] flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-slate-900 via-indigo-900 to-violet-800 shadow-lg shadow-indigo-900/40 ring-4 ring-white/70 transition hover:scale-105 focus:outline-none focus-visible:ring-indigo-300 dark:ring-gray-900/70"
     >
-      <Robot />
+      <AssistantMark className="h-14 w-14" />
     </button>
   )
 

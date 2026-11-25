@@ -74,7 +74,7 @@ export default function GpsDetailPage() {
   const maps: { key: string; title: string; note: string; markers: GpsMarker[]; lines: GpsLine[]; testId: string }[] = [
     { key: "w", title: `Трек Wialon${dayNote}`, note: `${wialonPts.length} сохранённых точек`, markers: fixMarkers.filter((m) => m.id === "fix-w"), lines: wialonLine, testId: "gps-detail-map-wialon" },
     { key: "g", title: `Трек GTK${dayNote}`, note: `${gtkPts.length} сохранённых точек`, markers: fixMarkers.filter((m) => m.id === "fix-g"), lines: gtkLine, testId: "gps-detail-map-gtk" },
-    { key: "t", title: `Карта TOIR (единая): оба трека${dayNote}`, note: "синий — Wialon, оранжевый — GTK; кружки — живые позиции", markers: fixMarkers, lines: overlayLines, testId: "gps-detail-map-toir" },
+    { key: "t", title: `Карта НейроТОиР (единая): оба трека${dayNote}`, note: "синий — Wialon, оранжевый — GTK; кружки — живые позиции", markers: fixMarkers, lines: overlayLines, testId: "gps-detail-map-toir" },
   ]
 
   return (

@@ -81,7 +81,7 @@ export function OverviewFilters({ filters: f, set, facets, sections, qText, onQT
         </div>
         <button type="button" className={chipBtn(f.only_issues)} aria-pressed={f.only_issues} onClick={() => set({ only_issues: !f.only_issues, page: 0 })} data-testid="gps-only-issues">Только проблемные</button>
         <button type="button" className={chipBtn(f.moving)} aria-pressed={f.moving} onClick={() => set({ moving: !f.moving, page: 0 })} data-testid="gps-moving">Едут сейчас</button>
-        <button type="button" className={chipBtn(f.follow)} aria-pressed={f.follow} onClick={() => set({ follow: !f.follow, page: 0 })} data-testid="gps-follow-map" title="В таблице только то, что видно на карте TOIR">Список следует за картой</button>
+        <button type="button" className={chipBtn(f.follow)} aria-pressed={f.follow} onClick={() => set({ follow: !f.follow, page: 0 })} data-testid="gps-follow-map" title="В таблице только то, что видно на карте НейроТОиР">Список следует за картой</button>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <span className="text-sm text-gray-500 dark:text-gray-400" data-testid="gps-count">Показано: <b>{shown}</b>{total !== shown ? ` из ${total}` : ""}</span>
           <SavedViewsMenu query={query} onApply={onApplyView} />

@@ -93,7 +93,7 @@ export function MaintenancePanel({ m }: { m: Maintenance }) {
               ))}
             </ul>
           )}
-          <Link href="/dashboard/maintenance" className="mt-2 inline-block text-xs text-blue-600 hover:underline dark:text-blue-400">Открыть «ТО и ремонты» →</Link>
+          <Link href="/dashboard/maintenance" className="mt-2 inline-block text-xs text-blue-600 hover:underline dark:text-blue-400">Открыть «ИИ-ТО и ремонты» →</Link>
         </div>
         <div>
           <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Наряды (всего {m.work_orders_total})</h3>

@@ -16,17 +16,19 @@ type AuthContextType = {
   signOut: () => Promise<void>
 }
 
+import { withBase } from "@/lib/base-path"
+
 const SESSION_HINT_COOKIE = "toir_session_hint"
 const SESSION_HINT_MAX_AGE = 7 * 24 * 60 * 60
 
 function setSessionHint(): void {
   const secure = window.location.protocol === "https:" ? "; Secure" : ""
-  document.cookie = `${SESSION_HINT_COOKIE}=1; Path=/dashboard; Max-Age=${SESSION_HINT_MAX_AGE}; SameSite=Lax${secure}`
+  document.cookie = `${SESSION_HINT_COOKIE}=1; Path=${withBase("/dashboard")}; Max-Age=${SESSION_HINT_MAX_AGE}; SameSite=Lax${secure}`
 }
 
 function clearSessionHint(): void {
   const secure = window.location.protocol === "https:" ? "; Secure" : ""
-  document.cookie = `${SESSION_HINT_COOKIE}=; Path=/dashboard; Max-Age=0; SameSite=Lax${secure}`
+  document.cookie = `${SESSION_HINT_COOKIE}=; Path=${withBase("/dashboard")}; Max-Age=0; SameSite=Lax${secure}`
 }
 
 const AuthContext = createContext<AuthContextType>({

@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  // the demo copy is served under /demo (NEXT_PUBLIC_BASE_PATH=/demo at build time); empty for the main site
+  basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
   // Оптимизация пакетов - уменьшает размер бандла
   experimental: {
     optimizePackageImports: [

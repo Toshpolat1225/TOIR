@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
+import { fmtMoney } from "@/lib/format"
 
 import { useState, useEffect, useCallback } from "react"
 import { useSectionView } from "@/lib/section-view-context"
@@ -712,7 +713,7 @@ export default function TmcPage() {
                     {doc.items.length}
                   </td>
                   <td className="px-5 py-4 text-sm font-semibold text-gray-900 dark:text-white font-mono">
-                    {total.toLocaleString("ru-RU", { minimumFractionDigits: 2 })}
+                    {fmtMoney(total)}
                   </td>
                   <td className="px-5 py-4">
                     <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${cfg.class}`}>

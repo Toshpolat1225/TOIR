@@ -146,7 +146,7 @@ export function Asset360Dialog({ subject, overview, initialTab, onClose, onEdit 
                 <Tile title="Состав (GTK)" color="#8b5cf6" value={overview?.gtk ? `№ ${overview.gtk.train_number ?? overview.gtk.train_gtk_id}` : "Не в составе"} sub={overview?.gtk ? (isLoco ? `${overview.gtk.carriages} вагонов в составе` : `позиция ${overview.gtk.order}, с ${fmtDay(overview.gtk.since)}`) : "нет открытого состава"} onClick={() => setTab("gtk")} />
                 <Tile title="Весовая" color="#f59e0b" value={overview?.scales?.last_at ? fmtDay(overview.scales.last_at) : "Нет взвешиваний"} sub={overview?.scales ? `${overview.scales.net_t != null ? num(overview.scales.net_t, 1) + " т · " : ""}${overview.scales.trains_30d} рейсов за 30 дн` : undefined} onClick={() => setTab("scales")} />
                 <Tile title="Последний ремонт" color="#10b981" value={m?.last_maint_date ? fmtDay(m.last_maint_date) : m?.last_order_at ? fmtDay(m.last_order_at) : "Нет данных"} sub={`${m?.open_orders ?? 0} открытых нарядов · след. ТО: ${fmtDay(m?.next_maint_date)}`} onClick={() => setTab("repairs")} />
-                <Tile title="Пробег ТОИР" color="#ef4444" value={`${num(subject.mileage)} км`} sub={subject.unitId ? `Wialon: ${num(subject.wialonMileage)} км` : "трекера нет"} />
+                <Tile title="Пробег НейроТОиР" color="#ef4444" value={`${num(subject.mileage)} км`} sub={subject.unitId ? `Wialon: ${num(subject.wialonMileage)} км` : "трекера нет"} />
               </div>
             </>
           )}
@@ -186,7 +186,7 @@ export function Asset360Dialog({ subject, overview, initialTab, onClose, onEdit 
                 <Row k="Пробег Wialon" v={`${num(subject.wialonMileage)} км`} />
                 <Row k="Моточасы" v={subject.engineHours ? num(subject.engineHours, 1) : "—"} />
                 <Row k="Скорость" v={`${num(subject.speed)} км/ч`} />
-                <Row k="Пробег ТОИР (для сравнения)" v={`${num(subject.mileage)} км`} />
+                <Row k="Пробег НейроТОиР (для сравнения)" v={`${num(subject.mileage)} км`} />
               </Box>
             ) : <Note>Wialon-трекер к этому активу не привязан.</Note>
           )}
@@ -260,7 +260,7 @@ export function Asset360Dialog({ subject, overview, initialTab, onClose, onEdit 
                   <>{o.items.map((w) => <Row key={w.id} k={`${w.number} · ${w.description.slice(0, 60)}`} v={`${w.status} · ${fmtDay(w.closed_at ?? w.date_start)}`} />)}</>
                 )}</Async>
               </Box>
-              <Link href="/dashboard/maintenance" className="inline-block rounded-full border border-gray-300 px-4 py-2 text-sm font-semibold hover:bg-white dark:border-gray-600">ТО и ремонты</Link>
+              <Link href="/dashboard/maintenance" className="inline-block rounded-full border border-gray-300 px-4 py-2 text-sm font-semibold hover:bg-white dark:border-gray-600">ИИ-ТО и ремонты</Link>
             </>
           )}
         </div>

@@ -79,7 +79,23 @@ export type EquipmentWithRisk = {
   last_ml_update: string
 }
 
+export type MlInsight = {
+  id: string
+  asset_id: string | null
+  asset_name: string
+  work_order_number: string
+  insight_type: "anomaly" | "prediction" | "efficiency"
+  probability: number
+  severity: "low" | "medium" | "high" | "critical"
+  message: string
+  suggested_action: string
+  details: Record<string, unknown>
+  is_resolved: boolean
+  created_at: string
+}
+
 type AnalyticsData = {
+  mlInsights: MlInsight[]
   sectionData: SectionEfficiency[]
   workTypeData: WorkTypeEfficiency[]
   monthlyData: MonthlyEfficiency[]
@@ -118,6 +134,7 @@ export function useAnalyticsData(): AnalyticsData {
   const [workTypeData, setWorkTypeData] = useState<WorkTypeEfficiency[]>([])
   const [monthlyData, setMonthlyData] = useState<MonthlyEfficiency[]>([])
   const [aiInsights, setAiInsights] = useState<AiInsight[]>([])
+  const [mlInsights, setMlInsights] = useState<MlInsight[]>([])
   const [fleetHealth, setFleetHealth] = useState<FleetHealth | null>(null)
   const [riskEquipment, setRiskEquipment] = useState<EquipmentWithRisk[]>([])
   const [loadingMain, setLoadingMain] = useState(true)
@@ -178,7 +195,30 @@ export function useAnalyticsData(): AnalyticsData {
       api.analytics.list("ai-insights-summary", { limit: 1000, offset: 0 }),
       api.analytics.list("fleet-health", { limit: 1000, offset: 0 }),
       api.fixedAssets.list({ limit: 1000, offset: 0 }),
-    ]).then(([insights, health, assets]) => {
+      api.mlInsights.list({ limit: 300, offset: 0 }).catch(() => null),
+    ]).then(([insights, health, assets, ml]) => {
+      setMlInsights((ml?.items ?? []).map((item, index) => {
+        const row = item as Record<string, unknown>
+        const type = row.insight_type === "anomaly" || row.insight_type === "prediction" ? row.insight_type : "efficiency"
+        const severity = ["low", "medium", "high", "critical"].includes(String(row.severity))
+          ? row.severity as MlInsight["severity"]
+          : "low"
+        const details = row.details && typeof row.details === "object" ? row.details as Record<string, unknown> : {}
+        return {
+          id: String(row.id ?? `ml-${index}`),
+          asset_id: row.asset_id ? String(row.asset_id) : null,
+          asset_name: String(row.asset_name ?? ""),
+          work_order_number: String(row.work_order_number ?? ""),
+          insight_type: type,
+          probability: numeric(row, "probability"),
+          severity,
+          message: String(row.message ?? ""),
+          suggested_action: String(row.suggested_action ?? ""),
+          details,
+          is_resolved: Boolean(row.is_resolved),
+          created_at: String(row.created_at ?? ""),
+        }
+      }))
       setAiInsights(insights.items.map((item, index) => {
         const row = item as Record<string, unknown>
         const type = row.insight_type === "anomaly" || row.insight_type === "prediction"
@@ -237,8 +277,9 @@ export function useAnalyticsData(): AnalyticsData {
     }).catch((cause: unknown) => {
       setError((current) => current ?? (cause instanceof ApiHttpError && cause.status === 404
         ? "Bu bo‘lim keyingi bosqichda ko‘chiriladi"
-        : cause instanceof Error ? cause.message : "Не удалось загрузить AI-аналитику"))
+        : cause instanceof Error ? cause.message : "Не удалось загрузить ИИ-Аналитику"))
       setAiInsights([])
+      setMlInsights([])
       setFleetHealth(null)
       setRiskEquipment([])
     }).finally(() => setLoadingAi(false))
@@ -256,6 +297,7 @@ export function useAnalyticsData(): AnalyticsData {
     workTypeData,
     monthlyData,
     aiInsights,
+    mlInsights,
     fleetHealth,
     riskEquipment,
     loading,
