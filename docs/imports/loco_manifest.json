@@ -1,0 +1,8 @@
+[
+  {
+    "file": "loco_last_repairs_journal.csv",
+    "name": "ЖДЦ-2: тепловозы, последние ремонты (ТР-1 / ТР-3 / КР-2)",
+    "source_file": "Последние ремонты локомотивов УПЖТ 2026 г.xls",
+    "field": "last_maint_date"
+  }
+]

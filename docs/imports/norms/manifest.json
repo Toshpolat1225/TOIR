@@ -1,0 +1,74 @@
+[
+  {
+    "file": "ДР_2ВС-105.csv",
+    "work_type_code": "ДР",
+    "asset_type": "wagon",
+    "model_name": "2ВС-105",
+    "source_file": "Норма расхода на ДР 2ВС-105 на 2027 г..xls",
+    "source_sheet": "2025",
+    "name": "ДР: 2ВС-105"
+  },
+  {
+    "file": "ДР_6ВС-60.csv",
+    "work_type_code": "ДР",
+    "asset_type": "wagon",
+    "model_name": "6ВС-60",
+    "source_file": "Норма расхода на ДР 6ВС-60 на 2027  г..xls",
+    "source_sheet": "2023",
+    "name": "ДР: 6ВС-60"
+  },
+  {
+    "file": "ДР_платформа.csv",
+    "work_type_code": "ДР",
+    "asset_type": "platform",
+    "model_name": "",
+    "source_file": "Норма расхода на ДР платформ на 2027 г ..xls",
+    "source_sheet": "2023",
+    "name": "ДР: платформа"
+  },
+  {
+    "file": "ДР_цистерна.csv",
+    "work_type_code": "ДР",
+    "asset_type": "tank_car",
+    "model_name": "",
+    "source_file": "Норма расхода на ДР цистерн на 2027 г..xls",
+    "source_sheet": "2025",
+    "name": "ДР: цистерна"
+  },
+  {
+    "file": "КР_2ВС-105.csv",
+    "work_type_code": "КРВ",
+    "asset_type": "wagon",
+    "model_name": "2ВС-105",
+    "source_file": "Норма расхода на КР 2ВС-105 на 2027 г..xls",
+    "source_sheet": "2025",
+    "name": "КРВ: 2ВС-105"
+  },
+  {
+    "file": "КР_6ВС-60.csv",
+    "work_type_code": "КРВ",
+    "asset_type": "wagon",
+    "model_name": "6ВС-60",
+    "source_file": "Норма расхода на КР 6ВС-60 на 2027 г..xls",
+    "source_sheet": "2025",
+    "name": "КРВ: 6ВС-60"
+  },
+  {
+    "file": "КР_платформа.csv",
+    "work_type_code": "КРВ",
+    "asset_type": "platform",
+    "model_name": "",
+    "source_file": "Норма расхода на КР ж.д платформ на 2027 г..xls",
+    "source_sheet": "2023",
+    "name": "КРВ: платформа"
+  },
+  {
+    "file": "КР_цистерна.csv",
+    "work_type_code": "КРВ",
+    "asset_type": "tank_car",
+    "model_name": "",
+    "source_file": "Норма расхода на КР ж.д цистерн на 2027 г..xls",
+    "source_sheet": "2025",
+    "name": "КРВ: цистерна"
+  }
+]

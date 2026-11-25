@@ -121,6 +121,48 @@ export default function DirectoriesPage() {
             </div>
           </Link>
         )}
+        {hasPermission("inventory.view") && (
+          <Link
+            href="/dashboard/directories/repair-norms"
+            className="group bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md transition-all"
+          >
+            <div className="flex items-start gap-4">
+              <div className="p-3 rounded-xl bg-orange-100 text-orange-600 dark:bg-orange-900/50 dark:text-orange-400">
+                <Gauge className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                  Нормы расхода на ремонт
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Материалы и запасные части на ДР и КР по типам вагонов
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-300 dark:text-gray-600 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
+            </div>
+          </Link>
+        )}
+        {hasPermission("data_migration.view") && (
+          <Link
+            href="/dashboard/directories/migration"
+            className="group bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md transition-all"
+          >
+            <div className="flex items-start gap-4">
+              <div className="p-3 rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400">
+                <FolderOpen className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                  Миграция данных
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Данные, перенесённые из файлов: просмотр, правка и откат
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-300 dark:text-gray-600 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
+            </div>
+          </Link>
+        )}
         {DIRECTORIES.map((dir) => (
           <Link
             key={dir.href}

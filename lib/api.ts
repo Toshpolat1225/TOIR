@@ -1380,6 +1380,82 @@ const wagonMileage = {
   },
 };
 
+export type DataMigrationBatch = {
+  id: string; name: string; source_file: string; field: string; description: string | null; created_at: string
+  total: number; applied: number; reverted: number
+};
+export type DataMigrationItem = {
+  id: number; batch_id: string; asset_id: string; inv_number: string | null; serial_number: string | null
+  asset_name: string | null; asset_type: string | null; section_name: string | null
+  old_value: string | null; new_value: string | null; current_value: string | null; raw_value: string | null
+  status: "applied" | "reverted"; updated_at: string
+};
+export type DataMigrationRevertResult = { reverted: number; skipped_changed_elsewhere: number; already_reverted: number };
+
+export type RepairNormSet = {
+  work_type_id: string; work_type_code: string; asset_type: string; asset_model_id: string | null; norm_group: string; basis: "per_repair" | "per_month_per_unit"
+  model_name: string | null; total: number; materials: number; spare_parts: number; lubricants: number; alternatives: number; source_file: string | null
+};
+export type RepairNormItem = {
+  id: string; work_type_id: string; asset_type: string; asset_model_id: string | null; norm_group: string; seq: number; section: "materials" | "spare_parts" | "lubricants"
+  group_name: string | null; basis: "per_repair" | "per_month_per_unit"; name: string; unit: string | null; quantity: string | null; quantity_text: string; parent_id: string | null; note: string | null
+  source_file: string | null; source_sheet: string | null; updated_at: string
+};
+export type RepairNormItemCreate = {
+  work_type_id: string; asset_type: string; asset_model_id?: string | null; norm_group?: string; basis?: "per_repair" | "per_month_per_unit"
+  section: "materials" | "spare_parts" | "lubricants"; group_name?: string | null; name: string
+  unit?: string | null; quantity_text: string; parent_id?: string | null; note?: string | null
+};
+export type RepairNormItemUpdate = Partial<Pick<RepairNormItem, "section" | "group_name" | "name" | "unit" | "quantity_text" | "note">>;
+
+const repairNorms = {
+  async sets(): Promise<RepairNormSet[]> {
+    return request<RepairNormSet[]>({ method: "GET", path: "/repair-norms/sets", suppressNetworkLog: true });
+  },
+  async items(set: Pick<RepairNormSet, "work_type_id" | "asset_type" | "asset_model_id" | "norm_group">, params: { q?: string; section?: "materials" | "spare_parts" | "lubricants" } = {}): Promise<Paginated<RepairNormItem>> {
+    const query: Record<string, string | number> = { work_type_id: set.work_type_id, asset_type: set.asset_type, limit: 1000 };
+    if (set.asset_model_id) query.asset_model_id = set.asset_model_id;
+    if (set.norm_group) query.norm_group = set.norm_group;
+    if (params.q) query.q = params.q;
+    if (params.section) query.section = params.section;
+    return request<Paginated<RepairNormItem>>({ method: "GET", path: "/repair-norms/items", params: query, suppressNetworkLog: true });
+  },
+  async create(data: RepairNormItemCreate): Promise<RepairNormItem> {
+    return request<RepairNormItem>({ method: "POST", path: "/repair-norms/items", body: data });
+  },
+  async update(id: string, data: RepairNormItemUpdate): Promise<RepairNormItem> {
+    return request<RepairNormItem>({ method: "PATCH", path: `/repair-norms/items/${id}`, body: data });
+  },
+  async remove(id: string): Promise<void> {
+    await request<null>({ method: "DELETE", path: `/repair-norms/items/${id}` });
+  },
+  async removeSet(set: Pick<RepairNormSet, "work_type_id" | "asset_type" | "asset_model_id" | "norm_group">): Promise<void> {
+    const query: Record<string, string> = { work_type_id: set.work_type_id, asset_type: set.asset_type };
+    if (set.asset_model_id) query.asset_model_id = set.asset_model_id;
+    if (set.norm_group) query.norm_group = set.norm_group;
+    await request<null>({ method: "DELETE", path: "/repair-norms/sets", params: query });
+  },
+};
+
+const dataMigrations = {
+  async batches(): Promise<DataMigrationBatch[]> {
+    return request<DataMigrationBatch[]>({ method: "GET", path: "/data-migrations", suppressNetworkLog: true });
+  },
+  async items(batchId: string, params: ListParams & { q?: string; status?: "applied" | "reverted"; sort_by?: string; sort_dir?: "asc" | "desc" } = {}): Promise<Paginated<DataMigrationItem>> {
+    const clean = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== "")) as Record<string, string | number>;
+    return request<Paginated<DataMigrationItem>>({ method: "GET", path: `/data-migrations/${batchId}/items`, params: clean, suppressNetworkLog: true });
+  },
+  async update(itemId: number, newValue: string): Promise<DataMigrationItem> {
+    return request<DataMigrationItem>({ method: "PATCH", path: `/data-migrations/items/${itemId}`, body: { new_value: newValue } });
+  },
+  async revert(itemId: number): Promise<void> {
+    await request<null>({ method: "DELETE", path: `/data-migrations/items/${itemId}` });
+  },
+  async revertBatch(batchId: string): Promise<DataMigrationRevertResult> {
+    return request<DataMigrationRevertResult>({ method: "POST", path: `/data-migrations/${batchId}/revert` });
+  },
+};
+
 const assetConflicts = {
   async list(params: ListParams & {
     status?: AssetFieldChange["status"];
@@ -2622,6 +2698,8 @@ export const api = {
   fixedAssets,
   wagonMileage,
   assetConflicts,
+  dataMigrations,
+  repairNorms,
   wialon,
   gtk,
   fixedAssetCatalogs,

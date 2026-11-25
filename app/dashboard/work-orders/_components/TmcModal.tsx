@@ -128,6 +128,8 @@ export function TmcModal({
       active = false;
       window.clearTimeout(timer);
     };
+    // requestKey already encodes the rows being checked; depending on requestRows.length too would re-run needlessly
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [departmentId, requestKey]);
 
   function updateRow(id: string, patch: Partial<TmcDraft>) {

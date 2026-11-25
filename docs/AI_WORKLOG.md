@@ -585,3 +585,50 @@ Rassvet (qum+terrakota) va Sakura (atirgul+siren): CSS tokenlar + hover/active/k
 
 ## 2026-11-23 — O'lik fayllar karantinga ko'chirildi (o'chirilmadi)
 - `_QUARANTINE_olik_fayllar/`: ildizdagi requirements.txt, alembic.ini, p03_...dump; scripts/ dagi 6 ta eski yordamchi; handlers/_i18n.py. README.txt ichida asl joylari. Tekshirildi: backend "not pg" testlari, compose config, tsc. Bir hafta kuzatib, keyin papkani o'chirish mumkin.
+
+## 2026-11-24 — ЖДЦ-1 ПТОВ oxirgi ta'mir sanalari bazaga kiritildi
+- Manba: docs/templates/вагон/ЖДЦ-1 ПТОВ готов.xlsx (529 vagon-samosval). Kiritilgan: 522 ta `fixed_assets.last_maint_date` (inv_number bo'yicha, faqat bo'sh maydonlar), ro'yxat: docs/imports/zhdc1_ptov_last_repair_2026-11-24.csv. Hujjat: docs/audit/13_ZHDC1_PTOV_XLSX_REVIEW.md.
+- O'tkazib yuborildi: 5 ta bo'sh sana, 2 ta shubhali (inv 38220 -> 07.10.2023; 38531 -> 12.11.2016) — foydalanuvchi roziligi bilan.
+- Tartib: zaxira backups/pre_ptov_import_20261124_1419.dump -> quruq yurish (522/522 mos, 0 takror) -> bitta tranzaksiyada yozish (522 bo'lmasa bekor) -> tekshirish: 522 vagon, hammasi ЖДЦ-1, boshqa turlarga tegilmadi.
+
+## 2026-11-24 — ЖДЦ-2 ВРП oxirgi profilaktik ta'mir sanalari bazaga kiritildi
+- Manba: docs/templates/вагон/ЖДЦ-2 ВРП готов.xlsx. Kiritildi: 306 ta `fixed_assets.last_maint_date` (ЖДЦ-2 ning hamma vagonlari): 304 ta inv_number bo'yicha + 38649 inventar raqamli ikki alohida vagon zavod raqami bo'yicha (18468 -> 2026-09-15, 18497 -> 2026-08-25). Ro'yxat: docs/imports/zhdc2_vrp_*.csv.
+- O'tkazib yuborildi: bazada yo'q 53 qator (30 xopper-dozator, 23 vagon-samosval) va 38547 (13.05.2027, kelajak sanasi).
+- Zaxira: backups/pre_vrp2_import_20261124_1427.dump. Tartib: quruq yurish -> bitta tranzaksiya (304/1/1 bo'lmasa bekor) -> tekshirish.
+
+## 2026-11-24 — «Миграция данных»: jurnal, ko'rish/tahrirlash/qaytarish (Справочники)
+- Backend: models/data_migration.py, migratsiya 0043_data_migration_journal (data_migration_batches/items + ruxsatlar data_migration.view/manage: admin+operator ko'radi va boshqaradi, management faqat ko'radi, master yo'q), schema.sql, services/data_migration.py (list/update/revert, "boshqa joyda o'zgargan bo'lsa 409, ustiga yozilmaydi"), services/data_migration_import.py + CLI `data-migration-import` (--manifest, --record-only, --apply; dry-run standart), routers/data_migration.py (/api/v1/data-migrations).
+- Frontend: app/dashboard/directories/migration/page.tsx, Справочники kartochkasi, lib/api.ts (dataMigrations).
+- Mavjud 828 ta kiritilgan sana (ЖДЦ-1 522 + ЖДЦ-2 306) docs/imports/*_journal.csv + manifest.json orqali jurnalga yoziladi (--record-only: bazadagi qiymatga tegilmaydi). Jonli nusxada mashq qilindi (dry-run 522/306, apply, tahrir, qaytarish, audit).
+- Tekshirildi: toza bazada 918 test, migratsiya up/down/up, tsc/eslint, docker build. Deploy va jonli jurnalga yozish hali qilinmagan.
+
+## 2026-11-24 — Vagon ta'mir me'yorlari (norma): jadval, import, sahifa
+- Qarorlar (foydalanuvchi): 2025 varaq (bo'lmasa yagona mavjud varaq: ДР 6ВС-60, ДР/КР platforma = «2023»); me'yor uchastkaga emas, ta'mir turiga va vagon turiga bog'lanadi. Vagon kapital ta'miri ish turi = **КРВ** (КР lokomotivlar uchun).
+- Backend: models/repair_norms.py, migratsiya 0044_repair_norm_items (yangi jadval, ruxsatlar inventory.*), schema.sql, services/repair_norms.py (ko'rish/qo'shish/tahrir/o'chirish, import: dry-run, bir to'plamni ikki marta yuklashni rad etadi, miqdorda raqam bo'lmasa butun yuklash to'xtaydi), routers/repair_norms.py (/api/v1/repair-norms), CLI `repair-norms-import --manifest [--apply]`.
+- Ma'lumot: docs/imports/norms/*.csv (8 fayl, 1 238 qator, 67 muqobil «при замене»). Imzo qatorlari (shaxs ismlari/lavozimlar, jami 25 qator, ulardan 3 tasi miqdor ustuniga tushgan) chiqarildi.
+- Frontend: Справочники → «Нормы расхода на ремонт» (app/dashboard/directories/repair-norms/page.tsx).
+- Tekshirildi: toza bazada 928 test, migratsiya up/down/up, jonli nusxada mashq (dry-run 8 to'plam/1238/0 xato, apply, ikkinchi yuklash rad etildi, tahrir, o'chirish), tsc/eslint, docker build. Deploy va jonli import hali qilinmagan.
+
+## 2026-11-24 — Teplovoz papkasi: me'yorlar (norma) va oxirgi ta'mir sanalari
+- Backend: migratsiya 0045_repair_norm_groups (norm_group, group_name, basis, section 'lubricants'), services/repair_norms.py v2, schemas, router (norm_group parametri), CLI repair-norms-import. Testlar: test_repair_norms_pg.py (+1), head testi 0045.
+- Ma'lumot: docs/imports/norms/loco/*.csv + manifest.json (KR va TR-3 "TEM2/TEM18/TEM18DM" 1763/1761 qator, 85 agregat guruhi; TR-3 2TE116 295; TR-1/TO-3/TO-2 oylik asos 262/149/108). Oxirgi ta'mir sanalari: docs/imports/loco_last_repairs_journal.csv (35 qator) + loco_manifest.json.
+- Frontend: repair-norms sahifasi (Uzel ustuni, GSM bo'limi, asos yorlig'i), lib/api.ts.
+- Tekshirildi: toza bazada 929 test o'tdi; jonli NUSXADA mashq: dry-run 0 xato, apply (35 sana, 1238 + 4338 qator), qayta yuklash rad etildi; tsc toza. Jonli bazaga YOZILMAGAN, GSM fayli yuklanmagan.
+- Keyingi qadam: foydalanuvchi deploy + import buyruqlarini ishga tushiradi; GSM varag'i (2025 yoki 2027) haqida qaror.
+
+## 2026-11-25 — Muhandislar uchun to'liq Excel shablon
+- Fayl: docs/templates/shablon_dlya_inzhenerov.xlsx (12 varaq: boshlanish/yo'riqnoma, 1, 1b, 2, 3, 4, 5, 6a, 6b, 7, 8, spravochnik). Dropdown, sana/son tekshiruvi, ranglar, misol qatori (2-sarlavha, 3-misol, 4-qatordan ma'lumot).
+- Yig'ish skripti scratchpad'da (exceljs scratchpad'ga o'rnatildi, loyihaga emas). Ma'lumot: jonli bazadan faqat o'qish.
+- Tekshirilmadi: Excel'da ochib ko'rish; import yozilmagan (to'ldirilgan fayl kelgach, quruq yurish -> zaxira -> yozish). 6a/6b uchun ta'mir turi bo'yicha sana saqlash jadvali kerak (sxema o'zgarishi, ruxsat so'raladi).
+
+## 2026-11-25 — QA: jonli nusxada rol/endpoint tekshiruvi
+- Vaqtinchalik pg_qa (jonli dump nusxasi) + lokal API; test foydalanuvchilar (admin/operator/master/management) faqat nusxada. Nusxa va dump o'chirildi.
+- Natija: ~65 GET endpoint x 5 rol: 5xx yo'q, tokensiz hammasi 401. Yozuv endpointlar (50) x rol: master/management hech birini yoza olmaydi. Master faqat o'z uchastkasi (573/1075), boshqa uchastka 404.
+- Topildi: POST /gtk/sync xato yo'lida 500 ("A transaction is already begun", services/gtk.py _write_run); audit export.csv 12 s; 2 ta eslint ogohlantirish; JONLI bazada migratsiya jurnali 828 ta element "reverted" va last_maint_date=0.
+- Tekshirilmadi: brauzer UI, haqiqiy AD kirish, yuklama.
+
+## 2026-11-25 — QA topilmalari tuzatildi
+- services/gtk.py: xato yo'lida ochiq tranzaksiya bo'lsa rollback (500 o'rniga run yoziladi); test: tests/test_gtk_sync_failure_pg.py (tuzatishsiz yiqiladi, bilan o'tadi); test_gtk.py soxta bazasiga in_transaction/rollback.
+- services/data_migration_import.py: to'liq qaytarilgan (reverted) partiyani qayta yuklash mumkin (eski partiya "[отменён id]" nomi bilan tarix sifatida qoladi); applied elementi bor partiya baribir rad etiladi. Test qo'shildi.
+- ESLint: 2 ogohlantirish — niyatli bog'liqlik, sabab izohi bilan o'chirildi. tsc/eslint toza.
+- Tekshirildi: toza bazada 931 test o'tdi. Deploy va jonli qayta yuklash foydalanuvchi tomonidan, hali qilinmagan. HSTS va audit export (100k bilan cheklangan) o'zgartirilmadi.

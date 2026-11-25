@@ -124,6 +124,12 @@ class _Database:
     def begin(self):
         return _Transaction()
 
+    def in_transaction(self):
+        return False
+
+    async def rollback(self):
+        return None
+
     def add(self, value):
         self.added.append(value)
 

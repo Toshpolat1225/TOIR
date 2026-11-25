@@ -415,6 +415,61 @@ CREATE INDEX ix_asset_field_changes_status_created
 CREATE INDEX ix_asset_field_changes_asset_field_status
     ON asset_field_changes(asset_id, field, status);
 
+-- Migration journal: imported files (batches) and the values they wrote into assets (items)
+CREATE TABLE data_migration_batches (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name         text NOT NULL,
+    source_file  text NOT NULL,
+    field        text NOT NULL,
+    description  text,
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    created_by   uuid REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE TABLE data_migration_items (
+    id          bigserial PRIMARY KEY,
+    batch_id    uuid NOT NULL REFERENCES data_migration_batches(id) ON DELETE CASCADE,
+    asset_id    uuid NOT NULL REFERENCES fixed_assets(id) ON DELETE CASCADE,
+    old_value   text,
+    new_value   text,
+    raw_value   text,
+    status      text NOT NULL DEFAULT 'applied',
+    updated_at  timestamptz NOT NULL DEFAULT now(),
+    updated_by  uuid REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT ck_data_migration_items_status CHECK (status IN ('applied','reverted')),
+    CONSTRAINT uq_data_migration_items_batch_asset UNIQUE (batch_id, asset_id)
+);
+CREATE INDEX ix_data_migration_items_batch_status ON data_migration_items(batch_id, status);
+CREATE INDEX ix_data_migration_items_asset ON data_migration_items(asset_id);
+
+-- Remont me'yorlari: bitta texnikaga material/ehtiyot qism sarfi (remont turi x texnika turi x model); uchastkaga bog'lanmaydi
+CREATE TABLE repair_norm_items (
+    id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    work_type_id   uuid NOT NULL REFERENCES work_types(id) ON DELETE CASCADE,
+    asset_type     text NOT NULL REFERENCES fixed_asset_types(code) ON UPDATE CASCADE ON DELETE RESTRICT,
+    asset_model_id uuid REFERENCES asset_models(id) ON DELETE SET NULL,
+    norm_group     text NOT NULL DEFAULT '',
+    seq            integer NOT NULL,
+    section        text NOT NULL,
+    group_name     text,
+    basis          text NOT NULL DEFAULT 'per_repair',
+    name           text NOT NULL,
+    unit           text,
+    quantity       numeric(14,3),
+    quantity_text  text NOT NULL,
+    parent_id      uuid REFERENCES repair_norm_items(id) ON DELETE CASCADE,
+    note           text,
+    source_file    text,
+    source_sheet   text,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    updated_at     timestamptz NOT NULL DEFAULT now(),
+    updated_by     uuid REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT ck_repair_norm_items_section CHECK (section IN ('materials','spare_parts','lubricants')),
+    CONSTRAINT ck_repair_norm_items_basis CHECK (basis IN ('per_repair','per_month_per_unit')),
+    CONSTRAINT ck_repair_norm_items_quantity CHECK (quantity IS NULL OR quantity >= 0)
+);
+CREATE INDEX ix_repair_norm_items_set ON repair_norm_items(work_type_id, asset_type, asset_model_id, norm_group, seq);
+CREATE INDEX ix_repair_norm_items_parent ON repair_norm_items(parent_id);
+
 CREATE TABLE mileage_history (
     id           bigserial PRIMARY KEY,
     asset_id     uuid NOT NULL REFERENCES fixed_assets(id) ON DELETE CASCADE,

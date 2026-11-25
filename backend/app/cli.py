@@ -599,6 +599,75 @@ async def _wagon_ledger_purge(older_than_days: int, apply: bool) -> int:
     return 0
 
 
+async def _data_migration_import(
+    path: str | None, name: str | None, source_file: str | None, field: str, record_only: bool, apply: bool, manifest: str | None = None
+) -> int:
+    from app.services import data_migration_import
+
+    try:
+        if manifest:
+            jobs = data_migration_import.load_manifest(manifest)
+        elif path and name and source_file:
+            jobs = [{"file": path, "name": name, "source_file": source_file, "field": field}]
+        else:
+            print("--manifest yoki (--file, --name, --source-file) kerak", file=sys.stderr)
+            return 2
+    except (OSError, ValueError) as exc:
+        print(f"Manifest o'qilmadi: {exc}", file=sys.stderr)
+        return 2
+    reports = []
+    try:
+        for job in jobs:
+            with open(job["file"], newline="", encoding="utf-8-sig") as handle:
+                rows = list(csv.DictReader(handle))
+            async with SessionFactory() as db:
+                report = await data_migration_import.import_rows(
+                    db, rows, batch_name=job["name"], source_file=job["source_file"], field=job["field"], record_only=record_only, commit=apply
+                )
+            reports.append({"batch": job["name"], **report})
+    except (OSError, ValueError, SQLAlchemyError) as exc:
+        print(f"Bajarilmadi: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+    finally:
+        await engine.dispose()
+    report = reports[0] if len(reports) == 1 and not manifest else reports
+    print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
+    if not apply:
+        print("DRY-RUN: hech narsa yozilmadi. Yozish uchun --apply qo'shing (avval dump oling).", file=sys.stderr)
+    return 0
+
+
+async def _repair_norms_import(manifest: str, apply: bool) -> int:
+    from app.services import repair_norms
+
+    try:
+        jobs = repair_norms.load_manifest(manifest)
+    except (OSError, ValueError) as exc:
+        print(f"Manifest o'qilmadi: {exc}", file=sys.stderr)
+        return 2
+    reports = []
+    try:
+        for job in jobs:
+            with open(job["file"], newline="", encoding="utf-8-sig") as handle:
+                rows = list(csv.DictReader(handle))
+            async with SessionFactory() as db:
+                report = await repair_norms.import_set(
+                    db, rows, work_type_code=job["work_type_code"], asset_type=job["asset_type"], model_name=job["model_name"] or None,
+                    source_file=job["source_file"], source_sheet=job["source_sheet"], commit=apply,
+                    norm_group=job["norm_group"], basis=job["basis"],
+                )
+            reports.append(report)
+    except (OSError, ValueError, SQLAlchemyError) as exc:
+        print(f"Bajarilmadi: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+    finally:
+        await engine.dispose()
+    print(json.dumps(reports, ensure_ascii=False, indent=2, default=str))
+    if not apply:
+        print("DRY-RUN: hech narsa yozilmadi. Yozish uchun --apply qo'shing (avval dump oling).", file=sys.stderr)
+    return 0
+
+
 async def _wialon_health_report(silent_hours: int, reject_days: int) -> int:
     from app.services import wialon_health
 
@@ -762,6 +831,23 @@ def main() -> int:
     )
     purge_parser.add_argument("--apply", action="store_true")
     purge_parser.add_argument("--batch-size", type=int, default=50_000)
+    migration_parser = subparsers.add_parser(
+        "data-migration-import",
+        help="Import a CSV (inv,[serial,]date[,raw]) into assets and the migration journal (dry-run by default; take a dump first)",
+    )
+    migration_parser.add_argument("--file")
+    migration_parser.add_argument("--name", help="Batch name shown on the Migration page")
+    migration_parser.add_argument("--source-file", help="Original file name (for the journal)")
+    migration_parser.add_argument("--manifest", help="UTF-8 JSON list of batches (file, name, source_file); use instead of --file/--name")
+    migration_parser.add_argument("--field", default="last_maint_date")
+    migration_parser.add_argument("--record-only", action="store_true", help="The values are already in the assets: only journal them")
+    migration_parser.add_argument("--apply", action="store_true")
+    norms_parser = subparsers.add_parser(
+        "repair-norms-import",
+        help="Load cleaned repair-norm CSV files listed in a manifest (dry-run by default; refuses a set that already has lines)",
+    )
+    norms_parser.add_argument("--manifest", required=True)
+    norms_parser.add_argument("--apply", action="store_true")
     ledger_parser = subparsers.add_parser(
         "wagon-ledger-purge",
         help="Delete SUPERSEDED wagon ledger rows older than N days (the active rows stay; dry-run by default; take a dump first)",
@@ -819,6 +905,14 @@ def main() -> int:
         return asyncio.run(_wialon_health_report(arguments.silent_hours, arguments.reject_days))
     if arguments.command == "audit-purge-telemetry":
         return asyncio.run(_audit_purge_telemetry(arguments.apply, max(1_000, arguments.batch_size)))
+    if arguments.command == "data-migration-import":
+        return asyncio.run(
+            _data_migration_import(
+                arguments.file, arguments.name, arguments.source_file, arguments.field, arguments.record_only, arguments.apply, arguments.manifest
+            )
+        )
+    if arguments.command == "repair-norms-import":
+        return asyncio.run(_repair_norms_import(arguments.manifest, arguments.apply))
     if arguments.command == "wagon-ledger-purge":
         return asyncio.run(_wagon_ledger_purge(arguments.older_than_days, arguments.apply))
     if arguments.command == "maintenance-shadow-report":

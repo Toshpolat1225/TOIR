@@ -1,0 +1,14 @@
+[
+  {
+    "file": "zhdc1_ptov_journal.csv",
+    "name": "ЖДЦ-1: ПТОВ, последний ремонт",
+    "source_file": "ЖДЦ-1 ПТОВ готов.xlsx",
+    "field": "last_maint_date"
+  },
+  {
+    "file": "zhdc2_vrp_journal.csv",
+    "name": "ЖДЦ-2: ВРП, последний профилактический ремонт",
+    "source_file": "ЖДЦ-2 ВРП готов.xlsx",
+    "field": "last_maint_date"
+  }
+]

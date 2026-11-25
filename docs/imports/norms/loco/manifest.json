@@ -1,0 +1,14 @@
+[
+  {"file": "КР_ТЭМ2-ТЭМ18-ТЭМ18ДМ.csv", "work_type_code": "КР-2", "asset_type": "diesel", "norm_group": "ТЭМ2, ТЭМ18, ТЭМ18ДМ", "basis": "per_repair",
+   "source_file": "Устредненая норма расхода  КР-2, ТР-3 ТЭМ, 2ТЭ116 2025 г..xls", "source_sheet": "КР-2 ТЭМ2"},
+  {"file": "ТР-3_ТЭМ2-ТЭМ18-ТЭМ18ДМ.csv", "work_type_code": "ТР-3", "asset_type": "diesel", "norm_group": "ТЭМ2, ТЭМ18, ТЭМ18ДМ", "basis": "per_repair",
+   "source_file": "Устредненая норма расхода  КР-2, ТР-3 ТЭМ, 2ТЭ116 2025 г..xls", "source_sheet": "ТР-3 ТЭМ2"},
+  {"file": "ТР-3_2ТЭ116.csv", "work_type_code": "ТР-3", "asset_type": "diesel", "norm_group": "2ТЭ116", "basis": "per_repair",
+   "source_file": "Устредненая норма расхода  КР-2, ТР-3 ТЭМ, 2ТЭ116 2025 г..xls", "source_sheet": "ТР-3 2ТЭ-116"},
+  {"file": "ТР-1_ТЭМ2_месяц.csv", "work_type_code": "ТР-1", "asset_type": "diesel", "norm_group": "ТЭМ2", "basis": "per_month_per_unit",
+   "source_file": "Усредненая норма на ТР-1, ТО-3 на 2025 г..xls", "source_sheet": "Норма на 2027 ТР-1"},
+  {"file": "ТО-3_ТЭМ2_месяц.csv", "work_type_code": "ТО-3", "asset_type": "diesel", "norm_group": "ТЭМ2", "basis": "per_month_per_unit",
+   "source_file": "Усредненая норма на ТР-1, ТО-3 на 2025 г..xls", "source_sheet": "Норма на 2023 ТО-3"},
+  {"file": "ТО-2_ТЭМ2_месяц.csv", "work_type_code": "ТО-2", "asset_type": "diesel", "norm_group": "ТЭМ2", "basis": "per_month_per_unit",
+   "source_file": "Усредненая норма на ТР-1, ТО-3 на 2025 г..xls", "source_sheet": "Норма на 2023 ТО-2"}
+]

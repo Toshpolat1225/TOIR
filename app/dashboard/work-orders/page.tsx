@@ -129,6 +129,8 @@ function WorkOrdersPage() {
     } finally {
       setOrdersLoading(false);
     }
+    // refreshKey is a deliberate refetch trigger (bumped after a save), not a value read inside the callback
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assetId, dateFrom, dateTo, deferredQuery, executorId, materialQuery, offset, refreshKey, sectionId, tab, workTypeId]);
 
   useEffect(() => {

@@ -238,6 +238,8 @@ async def sync_gtk(db: AsyncSession) -> GtkSyncRun | None:
             status, safe_error = _failure_details(exc)
             finished_at = datetime.now(timezone.utc)
             try:
+                if db.in_transaction():  # a failed attempt can leave the session inside a transaction
+                    await db.rollback()
                 run = await _write_run(
                     db,
                     GtkSyncRun(

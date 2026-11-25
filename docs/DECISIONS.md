@@ -89,3 +89,15 @@ Ma'lumoti yo'q texnikaga taxminiy tezlik berilmaydi (Без прогноза, sa
 ## #78 AUTH-01: mahalliy parollar olib tashlandi (2026-11-23)
 CODEX standarti: o'z parol mexanizmi bo'lmasligi kerak. Olib tashlandi: `users.hashed_password`, mahalliy login, avariya yozuvi, parol tiklash, «AD'ga o'tkazish». Avariya yo'li (B variant): `emergency-session` CLI — faqat server shell, 15 daqiqa, faqat faol AD-admin, auditga yoziladi, yangilash uzaytirmaydi. Hali ochiq: АГМК shlyuzi (`/auth`, `X-API-Key`) orqali kirishga o'tish masalasi korporativ IT bilan kelishilmagan (hozir LDAPS to'g'ridan-to'g'ri).
 
+
+## #79 Migratsiya jurnali
+Importlar `data_migration_batches/items` jurnaliga yoziladi (eski qiymat, yangi qiymat, fayldagi asl matn). Qiymat manbasi `fixed_assets` ustuni bo'lib qoladi. «O'chirish» = eski qiymatga qaytarish (qator «откачено» bo'lib qoladi). Tahrir/qaytarish faqat texnika hali migratsiya yozgan qiymatni ushlab tursa ishlaydi, aks holda 409. Faqat `FIELD_SPECS` dagi maydonlar yoziladi (hozir last_maint_date).
+
+## #80 Remont me'yorlari
+`repair_norm_items`: remont turi (work type) × texnika turi × ixtiyoriy model; uchastkaga bog'lanmaydi (eski `nomenclature_norms` uchastkali va qoladi). Miqdor = asl matnning birinchi soni, asl matn alohida saqlanadi. Raqamsiz miqdor (masalan imzo qatori) importni to'xtatadi. Vagon KR uchun ish turi КРВ.
+
+## #81 Teplovoz me'yorlari
+- Me'yor to'plami kaliti = ta'mir turi + texnika turi + model + norm_group (seriya guruhi, masalan "TEM2, TEM18, TEM18DM"). Asos: per_repair yoki per_month_per_unit (TR-1/TO-2/TO-3 oylik, 1 birlikka).
+- Miqdor = quantity_text dagi birinchi son; asl matn saqlanadi. 2TE116 uchun miqdor 2 seksiyali ustun, 1 seksiya normasi izohda.
+- KR-2 fayli KR ta'mir turiga bog'landi. ГСМ fayli (ikki varaq 2025/2027 farq qiladi) hali yuklanmagan — qaror kutilmoqda.
+- Teplovozning oxirgi ta'mir sanasi = TR-1/TR-3/KR-2 sanalarining eng kattasi; asl matn jurnalda saqlanadi.

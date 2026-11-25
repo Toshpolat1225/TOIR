@@ -4,6 +4,8 @@ from app.models.analytics import DailyReadinessSnapshot
 from app.models.asset_source_links import AssetSourceLink
 from app.models.asset_field_changes import AssetFieldChange
 from app.models.audit_log import AuditLog
+from app.models.data_migration import DataMigrationBatch, DataMigrationItem
+from app.models.repair_norms import RepairNormItem
 from app.models.base import Base
 from app.models.identity import LoginAttempt, RefreshToken, User
 from app.models.mileage import (
